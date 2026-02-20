@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import path from "path";
 import electron from "electron";
 import serve from "electron-serve";
+import log from "electron-log";
 import { createWindow, WindowInstance } from "./helpers";
 import { authService } from "./services/auth";
 import { issueService } from "./services/issues";
@@ -11,6 +12,7 @@ import { updaterService } from "./services/updater";
 import { syncService } from "./services/sync";
 import { storageManager } from "./utils/storage";
 import { sessionManager } from "./utils/session";
+import { TrayIconManager } from "./utils/tray-icon-manager";
 import fs from "fs";
 
 const {
@@ -44,7 +46,7 @@ if (isProd) {
   let envLoaded = false;
   for (const envPath of possibleEnvPaths) {
     if (fs.existsSync(envPath)) {
-      console.log("[ENV] Loading .env from:", envPath);
+      log.info("[ENV] Loading .env from:", envPath);
       dotenv.config({ path: envPath });
       envLoaded = true;
       break;
@@ -52,7 +54,7 @@ if (isProd) {
   }
 
   if (!envLoaded) {
-    console.warn(
+    log.warn(
       "[ENV] No .env file found in production, using existing environment variables"
     );
   }
@@ -87,6 +89,21 @@ let tray: typeof Tray.prototype | null = null;
 let isQuitting = false;
 let pendingScreenshot: { dataUrl: string; mode: string } | null = null;
 
+// State tracking for tray actions to prevent race conditions
+let isShowingWindow = false;
+let isCheckingForUpdates = false;
+
+// Tray icon manager and recording state
+let trayIconManager: TrayIconManager | null = null;
+let recordingState: "idle" | "selecting" | "recording" = "idle";
+let recordingBounds: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} | null = null;
+let pendingRecording: { dataUrl: string; duration: number } | null = null;
+
 if (isProd) {
   serve({ directory: "app" });
 } else {
@@ -96,7 +113,7 @@ if (isProd) {
 
   // In development, quit app when terminal process is killed
   process.on("SIGTERM", () => {
-    console.log("SIGTERM received, quitting app...");
+    log.info("SIGTERM received, quitting app...");
     isQuitting = true;
     if (mainWindow && mainWindow.setQuitting) {
       mainWindow.setQuitting(true);
@@ -105,7 +122,7 @@ if (isProd) {
   });
 
   process.on("SIGINT", () => {
-    console.log("SIGINT received, quitting app...");
+    log.info("SIGINT received, quitting app...");
     isQuitting = true;
     if (mainWindow && mainWindow.setQuitting) {
       mainWindow.setQuitting(true);
@@ -115,7 +132,7 @@ if (isProd) {
 
   // Also handle parent process exit (when npm run dev is killed)
   process.on("disconnect", () => {
-    console.log("Parent process disconnected, quitting app...");
+    log.info("Parent process disconnected, quitting app...");
     isQuitting = true;
     if (mainWindow && mainWindow.setQuitting) {
       mainWindow.setQuitting(true);
@@ -154,7 +171,7 @@ async function createMainWindow() {
   try {
     hasUser = await authService.hasAnyUser();
   } catch (error) {
-    console.error("Database connection error:", error);
+    log.error("Database connection error:", error);
     // Will show database setup screen
   }
 
@@ -201,6 +218,11 @@ function createSystemTray() {
   trayIcon.setTemplateImage(true); // Makes it adapt to light/dark themes on macOS
 
   tray = new Tray(trayIcon);
+
+  // Initialize tray icon manager
+  trayIconManager = new TrayIconManager(tray, isProd);
+  log.info("[Tray] TrayIconManager initialized");
+
   updateTrayMenu();
 
   tray.setToolTip("SnapFlow");
@@ -214,17 +236,17 @@ function registerGlobalShortcuts() {
   const areaRegistered = globalShortcut.register(
     captureAreaShortcut,
     async () => {
-      console.log(`[Shortcuts] ${captureAreaShortcut} pressed - Capture Area`);
+      log.info(`[Shortcuts] ${captureAreaShortcut} pressed - Capture Area`);
       await handleScreenshotCapture("region");
     }
   );
 
   if (areaRegistered) {
-    console.log(
+    log.info(
       `[Shortcuts] Successfully registered ${captureAreaShortcut} for Capture Area`
     );
   } else {
-    console.error(`[Shortcuts] Failed to register ${captureAreaShortcut}`);
+    log.error(`[Shortcuts] Failed to register ${captureAreaShortcut}`);
   }
 
   // Register Cmd+Shift+3 (macOS) / Ctrl+Shift+3 (Windows/Linux) for Capture Full Screen
@@ -234,7 +256,7 @@ function registerGlobalShortcuts() {
   const fullScreenRegistered = globalShortcut.register(
     captureFullScreenShortcut,
     async () => {
-      console.log(
+      log.info(
         `[Shortcuts] ${captureFullScreenShortcut} pressed - Capture Full Screen`
       );
       await handleScreenshotCapture("fullscreen");
@@ -242,17 +264,15 @@ function registerGlobalShortcuts() {
   );
 
   if (fullScreenRegistered) {
-    console.log(
+    log.info(
       `[Shortcuts] Successfully registered ${captureFullScreenShortcut} for Capture Full Screen`
     );
   } else {
-    console.error(
-      `[Shortcuts] Failed to register ${captureFullScreenShortcut}`
-    );
+    log.error(`[Shortcuts] Failed to register ${captureFullScreenShortcut}`);
   }
 
   // Log registered shortcuts
-  console.log(
+  log.info(
     "[Shortcuts] All registered shortcuts:",
     globalShortcut.isRegistered(captureAreaShortcut),
     globalShortcut.isRegistered(captureFullScreenShortcut)
@@ -310,22 +330,81 @@ function updateTrayMenu() {
     });
   }
 
+  // Recording menu item - changes based on recording state
+  let recordingMenuItem: electron.MenuItemConstructorOptions;
+
+  if (recordingState === "recording") {
+    recordingMenuItem = {
+      label: "■ Stop Recording",
+      click: async () => {
+        await handleStopRecording();
+      },
+    };
+  } else {
+    // idle or selecting state
+    recordingMenuItem = {
+      label: "Record Screen",
+      click: async () => {
+        await handleStartRecordingFlow();
+      },
+    };
+  }
+
   const contextMenu = Menu.buildFromTemplate([
     ...captureMenuItems,
     { type: "separator" },
-    // TODO: Recording feature - temporarily disabled for development
-    // {
-    //   label: "Record Screen",
-    //   click: () => {
-    //     handleScreenRecording();
-    //   },
-    // },
-    // { type: "separator" },
+    recordingMenuItem,
+    { type: "separator" },
     {
       label: "View My Snaps",
       click: async () => {
-        await showMainWindow();
-        mainWindow?.webContents.send("navigate", "/home");
+        try {
+          log.info("[Tray] View My Snaps clicked");
+
+          // Show the main window first
+          await showMainWindow();
+
+          // Verify window is ready before navigation
+          if (!mainWindow || mainWindow.isDestroyed()) {
+            log.error("[Tray] Main window not available after showMainWindow");
+            dialog.showErrorBox(
+              "Window Error",
+              "Unable to open the application window. Please try again."
+            );
+            return;
+          }
+
+          // Check if webContents is ready
+          if (!mainWindow.webContents) {
+            log.error("[Tray] WebContents not available");
+            dialog.showErrorBox(
+              "Window Error",
+              "Application window is not ready. Please try again."
+            );
+            return;
+          }
+
+          // Wait for the page to be ready before navigation
+          if (mainWindow.webContents.isLoading()) {
+            log.info("[Tray] Waiting for page to finish loading...");
+            await new Promise<void>((resolve) => {
+              mainWindow!.webContents.once("did-finish-load", () => {
+                log.info("[Tray] Page loaded, ready to navigate");
+                resolve();
+              });
+            });
+          }
+
+          // Navigate to home page
+          log.info("[Tray] Navigating to /home");
+          mainWindow.webContents.send("navigate", "/home");
+        } catch (error) {
+          log.error("[Tray] Failed to show snaps:", error);
+          dialog.showErrorBox(
+            "Navigation Error",
+            "Failed to open your snaps. Please try again or restart the application."
+          );
+        }
       },
     },
     { type: "separator" },
@@ -352,16 +431,52 @@ function updateTrayMenu() {
 }
 
 async function showMainWindow() {
-  // Check if window exists and is not destroyed
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    console.log("[App] Main window destroyed, recreating...");
-    await createMainWindow();
-  } else {
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore();
+  // Prevent concurrent calls to showMainWindow
+  if (isShowingWindow) {
+    log.info("[App] Already showing window, skipping duplicate call");
+    return;
+  }
+
+  isShowingWindow = true;
+
+  try {
+    // Check if window exists and is not destroyed
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      log.info("[App] Main window destroyed, recreating...");
+      await createMainWindow();
+    } else {
+      // Handle minimized state
+      if (mainWindow.isMinimized()) {
+        log.info("[App] Restoring minimized window");
+        mainWindow.restore();
+      }
+
+      // Handle hidden state
+      if (!mainWindow.isVisible()) {
+        log.info("[App] Showing hidden window");
+        mainWindow.show();
+      }
+
+      // Always focus to bring window to front
+      mainWindow.focus();
     }
-    mainWindow.show();
-    mainWindow.focus();
+  } catch (error) {
+    log.error("[App] Failed to show main window:", error);
+    // If showing fails, try to recreate the window
+    try {
+      log.info("[App] Attempting to recreate window after error...");
+      mainWindow = null; // Clear the reference
+      await createMainWindow();
+    } catch (recreateError) {
+      log.error("[App] Failed to recreate window:", recreateError);
+      // Show user-friendly error dialog
+      dialog.showErrorBox(
+        "Application Error",
+        "Failed to open the application window. Please restart SnapFlow."
+      );
+    }
+  } finally {
+    isShowingWindow = false;
   }
 }
 
@@ -373,7 +488,7 @@ async function createWindowCaptureOverlay() {
   // Check permission before attempting capture
   const hasPermission = await captureService.checkScreenRecordingPermission();
   if (!hasPermission) {
-    console.log("[Window Capture] No screen recording permission");
+    log.info("[Window Capture] No screen recording permission");
     mainWindow?.show();
     return;
   }
@@ -450,7 +565,7 @@ async function createAreaCaptureOverlay() {
   // Check permission before attempting capture
   const hasPermission = await captureService.checkScreenRecordingPermission();
   if (!hasPermission) {
-    console.log("[Area Capture] No screen recording permission");
+    log.info("[Area Capture] No screen recording permission");
     mainWindow?.show();
     return;
   }
@@ -528,7 +643,7 @@ async function handleScreenshotCapture(
     // Check permission first to avoid getting stuck in a loop
     const hasPermission = await captureService.checkScreenRecordingPermission();
     if (!hasPermission) {
-      console.log("[Screenshot] No screen recording permission detected");
+      log.info("[Screenshot] No screen recording permission detected");
       // Show dialog to user explaining they need to restart the app
       const result = await dialog.showMessageBox(mainWindow!, {
         type: "warning",
@@ -582,7 +697,7 @@ async function handleScreenshotCapture(
     }
 
     // For fullscreen, all-screens, or specific-screen, capture immediately
-    console.log("[Tray] Starting", mode, "capture...");
+    log.info("[Tray] Starting", mode, "capture...");
 
     // Keep app in dock even when hiding main window
     if (process.platform === "darwin") {
@@ -592,7 +707,7 @@ async function handleScreenshotCapture(
     mainWindow?.hide();
     await new Promise((resolve) => setTimeout(resolve, 300));
 
-    console.log("[Tray] Capturing screenshot...");
+    log.info("[Tray] Capturing screenshot...");
     const captureOptions: {
       mode:
         | "fullscreen"
@@ -614,27 +729,27 @@ async function handleScreenshotCapture(
     }
 
     const { dataUrl } = await captureService.captureScreenshot(captureOptions);
-    console.log(
+    log.info(
       "[Tray] Screenshot captured, dataUrl length:",
       dataUrl?.length || 0
     );
 
     // Store screenshot data globally so annotate page can retrieve it
     pendingScreenshot = { dataUrl, mode };
-    console.log("[Tray] Screenshot stored in pendingScreenshot");
+    log.info("[Tray] Screenshot stored in pendingScreenshot");
 
     mainWindow?.show();
     // Navigate to annotate page
-    console.log("[Tray] Navigating to annotate page...");
+    log.info("[Tray] Navigating to annotate page...");
     if (isProd) {
       await mainWindow?.loadURL("app://./annotate");
     } else {
       const port = process.argv[2];
       await mainWindow?.loadURL(`http://localhost:${port}/annotate`);
     }
-    console.log("[Tray] Navigation complete");
+    log.info("[Tray] Navigation complete");
   } catch (error) {
-    console.error("[Tray] Failed to capture screenshot:", error);
+    log.error("[Tray] Failed to capture screenshot:", error);
   }
 }
 
@@ -645,7 +760,7 @@ async function handleScreenRecording() {
     // Check permission first
     const hasPermission = await captureService.checkScreenRecordingPermission();
     if (!hasPermission) {
-      console.log("[Recording] No screen recording permission detected");
+      log.info("[Recording] No screen recording permission detected");
       const result = await dialog.showMessageBox(mainWindow!, {
         type: "warning",
         title: "Screen Recording Permission Required",
@@ -666,61 +781,15 @@ async function handleScreenRecording() {
     // Create area selector for recording
     await createRecordingAreaSelector();
   } catch (error) {
-    console.error("[Recording] Failed to start recording:", error);
+    log.error("[Recording] Failed to start recording:", error);
   }
 }
 
 // TODO: Recording feature - temporarily disabled
+// (Old createRecordingAreaSelector removed - using new one below)
 
-async function createRecordingAreaSelector() {
-  const { screen } = electron;
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width, height, x, y } = primaryDisplay.bounds;
-
-  recordingAreaSelector = new BrowserWindow({
-    width,
-    height,
-    x,
-    y,
-    transparent: true,
-    frame: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    resizable: false,
-    movable: false,
-    fullscreen: false,
-    hasShadow: false,
-    acceptFirstMouse: true,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, "../preload/index.js"),
-      devTools: !isProd, // Enable dev tools in development
-    },
-  });
-
-  // Set window level to float above all other windows
-  recordingAreaSelector.setAlwaysOnTop(true, "screen-saver");
-  recordingAreaSelector.setVisibleOnAllWorkspaces(true);
-
-  // Load the area selector page (no screenshot needed - window is transparent)
-  if (isProd) {
-    await recordingAreaSelector.loadURL("app://./area-selector");
-  } else {
-    const port = process.argv[2];
-    await recordingAreaSelector.loadURL(
-      `http://localhost:${port}/area-selector`
-    );
-  }
-
-  recordingAreaSelector.on("closed", () => {
-    recordingAreaSelector = null;
-  });
-}
-
-// TODO: Recording feature - temporarily disabled
-
-async function createRecordingControlWindow(bounds: {
+// Prefix with underscore to indicate intentionally unused (will be used when recording feature is enabled)
+async function _createRecordingControlWindow(bounds: {
   x: number;
   y: number;
   width: number;
@@ -768,12 +837,254 @@ async function createRecordingControlWindow(bounds: {
   });
 }
 
-async function handleCheckForUpdates() {
+// Recording workflow functions
+async function handleStartRecordingFlow() {
   try {
-    console.log("[Tray] Checking for updates...");
+    log.info("[Recording] Starting recording flow");
+    recordingState = "selecting";
+
+    // Keep app in dock
+    if (process.platform === "darwin") {
+      app.dock?.show();
+    }
+
+    // Hide main window
+    mainWindow?.hide();
+
+    // Wait for window to hide
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    // Create recording area selector
+    await createRecordingAreaSelector();
+  } catch (error) {
+    log.error("[Recording] Failed to start recording flow:", error);
+    recordingState = "idle";
+    trayIconManager?.setState("normal");
+    updateTrayMenu();
+  }
+}
+
+async function createRecordingAreaSelector() {
+  const { screen } = electron;
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width, height, x, y } = primaryDisplay.bounds;
+
+  // Check permission
+  const hasPermission = await captureService.checkScreenRecordingPermission();
+  if (!hasPermission) {
+    log.info("[Recording] No screen recording permission");
+    mainWindow?.show();
+    dialog.showErrorBox(
+      "Permission Required",
+      "Screen recording permission is required. Please grant permission in System Settings and restart SnapFlow."
+    );
+    recordingState = "idle";
+    return;
+  }
+
+  recordingAreaSelector = new BrowserWindow({
+    width,
+    height,
+    x,
+    y,
+    transparent: true,
+    frame: false,
+    alwaysOnTop: true,
+    resizable: false,
+    movable: false,
+    hasShadow: false,
+    enableLargerThanScreen: true,
+    backgroundColor: "#00000000",
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, "preload.js"),
+    },
+  });
+
+  recordingAreaSelector.setAlwaysOnTop(true, "screen-saver", 1);
+  recordingAreaSelector.setVisibleOnAllWorkspaces(true, {
+    visibleOnFullScreen: true,
+  });
+
+  // Ensure dock icon stays visible
+  if (process.platform === "darwin") {
+    app.dock?.show();
+  }
+
+  // Load recording area selector
+  if (isProd) {
+    await recordingAreaSelector.loadURL("app://./recording-area-selector");
+  } else {
+    const port = process.argv[2];
+    await recordingAreaSelector.loadURL(
+      `http://localhost:${port}/recording-area-selector`
+    );
+  }
+
+  recordingAreaSelector.on("closed", () => {
+    if (recordingState === "selecting") {
+      recordingState = "idle";
+      trayIconManager?.setState("normal");
+      updateTrayMenu();
+    }
+    recordingAreaSelector = null;
+  });
+}
+
+async function handleRecordingAreaSelected(bounds: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}) {
+  try {
+    log.info("[Recording] Area selected:", bounds);
+    recordingBounds = bounds;
+
+    // Close area selector first
+    if (recordingAreaSelector) {
+      recordingAreaSelector.close();
+      recordingAreaSelector = null;
+    }
+
+    // Start recording immediately after area selection
+    log.info("[Recording] Starting recording with selected bounds");
+    recordingState = "recording";
+
+    // Change tray icon to recording state
+    trayIconManager?.setState("recording");
+    updateTrayMenu();
+
+    // Start recording
+    await captureService.startRecording(recordingBounds);
+
+    log.info("[Recording] Recording started. Click tray icon to stop.");
+  } catch (error) {
+    log.error("[Recording] Failed to start recording:", error);
+    recordingState = "idle";
+    recordingBounds = null;
+    trayIconManager?.setState("normal");
+    updateTrayMenu();
+
+    dialog.showErrorBox(
+      "Recording Error",
+      "Failed to start recording. Please try again."
+    );
+  }
+}
+
+// Note: handleBeginRecording is no longer needed as recording starts immediately
+// after area selection in handleRecordingAreaSelected()
+
+async function handleStopRecording() {
+  try {
+    log.info("[Recording] Stopping recording");
+
+    // Reset state immediately
+    recordingState = "idle";
+    recordingBounds = null;
+    trayIconManager?.setState("normal");
+    updateTrayMenu();
+
+    // Stop recording and get result
+    const result = await captureService.stopRecording();
+    log.info("[Recording] Recording stopped:", result);
+
+    // Store recording data
+    pendingRecording = {
+      dataUrl: result.filePath, // Path to video file
+      duration: result.duration,
+    };
+
+    // Show main window and navigate to recording annotate page
+    mainWindow?.show();
+
+    if (isProd) {
+      await mainWindow?.loadURL("app://./annotate-recording");
+    } else {
+      const port = process.argv[2];
+      await mainWindow?.loadURL(`http://localhost:${port}/annotate-recording`);
+    }
+
+    log.info("[Recording] Navigated to annotate-recording page");
+  } catch (error) {
+    log.error("[Recording] Failed to stop recording:", error);
+
+    // Reset state on error
+    recordingState = "idle";
+    recordingBounds = null;
+    trayIconManager?.setState("normal");
+    updateTrayMenu();
+
+    dialog.showErrorBox(
+      "Recording Error",
+      "Failed to stop recording. The recording may not have been saved."
+    );
+  }
+}
+
+async function handleCancelRecording() {
+  log.info("[Recording] Canceling recording");
+
+  // Reset state
+  recordingState = "idle";
+  recordingBounds = null;
+  trayIconManager?.setState("normal");
+  updateTrayMenu();
+
+  // Close area selector if open
+  if (recordingAreaSelector) {
+    recordingAreaSelector.close();
+    recordingAreaSelector = null;
+  }
+
+  // Show main window
+  mainWindow?.show();
+}
+
+async function handleCheckForUpdates() {
+  // Prevent concurrent update checks
+  if (isCheckingForUpdates) {
+    log.info(
+      "[Tray] Update check already in progress, skipping duplicate request"
+    );
+    return;
+  }
+
+  isCheckingForUpdates = true;
+  let checkingDialog: Promise<electron.MessageBoxReturnValue> | null = null;
+
+  try {
+    log.info("[Tray] Checking for updates...");
+
+    // Verify main window exists
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      log.error("[Tray] Main window not available for update check");
+      // Attempt to recreate window
+      await createMainWindow();
+
+      if (!mainWindow) {
+        throw new Error("Unable to create application window");
+      }
+    }
+
+    // Check if in development mode
+    if (process.env.NODE_ENV === "development") {
+      log.info("[Tray] Skipping update check in development mode");
+      await dialog.showMessageBox(mainWindow, {
+        type: "info",
+        title: "Development Mode",
+        message: "Update check disabled in development mode",
+        detail:
+          "Automatic updates are only available in production builds. Please build and install the production version to test updates.",
+        buttons: ["OK"],
+      });
+      return;
+    }
 
     // Show a loading dialog while checking
-    const checkingDialog = dialog.showMessageBox(mainWindow!, {
+    checkingDialog = dialog.showMessageBox(mainWindow, {
       type: "info",
       title: "Checking for Updates",
       message: "Checking for updates...",
@@ -781,20 +1092,40 @@ async function handleCheckForUpdates() {
       buttons: [],
     });
 
-    // Check for updates
-    const result = await updaterService.checkForUpdates();
+    // Set a timeout for the update check (30 seconds)
+    const timeoutPromise = new Promise<null>((_, reject) => {
+      setTimeout(() => reject(new Error("Update check timed out")), 30000);
+    });
+
+    // Check for updates with timeout
+    const result = await Promise.race([
+      updaterService.checkForUpdates(),
+      timeoutPromise,
+    ]);
 
     // Close the loading dialog
-    checkingDialog.then((_dialogResult) => {
-      // Dialog will be closed automatically when we show the next one
-    });
+    await checkingDialog;
 
     if (result && result.updateInfo) {
       // Update is available - the updater service will handle the download and prompt
-      console.log("[Tray] Update available:", result.updateInfo.version);
+      log.info("[Tray] Update available:", result.updateInfo.version);
+
+      // Show additional confirmation that download will start
+      const { response } = await dialog.showMessageBox(mainWindow, {
+        type: "info",
+        title: "Update Available",
+        message: `Version ${result.updateInfo.version} is available`,
+        detail: `Current version: ${app.getVersion()}\nNew version: ${result.updateInfo.version}\n\nThe update will be downloaded automatically in the background.`,
+        buttons: ["OK"],
+        defaultId: 0,
+      });
+
+      if (response === 0) {
+        log.info("[Tray] User acknowledged update availability");
+      }
     } else {
       // No update available - show a message to the user
-      await dialog.showMessageBox(mainWindow!, {
+      await dialog.showMessageBox(mainWindow, {
         type: "info",
         title: "No Updates Available",
         message: "You're running the latest version!",
@@ -803,16 +1134,65 @@ async function handleCheckForUpdates() {
       });
     }
   } catch (error) {
-    console.error("[Tray] Failed to check for updates:", error);
+    log.error("[Tray] Failed to check for updates:", error);
+
+    // Close loading dialog if still open
+    if (checkingDialog) {
+      await checkingDialog.catch(() => {
+        /* ignore */
+      });
+    }
+
+    // Verify window still exists before showing error
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      log.error("[Tray] Window destroyed, cannot show error dialog");
+      return;
+    }
+
+    // Determine error type and provide specific guidance
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    let userMessage = "Failed to check for updates";
+    let detailMessage = "An unexpected error occurred. Please try again later.";
+
+    if (
+      errorMessage.includes("ENOTFOUND") ||
+      errorMessage.includes("ETIMEDOUT") ||
+      errorMessage.includes("timed out")
+    ) {
+      userMessage = "Connection Error";
+      detailMessage =
+        "Unable to connect to the update server. Please check your internet connection and try again.";
+    } else if (errorMessage.includes("EACCES")) {
+      userMessage = "Permission Error";
+      detailMessage =
+        "The application does not have permission to check for updates. Please check file permissions.";
+    } else if (errorMessage.includes("404")) {
+      userMessage = "Update Server Error";
+      detailMessage =
+        "Update information not found. This may be a development or pre-release build.";
+    } else if (errorMessage.includes("code signature")) {
+      userMessage = "Signature Verification Error";
+      detailMessage =
+        "Unable to verify update signature. Please download updates manually from GitHub.";
+    } else if (errorMessage.includes("Unable to create application window")) {
+      userMessage = "Application Error";
+      detailMessage =
+        "Unable to open the application window. Please restart SnapFlow.";
+      // Use showErrorBox as fallback when window creation fails
+      dialog.showErrorBox(userMessage, detailMessage);
+      return;
+    }
 
     // Show error dialog
-    await dialog.showMessageBox(mainWindow!, {
+    await dialog.showMessageBox(mainWindow, {
       type: "error",
-      title: "Update Check Failed",
-      message: "Failed to check for updates",
-      detail: "Please check your internet connection and try again later.",
+      title: userMessage,
+      message: "Update Check Failed",
+      detail: detailMessage,
       buttons: ["OK"],
     });
+  } finally {
+    isCheckingForUpdates = false;
   }
 }
 
@@ -855,20 +1235,27 @@ if (app && app.requestSingleInstanceLock) {
 
       // Register custom protocol for local file access
       protocol.registerFileProtocol("snapflow", (request, callback) => {
-        const url = request.url.replace("snapflow://", "");
+        // Remove protocol - handle both snapflow:// and snapflow:///
+        let url = request.url.substring("snapflow://".length);
+
+        // Ensure absolute path starts with /
+        if (!url.startsWith("/")) {
+          url = "/" + url;
+        }
+
         try {
           const decodedPath = decodeURIComponent(url);
-          console.log("Loading file:", decodedPath);
+          log.info("Loading file:", decodedPath);
 
           // Check if file exists
           if (fs.existsSync(decodedPath)) {
             callback({ path: decodedPath });
           } else {
-            console.error("File not found:", decodedPath);
+            log.error("File not found:", decodedPath);
             callback({ error: -6 }); // FILE_NOT_FOUND
           }
         } catch (error) {
-          console.error("Error loading file:", error);
+          log.error("Error loading file:", error);
           callback({ error: -2 }); // FAILED
         }
       });
@@ -957,17 +1344,17 @@ if (app && app.requestSingleInstanceLock) {
 
       // Listen for display changes to update tray menu
       screen.on("display-added", () => {
-        console.log("[Display] Display added, updating tray menu");
+        log.info("[Display] Display added, updating tray menu");
         updateTrayMenu();
       });
 
       screen.on("display-removed", () => {
-        console.log("[Display] Display removed, updating tray menu");
+        log.info("[Display] Display removed, updating tray menu");
         updateTrayMenu();
       });
 
       screen.on("display-metrics-changed", () => {
-        console.log("[Display] Display metrics changed, updating tray menu");
+        log.info("[Display] Display metrics changed, updating tray menu");
         updateTrayMenu();
       });
 
@@ -992,7 +1379,7 @@ if (app && app.on) {
 
   // Unregister all shortcuts before quit
   app.on("will-quit", () => {
-    console.log("[Shortcuts] Unregistering all global shortcuts");
+    log.info("[Shortcuts] Unregistering all global shortcuts");
     globalShortcut.unregisterAll();
   });
 }
@@ -1011,19 +1398,19 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("Create user error:", error);
+      log.error("Create user error:", error);
       return { success: false, error: errorMessage };
     }
   });
 
   ipcMain.handle("user:login", async (_event, { email, password }) => {
     try {
-      console.log("[IPC] Login attempt for:", email);
-      console.log(
+      log.info("[IPC] Login attempt for:", email);
+      log.info(
         "[ENV] SUPABASE_URL:",
         process.env.SUPABASE_URL ? "SET" : "NOT SET"
       );
-      console.log(
+      log.info(
         "[ENV] SUPABASE_ANON_KEY:",
         process.env.SUPABASE_ANON_KEY
           ? "SET (length: " + process.env.SUPABASE_ANON_KEY.length + ")"
@@ -1031,7 +1418,7 @@ function setupIPCHandlers() {
       );
 
       const user = await authService.login(email, password);
-      console.log("[IPC] Login successful for:", user.email);
+      log.info("[IPC] Login successful for:", user.email);
 
       // Store user in session
       await sessionManager.setUser(user);
@@ -1039,7 +1426,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("[IPC] Login error:", error);
+      log.error("[IPC] Login error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1057,14 +1444,17 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
 
   ipcMain.handle(
     "user:update",
-    async (_event, { userId, updates }: { userId: string; updates: any }) => {
+    async (
+      _event,
+      { userId, updates }: { userId: string; updates: Record<string, unknown> }
+    ) => {
       try {
         const user = await authService.updateUser(userId, updates);
         // Update session with new user data
@@ -1075,7 +1465,7 @@ function setupIPCHandlers() {
           error instanceof Error
             ? error.message
             : "An unexpected error occurred";
-        console.error("IPC Handler error:", error);
+        log.error("IPC Handler error:", error);
         return { success: false, error: errorMessage };
       }
     }
@@ -1088,7 +1478,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("Logout error:", error);
+      log.error("Logout error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1115,7 +1505,7 @@ function setupIPCHandlers() {
           error instanceof Error
             ? error.message
             : "An unexpected error occurred";
-        console.error("IPC Handler error:", error);
+        log.error("IPC Handler error:", error);
         return { success: false, error: errorMessage };
       }
     }
@@ -1128,7 +1518,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1140,7 +1530,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1152,7 +1542,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1170,7 +1560,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1185,7 +1575,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1203,7 +1593,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1227,7 +1617,7 @@ function setupIPCHandlers() {
 
         // Store screenshot data globally
         pendingScreenshot = { dataUrl: result.dataUrl, mode };
-        console.log("[IPC Capture] Screenshot stored in pendingScreenshot");
+        log.info("[IPC Capture] Screenshot stored in pendingScreenshot");
 
         // Navigate to annotate page
         mainWindow?.show();
@@ -1240,7 +1630,7 @@ function setupIPCHandlers() {
 
         return { success: true, data: result };
       } catch (error) {
-        console.error("[IPC Capture] Error:", error);
+        log.error("[IPC Capture] Error:", error);
         // Close overlay and show main window even on error
         if (windowCaptureOverlay) {
           windowCaptureOverlay.close();
@@ -1251,7 +1641,7 @@ function setupIPCHandlers() {
           error instanceof Error
             ? error.message
             : "An unexpected error occurred";
-        console.error("IPC Handler error:", error);
+        log.error("IPC Handler error:", error);
         return { success: false, error: errorMessage };
       }
     }
@@ -1267,7 +1657,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1279,7 +1669,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1291,7 +1681,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1306,7 +1696,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1321,7 +1711,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1329,7 +1719,7 @@ function setupIPCHandlers() {
   // Handle window selection from overlay
   ipcMain.handle("capture:select-window", async (_event, { windowId }) => {
     try {
-      console.log("[Window Capture] Selected window ID:", windowId);
+      log.info("[Window Capture] Selected window ID:", windowId);
 
       // Close the overlay
       if (windowCaptureOverlay) {
@@ -1340,24 +1730,24 @@ function setupIPCHandlers() {
       // Wait a bit for overlay to close
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      console.log("[Window Capture] Capturing window screenshot...");
+      log.info("[Window Capture] Capturing window screenshot...");
       // Capture the selected window
       const result = await captureService.captureScreenshot({
         mode: "window",
         windowId,
       });
 
-      console.log(
+      log.info(
         "[Window Capture] Screenshot captured, dataUrl length:",
         result.dataUrl?.length || 0
       );
 
       // Store screenshot data globally
       pendingScreenshot = { dataUrl: result.dataUrl, mode: "window" };
-      console.log("[Window Capture] Stored pending screenshot");
+      log.info("[Window Capture] Stored pending screenshot");
 
       // Navigate to annotate page
-      console.log(
+      log.info(
         "[Window Capture] Showing main window and navigating to annotate page..."
       );
       mainWindow?.show();
@@ -1367,16 +1757,16 @@ function setupIPCHandlers() {
         const port = process.argv[2];
         await mainWindow?.loadURL(`http://localhost:${port}/annotate`);
       }
-      console.log("[Window Capture] Navigation complete");
+      log.info("[Window Capture] Navigation complete");
 
       return { success: true, data: result };
     } catch (error) {
-      console.error("[Window Capture] Error:", error);
+      log.error("[Window Capture] Error:", error);
       // Show main window even on error
       mainWindow?.show();
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1405,32 +1795,21 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
 
   // Recording handlers
   ipcMain.handle("recording:area-selected", async (_event, { bounds }) => {
-    console.log("[IPC] Recording area selected:", bounds);
+    log.info("[IPC] Recording area selected:", bounds);
     try {
-      // Close the area selector
-      if (recordingAreaSelector) {
-        console.log("[IPC] Closing area selector window");
-        recordingAreaSelector.close();
-        recordingAreaSelector = null;
-      }
-
-      // Create the recording control window with the selected bounds
-      console.log("[IPC] Creating recording control window");
-      await createRecordingControlWindow(bounds);
-      console.log("[IPC] Recording control window created successfully");
-
+      await handleRecordingAreaSelected(bounds);
       return { success: true };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("[Recording] Area selection error:", error);
+      log.error("[Recording] Area selection error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1442,7 +1821,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("[Recording] Start error:", error);
+      log.error("[Recording] Start error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1465,56 +1844,47 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("[Recording] Stop error:", error);
+      log.error("[Recording] Stop error:", error);
       return { success: false, error: errorMessage };
     }
   });
 
-  ipcMain.handle("recording:cancel", () => {
-    console.log("[IPC] Recording cancel requested");
+  ipcMain.handle("recording:cancel", async () => {
+    log.info("[IPC] Recording cancel requested");
     try {
-      // Stop any ongoing recording
-      captureService.stopRecording().catch(console.error);
-
-      // Close recording control window
-      if (recordingControlWindow) {
-        console.log("[IPC] Closing recording control window");
-        recordingControlWindow.close();
-        recordingControlWindow = null;
-      }
-
-      // Close area selector if still open
-      if (recordingAreaSelector) {
-        console.log("[IPC] Closing recording area selector");
-        recordingAreaSelector.close();
-        recordingAreaSelector = null;
-      }
-
-      console.log("[IPC] Recording cancelled successfully");
+      await handleCancelRecording();
       return { success: true };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("[Recording] Cancel error:", error);
+      log.error("[Recording] Cancel error:", error);
       return { success: false, error: errorMessage };
     }
   });
 
   ipcMain.handle("capture:get-pending", async () => {
-    console.log(
-      "[IPC] Getting pending screenshot, exists:",
-      !!pendingScreenshot
-    );
+    log.info("[IPC] Getting pending screenshot, exists:", !!pendingScreenshot);
     if (pendingScreenshot) {
       const data = pendingScreenshot;
       pendingScreenshot = null; // Clear after retrieval
-      console.log(
+      log.info(
         "[IPC] Returning pending screenshot, length:",
         data.dataUrl?.length || 0
       );
       return { success: true, data };
     }
     return { success: false, error: "No pending screenshot" };
+  });
+
+  ipcMain.handle("recording:get-pending", async () => {
+    log.info("[IPC] Getting pending recording, exists:", !!pendingRecording);
+    if (pendingRecording) {
+      const data = pendingRecording;
+      pendingRecording = null; // Clear after retrieval
+      log.info("[IPC] Returning pending recording");
+      return { success: true, data };
+    }
+    return { success: false, error: "No pending recording" };
   });
 
   // Connector handlers
@@ -1529,7 +1899,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1548,7 +1918,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1568,7 +1938,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1584,7 +1954,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1626,6 +1996,7 @@ function setupIPCHandlers() {
         platform: "github",
         externalId: result.issueNumber.toString(),
         url: result.url,
+        connectorId: connectorId,
       });
 
       return {
@@ -1641,7 +2012,7 @@ function setupIPCHandlers() {
       await issueService.updateSyncStatus(issueId, "failed");
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1654,7 +2025,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1666,7 +2037,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1678,7 +2049,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1690,7 +2061,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1711,7 +2082,7 @@ function setupIPCHandlers() {
           error instanceof Error
             ? error.message
             : "An unexpected error occurred";
-        console.error("IPC Handler error:", error);
+        log.error("IPC Handler error:", error);
         return { success: false, error: errorMessage };
       }
     }
@@ -1739,10 +2110,10 @@ function setupIPCHandlers() {
 
       return { success: true, data: dataUrl };
     } catch (error) {
-      console.error("Error reading image:", error);
+      log.error("Error reading image:", error);
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1761,12 +2132,14 @@ function setupIPCHandlers() {
   });
 
   ipcMain.handle("app:hide-window", () => {
-    mainWindow?.hide();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.hide();
+    }
   });
 
   // Window control handlers
   ipcMain.handle("window:close", () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       isQuitting = true;
       if (mainWindow.setQuitting) {
         mainWindow.setQuitting(true);
@@ -1776,11 +2149,13 @@ function setupIPCHandlers() {
   });
 
   ipcMain.handle("window:minimize", () => {
-    mainWindow?.minimize();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.minimize();
+    }
   });
 
   ipcMain.handle("window:maximize", () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMaximized()) {
         mainWindow.unmaximize();
       } else {
@@ -1790,7 +2165,10 @@ function setupIPCHandlers() {
   });
 
   ipcMain.handle("window:is-maximized", () => {
-    return mainWindow?.isMaximized() || false;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      return mainWindow.isMaximized();
+    }
+    return false;
   });
 
   // Update handlers
@@ -1801,18 +2179,18 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
 
   ipcMain.handle("update:check-manual", async () => {
     try {
-      console.log("[IPC] Manual update check requested");
+      log.info("[IPC] Manual update check requested");
       const result = await updaterService.checkForUpdates();
 
       if (result && result.updateInfo) {
-        console.log("[IPC] Update available:", result.updateInfo.version);
+        log.info("[IPC] Update available:", result.updateInfo.version);
         return {
           success: true,
           data: {
@@ -1822,7 +2200,7 @@ function setupIPCHandlers() {
           },
         };
       } else {
-        console.log("[IPC] No update available");
+        log.info("[IPC] No update available");
         return {
           success: true,
           data: {
@@ -1832,10 +2210,10 @@ function setupIPCHandlers() {
         };
       }
     } catch (error) {
-      console.error("[IPC] Manual update check failed:", error);
+      log.error("[IPC] Manual update check failed:", error);
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1847,7 +2225,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1859,7 +2237,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1871,7 +2249,7 @@ function setupIPCHandlers() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1879,17 +2257,17 @@ function setupIPCHandlers() {
   // Debug handler to test screen capture directly
   ipcMain.handle("debug:test-capture", async () => {
     try {
-      console.log("[Debug] Testing screen capture...");
+      log.info("[Debug] Testing screen capture...");
       const hasPermission =
         await captureService.checkScreenRecordingPermission();
-      console.log("[Debug] Permission status:", hasPermission);
+      log.info("[Debug] Permission status:", hasPermission);
 
       if (hasPermission) {
-        console.log("[Debug] Permission granted, attempting test capture...");
+        log.info("[Debug] Permission granted, attempting test capture...");
         const result = await captureService.captureScreenshot({
           mode: "fullscreen",
         });
-        console.log(
+        log.info(
           "[Debug] Test capture successful! Buffer size:",
           result.buffer.length
         );
@@ -1902,14 +2280,14 @@ function setupIPCHandlers() {
           },
         };
       } else {
-        console.log("[Debug] No permission detected");
+        log.info("[Debug] No permission detected");
         return { success: false, error: "No screen recording permission" };
       }
     } catch (error) {
-      console.error("[Debug] Test capture failed:", error);
+      log.error("[Debug] Test capture failed:", error);
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      console.error("IPC Handler error:", error);
+      log.error("IPC Handler error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -1919,7 +2297,7 @@ function setupIPCHandlers() {
 if (app && app.on) {
   // Set isQuitting flag before quit begins (handles CMD+Q, dock quit, etc.)
   app.on("before-quit", () => {
-    console.log("[App] before-quit event - setting isQuitting to true");
+    log.info("[App] before-quit event - setting isQuitting to true");
     isQuitting = true;
     // Also notify the main window that we're quitting
     if (mainWindow && mainWindow.setQuitting) {
@@ -1929,7 +2307,7 @@ if (app && app.on) {
 
   // Handle activate event (macOS) - show window when clicking dock icon
   app.on("activate", async () => {
-    console.log("[App] activate event - showing window");
+    log.info("[App] activate event - showing window");
     if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) {
       await showMainWindow();
     }

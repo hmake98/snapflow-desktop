@@ -2,6 +2,7 @@ import axios from "axios";
 import fs from "fs/promises";
 import path from "path";
 import { getSupabase } from "../utils/supabase";
+import log from "electron-log";
 
 interface Connector {
   id: string;
@@ -29,7 +30,7 @@ export class ConnectorService {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("Failed to fetch connectors:", error);
+      log.error("Failed to fetch connectors:", error);
       throw new Error("Failed to fetch connectors");
     }
 
@@ -56,7 +57,7 @@ export class ConnectorService {
       if (error.code === "PGRST116") {
         return null; // Not found
       }
-      console.error("Failed to fetch connector:", error);
+      log.error("Failed to fetch connector:", error);
       throw new Error("Failed to fetch connector");
     }
 
@@ -78,7 +79,7 @@ export class ConnectorService {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("Failed to fetch GitHub connectors:", error);
+      log.error("Failed to fetch GitHub connectors:", error);
       throw new Error("Failed to fetch GitHub connectors");
     }
 
@@ -108,7 +109,7 @@ export class ConnectorService {
       if (error.code === "PGRST116") {
         return null; // Not found
       }
-      console.error("Failed to fetch connector by repo:", error);
+      log.error("Failed to fetch connector by repo:", error);
       throw new Error("Failed to fetch connector by repo");
     }
 
@@ -164,7 +165,7 @@ export class ConnectorService {
       .single();
 
     if (error) {
-      console.error("Failed to add connector:", error);
+      log.error("Failed to add connector:", error);
       throw new Error("Failed to add connector");
     }
 
@@ -190,7 +191,7 @@ export class ConnectorService {
       .single();
 
     if (error) {
-      console.error("Failed to update connector:", error);
+      log.error("Failed to update connector:", error);
       throw new Error("Failed to update connector");
     }
 
@@ -214,7 +215,7 @@ export class ConnectorService {
       .eq("id", id);
 
     if (error) {
-      console.error("Failed to delete connector:", error);
+      log.error("Failed to delete connector:", error);
       throw new Error("Failed to delete connector");
     }
   }
@@ -230,7 +231,7 @@ export class ConnectorService {
     issueNumber: number
   ): Promise<string | null> {
     try {
-      console.log("[GitHub] Reading screenshot file:", filePath);
+      log.info("[GitHub] Reading screenshot file:", filePath);
       const fileBuffer = await fs.readFile(filePath);
       const fileName = path.basename(filePath);
       const base64Content = fileBuffer.toString("base64");
@@ -238,10 +239,7 @@ export class ConnectorService {
       // Create a unique filename with issue number
       const screenshotPath = `.snapflow-screenshots/issue-${issueNumber}-${fileName}`;
 
-      console.log(
-        "[GitHub] Uploading screenshot to repository:",
-        screenshotPath
-      );
+      log.info("[GitHub] Uploading screenshot to repository:", screenshotPath);
 
       // Check if file already exists
       let sha: string | undefined;
@@ -256,10 +254,10 @@ export class ConnectorService {
           }
         );
         sha = existingFile.data.sha;
-        console.log("[GitHub] File already exists, will update it");
+        log.info("[GitHub] File already exists, will update it");
       } catch {
         // File doesn't exist, which is fine
-        console.log("[GitHub] File does not exist, will create new");
+        log.info("[GitHub] File does not exist, will create new");
       }
 
       // Upload or update the file in the repository
@@ -285,10 +283,10 @@ export class ConnectorService {
       );
 
       const downloadUrl = uploadResponse.data.content.download_url;
-      console.log("[GitHub] Screenshot uploaded successfully:", downloadUrl);
+      log.info("[GitHub] Screenshot uploaded successfully:", downloadUrl);
       return downloadUrl;
     } catch (error) {
-      console.error(
+      log.error(
         "[GitHub] Failed to upload screenshot to repository:",
         error.response?.data || error.message
       );
@@ -305,21 +303,21 @@ export class ConnectorService {
             : "image/jpeg";
           const base64Content = fileBuffer.toString("base64");
           const dataUri = `data:${mimeType};base64,${base64Content}`;
-          console.log(
+          log.info(
             "[GitHub] Using data URI fallback for screenshot (file size:",
             fileBuffer.length,
             "bytes)"
           );
           return dataUri;
         } else {
-          console.log(
+          log.info(
             "[GitHub] Screenshot too large for data URI fallback:",
             fileBuffer.length,
             "bytes"
           );
         }
       } catch (fallbackError) {
-        console.error("[GitHub] Fallback data URI also failed:", fallbackError);
+        log.error("[GitHub] Fallback data URI also failed:", fallbackError);
       }
 
       return null;
@@ -368,7 +366,7 @@ export class ConnectorService {
 
       if (issueNumber) {
         // Try to update existing issue
-        console.log(
+        log.info(
           "[GitHub] Issue already exists, updating issue #",
           issueNumber
         );
@@ -380,11 +378,11 @@ export class ConnectorService {
 
           if (!mediaUrl && issue.filePath) {
             if (isRecording) {
-              console.log("[GitHub] Recording detected - using cloud URL");
+              log.info("[GitHub] Recording detected - using cloud URL");
               // For recordings, we prefer cloud URLs since videos can be large
               // GitHub API has a 100MB limit for files
             } else {
-              console.log("[GitHub] Attempting to upload screenshot...");
+              log.info("[GitHub] Attempting to upload screenshot...");
               mediaUrl = await this.uploadScreenshotToGitHub(
                 connector,
                 issue.filePath,
@@ -417,7 +415,7 @@ export class ConnectorService {
             }
           );
 
-          console.log("[GitHub] Issue updated:", response.data.html_url);
+          log.info("[GitHub] Issue updated:", response.data.html_url);
           return {
             issueNumber: response.data.number,
             url: response.data.html_url,
@@ -426,7 +424,7 @@ export class ConnectorService {
         } catch (updateError) {
           // If issue was deleted (410), create a new one
           if (updateError.response?.status === 410) {
-            console.log(
+            log.info(
               "[GitHub] Issue #",
               issueNumber,
               "was deleted, creating a new issue..."
@@ -442,7 +440,7 @@ export class ConnectorService {
       // Create new issue (either no existing issue or existing issue was deleted)
       {
         // Create new issue first
-        console.log(
+        log.info(
           "[GitHub] Creating new issue in",
           `${connector.config.owner}/${connector.config.repo}`
         );
@@ -465,7 +463,7 @@ export class ConnectorService {
 
         const newIssueNumber = response.data.number;
         const issueUrl = response.data.html_url;
-        console.log("[GitHub] Issue created:", issueUrl);
+        log.info("[GitHub] Issue created:", issueUrl);
 
         // Now try to upload and attach media (screenshot or recording)
         const isRecording = issue.type === "recording";
@@ -473,7 +471,7 @@ export class ConnectorService {
 
         if (!mediaUrl && issue.filePath && !isRecording) {
           // Only upload screenshots to GitHub; recordings use cloud URLs
-          console.log("[GitHub] Attempting to upload screenshot...");
+          log.info("[GitHub] Attempting to upload screenshot...");
           mediaUrl = await this.uploadScreenshotToGitHub(
             connector,
             issue.filePath,
@@ -499,7 +497,7 @@ export class ConnectorService {
               },
             }
           );
-          console.log(
+          log.info(
             `[GitHub] ${isRecording ? "Recording link" : "Screenshot"} attached to issue`
           );
         }
@@ -511,7 +509,7 @@ export class ConnectorService {
         };
       }
     } catch (error) {
-      console.error("GitHub sync error:", error);
+      log.error("GitHub sync error:", error);
       if (error.response?.status === 401) {
         throw new Error("GitHub access token is invalid or expired");
       } else if (error.response?.status === 404) {
@@ -525,7 +523,7 @@ export class ConnectorService {
       } else if (error.response?.status === 422) {
         const message = error.response?.data?.message || "Validation failed";
         const errors = error.response?.data?.errors || [];
-        console.error("[GitHub] Validation error:", message, errors);
+        log.error("[GitHub] Validation error:", message, errors);
         throw new Error(`GitHub validation error: ${message}`);
       }
       throw new Error(
@@ -554,7 +552,7 @@ export class ConnectorService {
       const permissions = response.data.permissions;
       return permissions?.push === true || permissions?.admin === true;
     } catch (error) {
-      console.error("GitHub validation error:", error);
+      log.error("GitHub validation error:", error);
       return false;
     }
   }

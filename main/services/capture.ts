@@ -5,8 +5,12 @@ import {
   clipboard,
   DesktopCapturerSource,
   nativeImage,
+  app,
 } from "electron";
+import log from "electron-log";
 import { storageManager } from "../utils/storage";
+import path from "path";
+import fs from "fs";
 
 interface CaptureOptions {
   mode: "fullscreen" | "window" | "region" | "all-screens" | "specific-screen";
@@ -66,7 +70,7 @@ export class CaptureService {
       this.permissionCache &&
       now - this.permissionCache.timestamp < this.PERMISSION_CACHE_DURATION
     ) {
-      console.log(
+      log.info(
         "[Capture] Using cached permission status:",
         this.permissionCache.hasPermission
       );
@@ -83,7 +87,7 @@ export class CaptureService {
 
       // Check if we got any screen sources
       const hasPermission = sources.length > 0;
-      console.log(
+      log.info(
         "[Capture] Screen recording permission check:",
         hasPermission,
         "sources:",
@@ -95,10 +99,7 @@ export class CaptureService {
 
       return hasPermission;
     } catch (error) {
-      console.error(
-        "[Capture] Screen recording permission check failed:",
-        error
-      );
+      log.error("[Capture] Screen recording permission check failed:", error);
       // Cache the failure result as well
       this.permissionCache = { hasPermission: false, timestamp: now };
       return false;
@@ -112,7 +113,7 @@ export class CaptureService {
     options: CaptureOptions
   ): Promise<{ dataUrl: string; buffer: Buffer }> {
     try {
-      console.log(
+      log.info(
         "[Capture] Starting screenshot capture with options:",
         JSON.stringify(options)
       );
@@ -121,7 +122,7 @@ export class CaptureService {
       const scaleFactor = primaryDisplay.scaleFactor || 1;
       const { width, height } = primaryDisplay.size;
 
-      console.log(
+      log.info(
         "[Capture] Display info - width:",
         width,
         "height:",
@@ -131,7 +132,7 @@ export class CaptureService {
       );
 
       // Get desktop sources - this will trigger permission prompt if not granted
-      console.log("[Capture] Requesting desktop sources...");
+      log.info("[Capture] Requesting desktop sources...");
       const sources = await desktopCapturer.getSources({
         types: ["screen", "window"],
         thumbnailSize: {
@@ -141,16 +142,16 @@ export class CaptureService {
         fetchWindowIcons: false,
       });
 
-      console.log("[Capture] Retrieved", sources.length, "sources");
+      log.info("[Capture] Retrieved", sources.length, "sources");
       if (sources.length > 0) {
-        console.log(
+        log.info(
           "[Capture] Available sources:",
           sources.map((s) => ({ id: s.id, name: s.name }))
         );
       }
 
       if (sources.length === 0) {
-        console.error(
+        log.error(
           "[Capture] No sources available - permission likely not granted"
         );
         throw new Error(
@@ -171,30 +172,24 @@ export class CaptureService {
       // Select the appropriate source
       let source: DesktopCapturerSource | undefined;
       if (options.mode === "window" && options.windowId) {
-        console.log("[Capture] Looking for window with ID:", options.windowId);
+        log.info("[Capture] Looking for window with ID:", options.windowId);
         source = sources.find((s) => s.id === options.windowId);
-        console.log("[Capture] Window source found:", !!source);
+        log.info("[Capture] Window source found:", !!source);
       } else {
         // For fullscreen or region, get the primary screen
-        console.log("[Capture] Looking for screen source...");
+        log.info("[Capture] Looking for screen source...");
         source = sources.find((s) => s.id.startsWith("screen"));
-        console.log("[Capture] Screen source found:", source?.id);
+        log.info("[Capture] Screen source found:", source?.id);
       }
 
       if (!source) {
-        console.error(
-          "[Capture] No matching source found for mode:",
-          options.mode
-        );
+        log.error("[Capture] No matching source found for mode:", options.mode);
         throw new Error("No capture source found");
       }
 
       // Handle region capture
       if (options.mode === "region" && options.bounds) {
-        console.log(
-          "[Capture] Region mode - cropping to bounds:",
-          options.bounds
-        );
+        log.info("[Capture] Region mode - cropping to bounds:", options.bounds);
         const cropRect = {
           x: Math.max(0, Math.floor(options.bounds.x)),
           y: Math.max(0, Math.floor(options.bounds.y)),
@@ -204,7 +199,7 @@ export class CaptureService {
 
         const croppedImage = source.thumbnail.crop(cropRect);
         const buffer = croppedImage.toPNG();
-        console.log(
+        log.info(
           "[Capture] Region screenshot captured, buffer size:",
           buffer.length,
           "bytes"
@@ -214,30 +209,30 @@ export class CaptureService {
         clipboard.writeImage(croppedImage);
 
         const dataUrl = `data:image/png;base64,${buffer.toString("base64")}`;
-        console.log("[Capture] Region dataUrl length:", dataUrl.length);
+        log.info("[Capture] Region dataUrl length:", dataUrl.length);
         return { dataUrl, buffer };
       }
 
       // Fullscreen or window capture
-      console.log("[Capture] Processing", options.mode, "capture...");
+      log.info("[Capture] Processing", options.mode, "capture...");
       const thumbnailSize = source.thumbnail.getSize();
-      console.log("[Capture] Thumbnail size:", thumbnailSize);
+      log.info("[Capture] Thumbnail size:", thumbnailSize);
 
       const buffer = source.thumbnail.toPNG();
-      console.log("[Capture] Screenshot buffer size:", buffer.length, "bytes");
+      log.info("[Capture] Screenshot buffer size:", buffer.length, "bytes");
 
       // Copy to clipboard
       clipboard.writeImage(source.thumbnail);
-      console.log("[Capture] Image copied to clipboard");
+      log.info("[Capture] Image copied to clipboard");
 
       const dataUrl = `data:image/png;base64,${buffer.toString("base64")}`;
-      console.log("[Capture] DataUrl length:", dataUrl.length);
-      console.log("[Capture] Screenshot capture completed successfully");
+      log.info("[Capture] DataUrl length:", dataUrl.length);
+      log.info("[Capture] Screenshot capture completed successfully");
 
       return { dataUrl, buffer };
     } catch (error) {
-      console.error("[Capture] Screenshot capture error:", error);
-      console.error("[Capture] Error stack:", (error as Error).stack);
+      log.error("[Capture] Screenshot capture error:", error);
+      log.error("[Capture] Error stack:", (error as Error).stack);
       throw error;
     }
   }
@@ -322,10 +317,10 @@ export class CaptureService {
    */
   async captureAllScreens(): Promise<{ dataUrl: string; buffer: Buffer }> {
     try {
-      console.log("[Capture] Starting all screens capture...");
+      log.info("[Capture] Starting all screens capture...");
 
       const displays = screen.getAllDisplays();
-      console.log("[Capture] Found", displays.length, "displays");
+      log.info("[Capture] Found", displays.length, "displays");
 
       if (displays.length === 1) {
         // If only one display, use regular fullscreen capture
@@ -358,7 +353,7 @@ export class CaptureService {
       const totalWidth = maxX - minX;
       const totalHeight = maxY - minY;
 
-      console.log("[Capture] Combined dimensions:", {
+      log.info("[Capture] Combined dimensions:", {
         totalWidth,
         totalHeight,
         minX,
@@ -386,11 +381,11 @@ export class CaptureService {
       clipboard.writeImage(primarySource.thumbnail);
 
       const dataUrl = `data:image/png;base64,${buffer.toString("base64")}`;
-      console.log("[Capture] All screens capture completed (primary display)");
+      log.info("[Capture] All screens capture completed (primary display)");
 
       return { dataUrl, buffer };
     } catch (error) {
-      console.error("[Capture] All screens capture error:", error);
+      log.error("[Capture] All screens capture error:", error);
       throw error;
     }
   }
@@ -402,7 +397,7 @@ export class CaptureService {
     displayId: number
   ): Promise<{ dataUrl: string; buffer: Buffer }> {
     try {
-      console.log("[Capture] Capturing specific screen:", displayId);
+      log.info("[Capture] Capturing specific screen:", displayId);
 
       const displays = screen.getAllDisplays();
       const targetDisplay = displays.find((d) => d.id === displayId);
@@ -447,11 +442,11 @@ export class CaptureService {
       clipboard.writeImage(targetSource.thumbnail);
 
       const dataUrl = `data:image/png;base64,${buffer.toString("base64")}`;
-      console.log("[Capture] Specific screen capture completed");
+      log.info("[Capture] Specific screen capture completed");
 
       return { dataUrl, buffer };
     } catch (error) {
-      console.error("[Capture] Specific screen capture error:", error);
+      log.error("[Capture] Specific screen capture error:", error);
       throw error;
     }
   }
@@ -466,7 +461,7 @@ export class CaptureService {
     // Check permission first to avoid triggering permission dialog in a loop
     const hasPermission = await this.checkScreenRecordingPermission();
     if (!hasPermission) {
-      console.log(
+      log.info(
         "[Capture] No screen recording permission, returning empty windows list"
       );
       return [];
@@ -507,17 +502,43 @@ export class CaptureService {
       throw new Error("Recording already in progress");
     }
 
+    log.info("[Recording] Starting recording with bounds:", bounds);
+
     this.recordingBounds = bounds;
     this.recordingStartTime = Date.now();
 
     // Create a hidden window that will handle the recording
     this.recordingWindow = new BrowserWindow({
-      show: false,
+      show: false, // Always hidden
+      width: 1,
+      height: 1,
       webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
+        nodeIntegration: true,
+        contextIsolation: false,
+        webSecurity: false, // Needed for getUserMedia with desktop capture
       },
     });
+
+    // Listen for console messages from the recording window
+    this.recordingWindow.webContents.on(
+      "console-message",
+      (_event, level, message) => {
+        const prefix = "[Recording Window]";
+        switch (level) {
+          case 0: // log
+            log.info(prefix, message);
+            break;
+          case 1: // warning
+            log.warn(prefix, message);
+            break;
+          case 2: // error
+            log.error(prefix, message);
+            break;
+          default:
+            log.info(prefix, message);
+        }
+      }
+    );
 
     // Get screen source for recording
     const sources = await desktopCapturer.getSources({
@@ -530,71 +551,211 @@ export class CaptureService {
     }
 
     const primarySource = sources[0];
+    log.info("[Recording] Using source:", primarySource.id);
 
-    // Load HTML content that will handle the recording
-    await this.recordingWindow.loadURL(
-      `data:text/html,${encodeURIComponent(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-        </head>
-        <body>
-          <script>
-            let mediaRecorder;
-            let recordedChunks = [];
+    // Get the display's scale factor
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const scaleFactor = primaryDisplay.scaleFactor || 1;
 
-            async function startRecording() {
-              try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                  audio: false,
-                  video: {
-                    mandatory: {
-                      chromeMediaSource: 'desktop',
-                      chromeMediaSourceId: '${primarySource.id}',
-                      minWidth: ${bounds.width},
-                      maxWidth: ${bounds.width},
-                      minHeight: ${bounds.height},
-                      maxHeight: ${bounds.height}
-                    }
+    // Store chunks globally in the window
+    const recordingHTML = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+      </head>
+      <body>
+        <canvas id="cropCanvas" style="display:none"></canvas>
+        <script>
+          // Global error handler
+          window.onerror = function(message, source, lineno, colno, error) {
+            console.error('[Recording HTML] Uncaught error:', message, 'at', source, lineno, colno, error);
+            return false;
+          };
+
+          window.onunhandledrejection = function(event) {
+            console.error('[Recording HTML] Unhandled promise rejection:', event.reason);
+          };
+
+          let mediaRecorder;
+          let recordedChunks = [];
+          let stream;
+          let screenStream;
+          let animationFrameId;
+
+          async function startRecording() {
+            try {
+              console.log('[Recording HTML] Starting recording...');
+              console.log('[Recording HTML] Crop bounds:', ${JSON.stringify(bounds)});
+              console.log('[Recording HTML] Scale factor:', ${scaleFactor});
+
+              // Get full screen stream
+              screenStream = await navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: {
+                  mandatory: {
+                    chromeMediaSource: 'desktop',
+                    chromeMediaSourceId: '${primarySource.id}',
+                    minWidth: 1920,
+                    maxWidth: 4096,
+                    minHeight: 1080,
+                    maxHeight: 2160
                   }
-                });
+                }
+              });
 
-                mediaRecorder = new MediaRecorder(stream, {
-                  mimeType: 'video/webm;codecs=vp9',
-                  videoBitsPerSecond: 2500000
-                });
+              console.log('[Recording HTML] Full screen stream acquired');
 
-                mediaRecorder.ondataavailable = (e) => {
-                  if (e.data.size > 0) {
-                    recordedChunks.push(e.data);
-                  }
+              // Create video element to read from the screen stream
+              const video = document.createElement('video');
+              video.srcObject = screenStream;
+              video.play();
+
+              // Wait for video to be ready
+              await new Promise((resolve) => {
+                video.onloadedmetadata = () => {
+                  console.log('[Recording HTML] Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+                  resolve();
                 };
+              });
 
-                mediaRecorder.onstop = () => {
-                  const blob = new Blob(recordedChunks, { type: 'video/webm' });
-                  const reader = new FileReader();
-                  reader.onloadend = () => {
-                    window.electronAPI?.sendRecordingData(reader.result);
-                  };
-                  reader.readAsDataURL(blob);
-                };
+              // Setup canvas for cropping
+              const canvas = document.getElementById('cropCanvas');
+              const scaleFactor = ${scaleFactor};
 
-                mediaRecorder.start(1000); // Capture in 1-second chunks
-                console.log('Recording started');
-              } catch (error) {
-                console.error('Error starting recording:', error);
+              // Canvas dimensions should match the selected area (accounting for scale factor)
+              canvas.width = ${bounds.width} * scaleFactor;
+              canvas.height = ${bounds.height} * scaleFactor;
+
+              console.log('[Recording HTML] Canvas dimensions:', canvas.width, 'x', canvas.height);
+
+              const ctx = canvas.getContext('2d');
+
+              // Calculate source rectangle (accounting for scale factor)
+              const sourceX = ${bounds.x} * scaleFactor;
+              const sourceY = ${bounds.y} * scaleFactor;
+              const sourceWidth = ${bounds.width} * scaleFactor;
+              const sourceHeight = ${bounds.height} * scaleFactor;
+
+              console.log('[Recording HTML] Source rect:', sourceX, sourceY, sourceWidth, sourceHeight);
+
+              // Draw cropped video to canvas in a loop
+              function drawFrame() {
+                ctx.drawImage(
+                  video,
+                  sourceX, sourceY, sourceWidth, sourceHeight,  // source rectangle
+                  0, 0, canvas.width, canvas.height              // destination rectangle
+                );
+                animationFrameId = requestAnimationFrame(drawFrame);
               }
+              drawFrame();
+
+              // Get stream from canvas
+              stream = canvas.captureStream(30); // 30 FPS
+              console.log('[Recording HTML] Cropped stream created from canvas');
+
+              // Create MediaRecorder from the cropped canvas stream
+              const options = {
+                mimeType: 'video/webm;codecs=vp9',
+                videoBitsPerSecond: 2500000
+              };
+
+              mediaRecorder = new MediaRecorder(stream, options);
+
+              mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) {
+                  recordedChunks.push(e.data);
+                  console.log('[Recording HTML] Chunk received:', e.data.size, 'bytes');
+                }
+              };
+
+              mediaRecorder.onerror = (e) => {
+                console.error('[Recording HTML] MediaRecorder error:', e);
+              };
+
+              mediaRecorder.start(1000); // Capture in 1-second chunks
+              console.log('[Recording HTML] MediaRecorder started with cropped stream');
+
+              // Store globally so stopRecording can access
+              window.mediaRecorder = mediaRecorder;
+              window.recordedChunks = recordedChunks;
+              window.stream = stream;
+              window.screenStream = screenStream;
+              window.animationFrameId = animationFrameId;
+
+            } catch (error) {
+              console.error('[Recording HTML] Error starting recording:', error);
             }
+          }
 
-            startRecording();
-          </script>
-        </body>
-        </html>
-      `)}`
-    );
+          window.stopRecording = function() {
+            return new Promise((resolve, reject) => {
+              if (!window.mediaRecorder) {
+                reject(new Error('No active recording'));
+                return;
+              }
 
-    console.log("[Recording] Started recording");
+              window.mediaRecorder.onstop = () => {
+                console.log('[Recording HTML] Recording stopped, chunks:', window.recordedChunks.length);
+
+                // Stop animation frame
+                if (window.animationFrameId) {
+                  cancelAnimationFrame(window.animationFrameId);
+                }
+
+                // Stop all tracks
+                if (window.stream) {
+                  window.stream.getTracks().forEach(track => track.stop());
+                }
+                if (window.screenStream) {
+                  window.screenStream.getTracks().forEach(track => track.stop());
+                }
+
+                const blob = new Blob(window.recordedChunks, { type: 'video/webm' });
+                console.log('[Recording HTML] Blob created:', blob.size, 'bytes');
+
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  console.log('[Recording HTML] Blob converted to array buffer');
+                  resolve(reader.result);
+                };
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(blob);
+              };
+
+              if (window.mediaRecorder.state !== 'inactive') {
+                window.mediaRecorder.stop();
+              } else {
+                reject(new Error('MediaRecorder already inactive'));
+              }
+            });
+          };
+
+          startRecording();
+        </script>
+      </body>
+      </html>
+    `;
+
+    // Write HTML to a temporary file to ensure proper browser context
+    const tempDir = app.getPath("temp");
+    const tempHtmlPath = path.join(tempDir, `recording-${Date.now()}.html`);
+    fs.writeFileSync(tempHtmlPath, recordingHTML);
+
+    await this.recordingWindow.loadFile(tempHtmlPath);
+
+    // Clean up temp file after a delay
+    setTimeout(() => {
+      try {
+        if (fs.existsSync(tempHtmlPath)) {
+          fs.unlinkSync(tempHtmlPath);
+        }
+      } catch (err) {
+        log.warn("[Recording] Failed to clean up temp file:", err);
+      }
+    }, 5000);
+
+    log.info("[Recording] Recording window loaded and started");
   }
 
   /**
@@ -610,58 +771,230 @@ export class CaptureService {
       throw new Error("No recording in progress");
     }
 
-    return new Promise((resolve, reject) => {
-      const duration = this.recordingStartTime
-        ? Date.now() - this.recordingStartTime
-        : 0;
+    log.info("[Recording] Stopping recording");
 
-      // Stop the media recorder
-      this.recordingWindow!.webContents.executeJavaScript(`
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-          mediaRecorder.stop();
-        }
-      `);
+    const duration = this.recordingStartTime
+      ? Date.now() - this.recordingStartTime
+      : 0;
 
-      // Wait for the recording data
+    try {
+      // Execute stop in the recording window
+      const videoData =
+        await this.recordingWindow.webContents.executeJavaScript(
+          `window.stopRecording()`
+        );
+
+      log.info(
+        "[Recording] Video data received:",
+        videoData ? videoData.byteLength : 0,
+        "bytes"
+      );
+
+      // Generate issue ID
       const issueId = `rec_${Date.now()}`;
 
-      // Set up a timeout in case recording data never comes
-      const timeout = setTimeout(() => {
-        if (this.recordingWindow) {
-          this.recordingWindow.close();
-          this.recordingWindow = null;
-        }
-        this.recordingBounds = null;
-        this.recordingStartTime = null;
-        reject(new Error("Recording stop timeout"));
-      }, 10000);
+      // Save video file
+      const videoBuffer = Buffer.from(videoData);
+      const filePath = await storageManager.saveFile(
+        issueId,
+        videoBuffer,
+        "webm"
+      );
 
-      // For now, create a placeholder response
-      // In a full implementation, we'd wait for the actual video data
-      const tempFilePath = storageManager.getRecordingPath(issueId);
-      const tempThumbnailPath = storageManager.getThumbnailPath(issueId);
+      log.info("[Recording] Video saved to:", filePath);
 
-      setTimeout(() => {
-        clearTimeout(timeout);
-        if (this.recordingWindow) {
-          this.recordingWindow.close();
-          this.recordingWindow = null;
-        }
-        this.recordingBounds = null;
-        this.recordingStartTime = null;
+      // Generate thumbnail from video
+      const thumbnailPath = await this.createVideoThumbnail(filePath, issueId);
 
-        resolve({
-          issueId,
-          filePath: tempFilePath,
-          thumbnailPath: tempThumbnailPath,
-          duration,
-        });
-      }, 1000);
-    });
+      log.info("[Recording] Thumbnail saved to:", thumbnailPath);
+
+      // Clean up
+      if (this.recordingWindow) {
+        this.recordingWindow.close();
+        this.recordingWindow = null;
+      }
+      this.recordingBounds = null;
+      this.recordingStartTime = null;
+
+      return {
+        issueId,
+        filePath,
+        thumbnailPath,
+        duration,
+      };
+    } catch (error) {
+      log.error("[Recording] Error stopping recording:", error);
+
+      // Clean up on error
+      if (this.recordingWindow) {
+        this.recordingWindow.close();
+        this.recordingWindow = null;
+      }
+      this.recordingBounds = null;
+      this.recordingStartTime = null;
+
+      throw error;
+    }
   }
 
   /**
-   * Save recording with metadata
+   * Create thumbnail from video file
+   */
+  async createVideoThumbnail(
+    videoPath: string,
+    issueId: string
+  ): Promise<string> {
+    try {
+      log.info("[Recording] Creating thumbnail from video:", videoPath);
+
+      // Create a hidden window to extract video frame
+      const thumbWindow = new BrowserWindow({
+        show: false,
+        width: 800,
+        height: 600,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: false,
+        },
+      });
+
+      const thumbnailHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+        </head>
+        <body>
+          <video id="video" style="display:none"></video>
+          <canvas id="canvas" style="display:none"></canvas>
+          <script>
+            window.extractThumbnail = function(videoPath) {
+              return new Promise((resolve, reject) => {
+                const video = document.getElementById('video');
+                const canvas = document.getElementById('canvas');
+
+                video.onloadeddata = () => {
+                  // Seek to 1 second or 10% of video
+                  video.currentTime = Math.min(video.duration * 0.1, 1);
+                };
+
+                video.onseeked = () => {
+                  try {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                    canvas.toBlob((blob) => {
+                      if (blob) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          resolve(reader.result);
+                        };
+                        reader.readAsArrayBuffer(blob);
+                      } else {
+                        reject(new Error('Failed to create blob'));
+                      }
+                    }, 'image/png');
+                  } catch (error) {
+                    reject(error);
+                  }
+                };
+
+                video.onerror = (error) => {
+                  reject(new Error('Video load error: ' + error));
+                };
+
+                video.src = videoPath;
+                video.load();
+              });
+            };
+          </script>
+        </body>
+        </html>
+      `;
+
+      await thumbWindow.loadURL(
+        `data:text/html;charset=utf-8,${encodeURIComponent(thumbnailHTML)}`
+      );
+
+      // Use file:// protocol for local video file
+      const videoUrl = `file://${videoPath}`;
+      const thumbnailData = await thumbWindow.webContents.executeJavaScript(
+        `window.extractThumbnail('${videoUrl}')`
+      );
+
+      thumbWindow.close();
+
+      // Save thumbnail
+      const thumbnailBuffer = Buffer.from(thumbnailData);
+      const resizedThumbnail = await this.resizeThumbnail(thumbnailBuffer);
+      const thumbnailPath = await storageManager.saveFile(
+        issueId,
+        resizedThumbnail,
+        "png"
+      );
+
+      // Rename to thumbnail.png
+      const finalThumbnailPath = storageManager.getThumbnailPath(issueId);
+      const fs = await import("fs");
+      fs.renameSync(thumbnailPath, finalThumbnailPath);
+
+      return finalThumbnailPath;
+    } catch (error) {
+      log.error("[Recording] Failed to create thumbnail:", error);
+
+      // Fallback: create a placeholder thumbnail
+      const placeholderImage = nativeImage.createEmpty();
+      const thumbnailBuffer = placeholderImage.toPNG();
+      const thumbnailPath = storageManager.getThumbnailPath(issueId);
+
+      const fs = await import("fs");
+      const path = await import("path");
+      const dirPath = path.dirname(thumbnailPath);
+
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+      }
+
+      fs.writeFileSync(thumbnailPath, thumbnailBuffer);
+      return thumbnailPath;
+    }
+  }
+
+  /**
+   * Resize thumbnail to standard size
+   */
+  private async resizeThumbnail(buffer: Buffer): Promise<Buffer> {
+    const image = nativeImage.createFromBuffer(buffer);
+    const size = image.getSize();
+
+    // Calculate new dimensions maintaining aspect ratio (max 800x600)
+    let newWidth = size.width;
+    let newHeight = size.height;
+
+    const maxWidth = 800;
+    const maxHeight = 600;
+
+    if (newWidth > maxWidth || newHeight > maxHeight) {
+      const widthRatio = maxWidth / newWidth;
+      const heightRatio = maxHeight / newHeight;
+      const ratio = Math.min(widthRatio, heightRatio);
+
+      newWidth = Math.floor(newWidth * ratio);
+      newHeight = Math.floor(newHeight * ratio);
+    }
+
+    // Resize the image
+    const resizedImage = image.resize({ width: newWidth, height: newHeight });
+
+    // Convert to PNG buffer
+    return resizedImage.toPNG();
+  }
+
+  /**
+   * Save recording with metadata (legacy method, kept for compatibility)
    */
   async saveRecording(
     issueId: string,
@@ -669,11 +1002,7 @@ export class CaptureService {
     _bounds: { x: number; y: number; width: number; height: number }
   ): Promise<{ filePath: string; thumbnailPath: string }> {
     const filePath = await storageManager.saveFile(issueId, videoData, "webm");
-
-    // Generate thumbnail from first frame
-    // For now, create a placeholder thumbnail
-    const thumbnailPath = storageManager.getThumbnailPath(issueId);
-
+    const thumbnailPath = await this.createVideoThumbnail(filePath, issueId);
     return { filePath, thumbnailPath };
   }
 }

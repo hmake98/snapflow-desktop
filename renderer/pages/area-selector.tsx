@@ -8,15 +8,20 @@ interface SelectionBounds {
   height: number;
 }
 
+type ResizeHandle = "nw" | "ne" | "sw" | "se" | "n" | "s" | "e" | "w" | null;
+
 export default function AreaSelector() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isSelecting, setIsSelecting] = useState(false);
+  const [_isResizing, _setIsResizing] = useState(false);
+  const [_resizeHandle, _setResizeHandle] = useState<ResizeHandle>(null);
   const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(
     null
   );
   const [currentPos, setCurrentPos] = useState<{ x: number; y: number } | null>(
     null
   );
+  const [_selection, _setSelection] = useState<SelectionBounds | null>(null);
 
   const handleCancel = async () => {
     console.log("[Area Selector] Cancel requested");

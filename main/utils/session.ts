@@ -8,6 +8,7 @@ import { authService } from "../services/auth";
 import { getSupabase } from "./supabase";
 import { storageManager } from "./storage";
 import { syncService } from "../services/sync";
+import log from "electron-log";
 
 interface User {
   id: string;
@@ -37,7 +38,7 @@ const sessionStore = new Store<SessionData>({
 });
 
 // Log the session store path for debugging
-console.log("[Session Store] Path:", sessionStore.path);
+log.info("[Session Store] Path:", sessionStore.path);
 
 class SessionManager {
   private currentUser: User | null = null;
@@ -50,19 +51,19 @@ class SessionManager {
    */
   private async syncFromCloudOnLogin(userId: string): Promise<void> {
     try {
-      console.log("[Session] Starting cloud sync for user:", userId);
+      log.info("[Session] Starting cloud sync for user:", userId);
       const result = await syncService.fetchFromCloud(userId);
       if (result.success) {
-        console.log(
+        log.info(
           `[Session] ✓ Cloud sync complete: ${result.syncedCount} items synced`
         );
       } else {
-        console.warn(
+        log.warn(
           `[Session] Cloud sync completed with errors: ${result.errors.join(", ")}`
         );
       }
     } catch (error) {
-      console.error("[Session] Cloud sync failed:", error);
+      log.error("[Session] Cloud sync failed:", error);
       // Don't throw - allow login to continue even if sync fails
     }
   }
@@ -73,11 +74,11 @@ class SessionManager {
    * Call this when app starts
    */
   async initialize(): Promise<void> {
-    console.log("[Session] Initializing session...");
+    log.info("[Session] Initializing session...");
 
     const supabase = getSupabase();
     if (!supabase) {
-      console.warn("[Session] Supabase not available");
+      log.warn("[Session] Supabase not available");
       return;
     }
 
@@ -88,7 +89,7 @@ class SessionManager {
     } = await supabase.auth.getSession();
 
     if (error) {
-      console.error("[Session] Error getting session:", error);
+      log.error("[Session] Error getting session:", error);
       await this.clearUser();
       // Setup auth state listener after handling error
       this.setupAuthStateListener();
@@ -97,7 +98,7 @@ class SessionManager {
 
     if (session) {
       try {
-        console.log("[Session] Found existing Supabase session, restoring...");
+        log.info("[Session] Found existing Supabase session, restoring...");
 
         // Get the current user
         const user = await authService.getCurrentUser();
@@ -118,7 +119,7 @@ class SessionManager {
             refreshToken: session.refresh_token,
             expiresAt: session.expires_at || 0,
           });
-          console.log("✓ Session restored successfully for:", user.email);
+          log.info("✓ Session restored successfully for:", user.email);
 
           // Setup auth state listener AFTER successful session restoration
           this.setupAuthStateListener();
@@ -127,15 +128,15 @@ class SessionManager {
           await this.syncFromCloudOnLogin(user.id);
           return;
         } else {
-          console.warn("[Session] Session exists but no user found");
+          log.warn("[Session] Session exists but no user found");
           await this.clearUser();
         }
       } catch (error) {
-        console.error("[Session] Failed to restore session:", error);
+        log.error("[Session] Failed to restore session:", error);
         await this.clearUser();
       }
     } else {
-      console.log("[Session] No session found");
+      log.info("[Session] No session found");
       // Clear any stale data
       sessionStore.set("user", null);
       sessionStore.set("userId", null);
@@ -157,27 +158,27 @@ class SessionManager {
 
     const supabase = getSupabase();
     if (!supabase) {
-      console.warn(
+      log.warn(
         "[Session] Cannot setup auth listener - Supabase not initialized"
       );
       return;
     }
 
     supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("[Session] Auth state changed:", event);
+      log.info("[Session] Auth state changed:", event);
 
       if (event === "TOKEN_REFRESHED" && session) {
-        console.log("[Session] Token refreshed, updating stored session");
+        log.info("[Session] Token refreshed, updating stored session");
         sessionStore.set("supabaseSession", {
           accessToken: session.access_token,
           refreshToken: session.refresh_token,
           expiresAt: session.expires_at || 0,
         });
       } else if (event === "SIGNED_OUT") {
-        console.log("[Session] User signed out via auth state change");
+        log.info("[Session] User signed out via auth state change");
         await this.clearUser();
       } else if (event === "SIGNED_IN" && session) {
-        console.log("[Session] User signed in via auth state change");
+        log.info("[Session] User signed in via auth state change");
         // Update session tokens
         sessionStore.set("supabaseSession", {
           accessToken: session.access_token,
@@ -188,14 +189,14 @@ class SessionManager {
     });
 
     this.sessionListenerInitialized = true;
-    console.log("[Session] Auth state listener initialized");
+    log.info("[Session] Auth state listener initialized");
   }
 
   /**
    * Set user and store Supabase session
    */
   async setUser(user: User): Promise<void> {
-    console.log("[Session] Setting user:", user.email);
+    log.info("[Session] Setting user:", user.email);
     this.currentUser = user;
 
     // Set current user in storage manager for user-specific paths
@@ -210,7 +211,7 @@ class SessionManager {
     const session = await authService.getSession();
 
     if (session) {
-      console.log("[Session] Storing user and Supabase tokens");
+      log.info("[Session] Storing user and Supabase tokens");
       // Store both user data and Supabase tokens
       sessionStore.set("user", user);
       sessionStore.set("userId", user.id);
@@ -219,8 +220,8 @@ class SessionManager {
         refreshToken: session.refresh_token,
         expiresAt: session.expires_at || 0,
       });
-      console.log("✓ Session persisted for:", user.email);
-      console.log(
+      log.info("✓ Session persisted for:", user.email);
+      log.info(
         "[Session] Token expires at:",
         new Date((session.expires_at || 0) * 1000).toLocaleString()
       );
@@ -228,7 +229,7 @@ class SessionManager {
       // Sync from cloud after login
       await this.syncFromCloudOnLogin(user.id);
     } else {
-      console.warn("[Session] No Supabase session found - storing user only");
+      log.warn("[Session] No Supabase session found - storing user only");
       // Just store user if no session (shouldn't happen normally)
       sessionStore.set("user", user);
       sessionStore.set("userId", user.id);
@@ -245,11 +246,11 @@ class SessionManager {
   async clearUser(): Promise<void> {
     // Prevent circular calls from auth state listener
     if (this.isClearing) {
-      console.log("[Session] clearUser already in progress, skipping");
+      log.info("[Session] clearUser already in progress, skipping");
       return;
     }
 
-    console.log("[Session] Clearing user session...");
+    log.info("[Session] Clearing user session...");
     this.isClearing = true;
 
     try {
@@ -266,13 +267,13 @@ class SessionManager {
       // Sign out from Supabase
       try {
         await authService.logout();
-        console.log("[Session] ✓ Supabase logout complete");
+        log.info("[Session] ✓ Supabase logout complete");
       } catch (error) {
-        console.error("[Session] Error signing out from Supabase:", error);
+        log.error("[Session] Error signing out from Supabase:", error);
       }
     } finally {
       this.isClearing = false;
-      console.log("[Session] ✓ Session cleared");
+      log.info("[Session] ✓ Session cleared");
     }
   }
 
@@ -294,7 +295,7 @@ class SessionManager {
 
     if (storedSession) {
       try {
-        console.log("[Session] Manually refreshing session...");
+        log.info("[Session] Manually refreshing session...");
         const session = await authService.setSession(
           storedSession.accessToken,
           storedSession.refreshToken
@@ -307,10 +308,10 @@ class SessionManager {
             refreshToken: session.refresh_token,
             expiresAt: session.expires_at || 0,
           });
-          console.log("[Session] Session manually refreshed successfully");
+          log.info("[Session] Session manually refreshed successfully");
         }
       } catch (error) {
-        console.error("[Session] Failed to refresh session:", error);
+        log.error("[Session] Failed to refresh session:", error);
         await this.clearUser();
       }
     }
@@ -328,7 +329,7 @@ class SessionManager {
     // Check if token has expired
     const now = Date.now() / 1000; // Convert to seconds
     if (storedSession.expiresAt && storedSession.expiresAt < now) {
-      console.log("[Session] Token has expired");
+      log.info("[Session] Token has expired");
       return false;
     }
 

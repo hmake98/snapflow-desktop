@@ -33,7 +33,7 @@ export class UpdaterService {
 
       // If config doesn't exist in prod, use fallback values
       if (!fs.existsSync(configPath)) {
-        console.warn(
+        log.warn(
           "[Updater] electron-builder.yml not found, using default config"
         );
         return {
@@ -64,7 +64,7 @@ export class UpdaterService {
         repo: "snapflow-desktop",
       };
     } catch (error) {
-      console.error("[Updater] Failed to read publish config:", error);
+      log.error("[Updater] Failed to read publish config:", error);
       // Return default config
       return {
         provider: "github",
@@ -304,30 +304,151 @@ export class UpdaterService {
 
   async checkForUpdates() {
     if (process.env.NODE_ENV === "development") {
-      log.info("Skipping update check in development mode");
+      log.info("[Updater] Skipping update check in development mode");
       return null;
     }
 
+    if (!this.isInitialized) {
+      log.error("[Updater] Service not initialized, cannot check for updates");
+      throw new Error(
+        "Updater service not initialized. Please restart the application."
+      );
+    }
+
     try {
+      log.info("[Updater] Starting update check...");
       const result = await autoUpdater.checkForUpdates();
+      log.info(
+        "[Updater] Update check completed:",
+        result?.updateInfo?.version || "No update available"
+      );
       return result;
     } catch (error) {
-      log.error("Failed to check for updates:", error);
-      return null;
+      log.error("[Updater] Failed to check for updates:", error);
+
+      // Provide more specific error information
+      if (error instanceof Error) {
+        // Network errors
+        if (
+          error.message.includes("ENOTFOUND") ||
+          error.message.includes("ETIMEDOUT") ||
+          error.message.includes("EAI_AGAIN")
+        ) {
+          throw new Error(
+            "ENOTFOUND - Unable to connect to update server. Please check your internet connection."
+          );
+        }
+
+        // Permission errors
+        if (
+          error.message.includes("EACCES") ||
+          error.message.includes("EPERM")
+        ) {
+          throw new Error(
+            "EACCES - Permission denied. Please ensure the application has necessary permissions."
+          );
+        }
+
+        // 404 errors (no releases found)
+        if (error.message.includes("404")) {
+          throw new Error(
+            "404 - No releases found. This may be a development or pre-release build."
+          );
+        }
+
+        // Code signature errors
+        if (
+          error.message.includes("code signature") ||
+          error.message.includes("not signed")
+        ) {
+          throw new Error(
+            "code signature - Unable to verify update signature. Please download updates manually."
+          );
+        }
+
+        // Re-throw the original error with more context
+        throw new Error(`Update check failed: ${error.message}`);
+      }
+
+      throw new Error(
+        "An unexpected error occurred while checking for updates"
+      );
     }
   }
 
   async downloadUpdate() {
+    if (!this.isInitialized) {
+      log.error("[Updater] Service not initialized, cannot download update");
+      throw new Error(
+        "Updater service not initialized. Please restart the application."
+      );
+    }
+
+    if (!this.updateInfo) {
+      log.error("[Updater] No update info available");
+      throw new Error("No update available to download");
+    }
+
     try {
+      log.info("[Updater] Starting update download...");
       await autoUpdater.downloadUpdate();
+      log.info("[Updater] Download initiated successfully");
     } catch (error) {
-      log.error("Failed to download update:", error);
-      throw error;
+      log.error("[Updater] Failed to download update:", error);
+
+      if (error instanceof Error) {
+        // Network errors during download
+        if (
+          error.message.includes("ENOTFOUND") ||
+          error.message.includes("ETIMEDOUT")
+        ) {
+          throw new Error(
+            "Download failed: Unable to connect to update server. Please check your internet connection."
+          );
+        }
+
+        // Disk space errors
+        if (error.message.includes("ENOSPC")) {
+          throw new Error(
+            "Download failed: Insufficient disk space. Please free up some space and try again."
+          );
+        }
+
+        // Permission errors
+        if (
+          error.message.includes("EACCES") ||
+          error.message.includes("EPERM")
+        ) {
+          throw new Error(
+            "Download failed: Permission denied. Please ensure the application has write permissions."
+          );
+        }
+
+        throw new Error(`Download failed: ${error.message}`);
+      }
+
+      throw new Error(
+        "An unexpected error occurred while downloading the update"
+      );
     }
   }
 
   quitAndInstall() {
-    if (this.updateDownloaded) {
+    if (!this.isInitialized) {
+      log.error("[Updater] Service not initialized, cannot install update");
+      throw new Error(
+        "Updater service not initialized. Please restart the application."
+      );
+    }
+
+    if (!this.updateDownloaded) {
+      log.error("[Updater] No update downloaded, cannot install");
+      throw new Error(
+        "No update has been downloaded yet. Please download the update first."
+      );
+    }
+
+    try {
       log.info("[Updater] quitAndInstall called");
 
       // Disable window close prevention before quitting
@@ -336,13 +457,26 @@ export class UpdaterService {
         this.mainWindow.setQuitting(true);
       }
 
+      // Verify that the update is still available
+      if (!this.updateDownloaded) {
+        throw new Error("Update is no longer available for installation");
+      }
+
       // Use setTimeout to ensure current operations complete before quitting
       setTimeout(() => {
         log.info("[Updater] Calling quitAndInstall");
-        autoUpdater.quitAndInstall(false, true);
+        try {
+          // First parameter: isSilent (false = show installer)
+          // Second parameter: isForceRunAfter (true = restart after install)
+          autoUpdater.quitAndInstall(false, true);
+        } catch (installError) {
+          log.error("[Updater] Failed to quit and install:", installError);
+          throw installError;
+        }
       }, 100);
-    } else {
-      throw new Error("No update has been downloaded yet");
+    } catch (error) {
+      log.error("[Updater] quitAndInstall failed:", error);
+      throw error;
     }
   }
 

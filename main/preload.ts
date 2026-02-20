@@ -97,6 +97,7 @@ const api = {
   }) => ipcRenderer.invoke("recording:start", { bounds }),
   stopRecording: () => ipcRenderer.invoke("recording:stop"),
   cancelRecording: () => ipcRenderer.invoke("recording:cancel"),
+  getPendingRecording: () => ipcRenderer.invoke("recording:get-pending"),
 
   // Connector methods
   listConnectors: () => ipcRenderer.invoke("connector:list"),

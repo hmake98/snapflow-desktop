@@ -1,0 +1,364 @@
+import React, { useState, useEffect, useRef } from "react";
+import Head from "next/head";
+import { useRouter } from "next/router";
+import { WindowControls } from "../components/ui/WindowControls";
+
+export default function AnnotateRecording() {
+  const router = useRouter();
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [videoPath, setVideoPath] = useState("");
+  const [duration, setDuration] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    // Get pending recording from main process
+    const loadRecording = async () => {
+      try {
+        const result = await window.api.getPendingRecording();
+        if (result.success && result.data) {
+          console.log("[Annotate Recording] Loaded recording:", result.data);
+          setVideoPath(result.data.dataUrl); // This is the file path
+          setDuration(result.data.duration || 0);
+
+          // Set default title with timestamp
+          const now = new Date();
+          setTitle(
+            `Recording ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`
+          );
+        } else {
+          console.error("[Annotate Recording] No pending recording");
+          router.push("/home");
+        }
+      } catch (error) {
+        console.error("[Annotate Recording] Failed to load recording:", error);
+        router.push("/home");
+      }
+    };
+
+    loadRecording();
+  }, [router]);
+
+  const handleSave = async () => {
+    if (!title.trim()) {
+      alert("Please enter a title for the recording");
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const user = await window.api.getUser();
+      if (!user.success || !user.data) {
+        alert("Please log in to save recordings");
+        router.push("/auth");
+        return;
+      }
+
+      const userId = user.data.id;
+
+      // Create thumbnail from video
+      const thumbnailPath = await generateVideoThumbnail(videoPath);
+
+      // Save recording as an issue
+      const result = await window.api.createIssue(
+        userId,
+        title,
+        "recording",
+        videoPath,
+        description || undefined,
+        thumbnailPath
+      );
+
+      if (result.success) {
+        console.log("[Annotate Recording] Recording saved successfully");
+        router.push("/home");
+      } else {
+        console.error("[Annotate Recording] Failed to save:", result.error);
+        alert(`Failed to save recording: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("[Annotate Recording] Error saving:", error);
+      alert("An error occurred while saving the recording");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    router.push("/home");
+  };
+
+  const generateVideoThumbnail = async (
+    videoFilePath: string
+  ): Promise<string> => {
+    // This would ideally extract a frame from the video
+    // For now, we'll use a placeholder or extract using canvas
+    return new Promise((resolve) => {
+      const video = document.createElement("video");
+      video.src = `snapflow://${videoFilePath}`;
+      video.currentTime = 1; // Get frame at 1 second
+
+      video.addEventListener("loadeddata", () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+          canvas.toBlob((blob) => {
+            if (blob) {
+              // Convert blob to buffer and save
+              const reader = new FileReader();
+              reader.onload = () => {
+                // Save thumbnail (this is simplified - would need IPC call)
+                resolve(videoFilePath.replace(/\.[^.]+$/, "_thumbnail.png"));
+              };
+              reader.readAsArrayBuffer(blob);
+            } else {
+              resolve("");
+            }
+          }, "image/png");
+        } else {
+          resolve("");
+        }
+      });
+
+      video.addEventListener("error", () => {
+        resolve("");
+      });
+
+      video.load();
+    });
+  };
+
+  const formatDuration = (ms: number): string => {
+    const seconds = Math.floor(ms / 1000);
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  return (
+    <>
+      <Head>
+        <title>Save Recording - SnapFlow</title>
+      </Head>
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+        {/* Titlebar with Window Controls - Draggable */}
+        <div
+          className="glass-strong border-b border-white/5 sticky top-0 z-20 backdrop-blur-xl"
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        >
+          <div className="flex items-center justify-end h-9 pl-4">
+            <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+              <WindowControls />
+            </div>
+          </div>
+        </div>
+
+        {/* Header */}
+        <div className="glass-strong border-b border-white/10 backdrop-blur-xl">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                {/* Recording Icon Badge */}
+                <div className="w-10 h-10 bg-red-600/20 border border-red-500/30 rounded-xl flex items-center justify-center">
+                  <svg
+                    className="w-5 h-5 text-red-500"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <circle cx="10" cy="10" r="6" />
+                  </svg>
+                </div>
+                {/* Title and Duration */}
+                <div className="flex items-center space-x-3">
+                  <h1 className="text-xl font-bold text-gray-100">
+                    Save Recording
+                  </h1>
+                  {duration > 0 && (
+                    <span className="px-2.5 py-1 bg-gray-800/50 border border-gray-700/50 rounded-lg text-xs font-mono text-gray-300">
+                      {formatDuration(duration)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={handleCancel}
+                  disabled={isSaving}
+                  className="h-10 px-4 text-sm inline-flex items-center justify-center rounded-lg font-medium transition-all duration-200 bg-transparent text-gray-300 hover:bg-gray-800/50 hover:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={isSaving || !title.trim()}
+                  className="h-10 px-6 text-sm inline-flex items-center justify-center rounded-lg font-semibold transition-all duration-200 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed space-x-2"
+                >
+                  {isSaving ? (
+                    <>
+                      <svg
+                        className="animate-spin h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        />
+                      </svg>
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <span>Save Recording</span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <div className="max-w-6xl mx-auto px-4 py-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Left: Video Preview */}
+            <div>
+              <h2 className="text-lg font-semibold text-gray-200 mb-4">
+                Preview
+              </h2>
+              <div className="bg-black rounded-lg overflow-hidden shadow-2xl">
+                {videoPath ? (
+                  <video
+                    ref={videoRef}
+                    src={`snapflow://${videoPath}`}
+                    controls
+                    className="w-full h-auto"
+                    style={{ maxHeight: "600px" }}
+                  >
+                    Your browser does not support the video tag.
+                  </video>
+                ) : (
+                  <div className="flex items-center justify-center h-96 bg-gray-800">
+                    <div className="text-center text-gray-400">
+                      <svg
+                        className="w-16 h-16 mx-auto mb-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                        />
+                      </svg>
+                      <p>Loading recording...</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right: Details Form */}
+            <div>
+              <h2 className="text-lg font-semibold text-gray-200 mb-4">
+                Recording Details
+              </h2>
+              <div className="bg-gray-800 rounded-lg p-6 shadow-xl space-y-6">
+                {/* Title */}
+                <div>
+                  <label
+                    htmlFor="title"
+                    className="block text-sm font-medium text-gray-300 mb-2"
+                  >
+                    Title <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="title"
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Enter recording title"
+                    className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    maxLength={100}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    {title.length}/100 characters
+                  </p>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label
+                    htmlFor="description"
+                    className="block text-sm font-medium text-gray-300 mb-2"
+                  >
+                    Description (Optional)
+                  </label>
+                  <textarea
+                    id="description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Add notes about this recording..."
+                    rows={8}
+                    className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
+                    maxLength={500}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    {description.length}/500 characters
+                  </p>
+                </div>
+
+                {/* Info Box */}
+                <div className="bg-blue-900/30 border border-blue-700/50 rounded-lg p-4">
+                  <div className="flex items-start space-x-3">
+                    <svg
+                      className="w-5 h-5 text-blue-400 mt-0.5"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    <div className="text-sm text-blue-200">
+                      <p className="font-medium mb-1">About Recordings</p>
+                      <ul className="text-xs text-blue-300 space-y-1">
+                        <li>• Recording is saved locally on your device</li>
+                        <li>• You can sync to cloud or GitHub later</li>
+                        <li>• Video format: WebM</li>
+                        {duration > 0 && (
+                          <li>• Duration: {formatDuration(duration)}</li>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}

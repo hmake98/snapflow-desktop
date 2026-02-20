@@ -610,12 +610,13 @@ export default function AnnotatePage() {
         </div>
 
         {/* Top Header */}
-        <div className="bg-gray-900 border-b border-gray-800 px-3 sm:px-6 py-3 flex-shrink-0">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-600 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0">
+        <div className="glass-strong border-b border-white/10 backdrop-blur-xl px-4 sm:px-6 py-4 flex-shrink-0">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center space-x-3 min-w-0">
+              {/* Icon Badge */}
+              <div className="w-10 h-10 bg-blue-600/20 border border-blue-500/30 rounded-xl flex items-center justify-center flex-shrink-0">
                 <svg
-                  className="w-5 h-5 sm:w-6 sm:h-6 text-white"
+                  className="w-5 h-5 text-blue-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -628,11 +629,12 @@ export default function AnnotatePage() {
                   />
                 </svg>
               </div>
+              {/* Title and Description */}
               <div className="min-w-0">
-                <h1 className="text-base sm:text-xl font-bold text-gray-100 truncate">
+                <h1 className="text-xl font-bold text-gray-100 truncate">
                   Annotate Screenshot
                 </h1>
-                <p className="hidden sm:block text-xs text-gray-400">
+                <p className="hidden sm:block text-xs text-gray-400 mt-0.5">
                   Add annotations, shapes, and text to your capture
                 </p>
               </div>
@@ -804,20 +806,20 @@ export default function AnnotatePage() {
             <div className="h-10 sm:h-14 w-px bg-gray-800" />
 
             {/* Actions Section */}
-            <div className="flex flex-col gap-1 flex-shrink-0">
-              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:block">
+            <div className="flex flex-col gap-2 flex-shrink-0">
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
                 Actions
               </label>
-              <div className="flex items-center gap-1 bg-gray-900 rounded-lg p-1 border border-gray-800">
+              <div className="flex items-center gap-2 bg-gray-900/50 rounded-xl p-1.5 border border-gray-800/70">
                 <Button
                   variant="ghost"
                   onClick={handleUndo}
                   disabled={shapes.length === 0}
                   title="Undo last action (Ctrl+Z)"
-                  className="h-10 sm:h-12 px-2 sm:px-3 flex-col gap-0.5"
+                  className="h-12 px-3 flex-col gap-1 hover:bg-gray-800/70 disabled:opacity-40"
                 >
                   <svg
-                    className="w-4 h-4 sm:w-5 sm:h-5"
+                    className="w-5 h-5"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -829,17 +831,17 @@ export default function AnnotatePage() {
                       d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
                     />
                   </svg>
-                  <span className="text-[10px] sm:text-xs">Undo</span>
+                  <span className="text-[10px] font-medium">Undo</span>
                 </Button>
                 <Button
                   variant="ghost"
                   onClick={handleDelete}
                   disabled={!selectedId}
                   title="Delete selected shape (Del)"
-                  className="h-10 sm:h-12 px-2 sm:px-3 flex-col gap-0.5"
+                  className="h-12 px-3 flex-col gap-1 hover:bg-gray-800/70 disabled:opacity-40"
                 >
                   <svg
-                    className="w-4 h-4 sm:w-5 sm:h-5"
+                    className="w-5 h-5"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -851,17 +853,17 @@ export default function AnnotatePage() {
                       d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
                     />
                   </svg>
-                  <span className="text-[10px] sm:text-xs">Delete</span>
+                  <span className="text-[10px] font-medium">Delete</span>
                 </Button>
                 <Button
                   variant="ghost"
                   onClick={handleClearAll}
                   disabled={shapes.length === 0}
                   title="Clear all annotations"
-                  className="h-10 sm:h-12 px-2 sm:px-3 flex-col gap-0.5 hover:bg-red-500/10 hover:text-red-400"
+                  className="h-12 px-3 flex-col gap-1 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
                 >
                   <svg
-                    className="w-4 h-4 sm:w-5 sm:h-5"
+                    className="w-5 h-5"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -873,7 +875,7 @@ export default function AnnotatePage() {
                       d="M6 18L18 6M6 6l12 12"
                     />
                   </svg>
-                  <span className="text-[10px] sm:text-xs">Clear</span>
+                  <span className="text-[10px] font-medium">Clear</span>
                 </Button>
               </div>
             </div>
@@ -883,19 +885,19 @@ export default function AnnotatePage() {
         {/* Main Content Area with Sidebar and Canvas */}
         <div className="flex-1 flex overflow-hidden bg-gray-950">
           {/* Left Sidebar - Tools */}
-          <div className="w-16 sm:w-20 bg-gray-900 border-r border-gray-800 flex-shrink-0 overflow-y-auto">
-            <div className="flex flex-col gap-2 p-2">
+          <div className="w-20 bg-gray-900/50 border-r border-gray-800/70 flex-shrink-0 overflow-y-auto">
+            <div className="flex flex-col gap-3 p-3">
               <button
                 onClick={() => setTool("select")}
-                className={`flex flex-col items-center justify-center w-full aspect-square rounded-lg transition-all ${
+                className={`flex flex-col items-center justify-center w-full aspect-square rounded-xl transition-all duration-200 ${
                   tool === "select"
-                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
-                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/40 border-2 border-blue-400"
+                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/70 border-2 border-transparent"
                 }`}
                 title="Select and move shapes"
               >
                 <svg
-                  className="w-5 h-5 sm:w-6 sm:h-6 mb-1"
+                  className="w-6 h-6 mb-1"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -907,21 +909,19 @@ export default function AnnotatePage() {
                     d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"
                   />
                 </svg>
-                <span className="text-[9px] sm:text-[10px] font-medium">
-                  Select
-                </span>
+                <span className="text-[10px] font-semibold">Select</span>
               </button>
               <button
                 onClick={() => setTool("pen")}
-                className={`flex flex-col items-center justify-center w-full aspect-square rounded-lg transition-all ${
+                className={`flex flex-col items-center justify-center w-full aspect-square rounded-xl transition-all duration-200 ${
                   tool === "pen"
-                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
-                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/40 border-2 border-blue-400"
+                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/70 border-2 border-transparent"
                 }`}
                 title="Draw freehand"
               >
                 <svg
-                  className="w-5 h-5 sm:w-6 sm:h-6 mb-1"
+                  className="w-6 h-6 mb-1"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -933,21 +933,19 @@ export default function AnnotatePage() {
                     d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
                   />
                 </svg>
-                <span className="text-[9px] sm:text-[10px] font-medium">
-                  Pen
-                </span>
+                <span className="text-[10px] font-semibold">Pen</span>
               </button>
               <button
                 onClick={() => setTool("arrow")}
-                className={`flex flex-col items-center justify-center w-full aspect-square rounded-lg transition-all ${
+                className={`flex flex-col items-center justify-center w-full aspect-square rounded-xl transition-all duration-200 ${
                   tool === "arrow"
-                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
-                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/40 border-2 border-blue-400"
+                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/70 border-2 border-transparent"
                 }`}
                 title="Draw arrow"
               >
                 <svg
-                  className="w-5 h-5 sm:w-6 sm:h-6 mb-1"
+                  className="w-6 h-6 mb-1"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -959,21 +957,19 @@ export default function AnnotatePage() {
                     d="M14 5l7 7m0 0l-7 7m7-7H3"
                   />
                 </svg>
-                <span className="text-[9px] sm:text-[10px] font-medium">
-                  Arrow
-                </span>
+                <span className="text-[10px] font-semibold">Arrow</span>
               </button>
               <button
                 onClick={() => setTool("rectangle")}
-                className={`flex flex-col items-center justify-center w-full aspect-square rounded-lg transition-all ${
+                className={`flex flex-col items-center justify-center w-full aspect-square rounded-xl transition-all duration-200 ${
                   tool === "rectangle"
-                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
-                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/40 border-2 border-blue-400"
+                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/70 border-2 border-transparent"
                 }`}
                 title="Draw rectangle"
               >
                 <svg
-                  className="w-5 h-5 sm:w-6 sm:h-6 mb-1"
+                  className="w-6 h-6 mb-1"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -988,21 +984,19 @@ export default function AnnotatePage() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                <span className="text-[9px] sm:text-[10px] font-medium">
-                  Box
-                </span>
+                <span className="text-[10px] font-semibold">Box</span>
               </button>
               <button
                 onClick={() => setTool("circle")}
-                className={`flex flex-col items-center justify-center w-full aspect-square rounded-lg transition-all ${
+                className={`flex flex-col items-center justify-center w-full aspect-square rounded-xl transition-all duration-200 ${
                   tool === "circle"
-                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
-                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/40 border-2 border-blue-400"
+                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/70 border-2 border-transparent"
                 }`}
                 title="Draw circle"
               >
                 <svg
-                  className="w-5 h-5 sm:w-6 sm:h-6 mb-1"
+                  className="w-6 h-6 mb-1"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -1016,21 +1010,19 @@ export default function AnnotatePage() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                <span className="text-[9px] sm:text-[10px] font-medium">
-                  Circle
-                </span>
+                <span className="text-[10px] font-semibold">Circle</span>
               </button>
               <button
                 onClick={() => setTool("text")}
-                className={`flex flex-col items-center justify-center w-full aspect-square rounded-lg transition-all ${
+                className={`flex flex-col items-center justify-center w-full aspect-square rounded-xl transition-all duration-200 ${
                   tool === "text"
-                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
-                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+                    ? "bg-blue-600 text-white shadow-lg shadow-blue-600/40 border-2 border-blue-400"
+                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/70 border-2 border-transparent"
                 }`}
                 title="Add text"
               >
                 <svg
-                  className="w-5 h-5 sm:w-6 sm:h-6 mb-1"
+                  className="w-6 h-6 mb-1"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -1042,9 +1034,7 @@ export default function AnnotatePage() {
                     d="M4 7h16M12 7v13m-4 0h8"
                   />
                 </svg>
-                <span className="text-[9px] sm:text-[10px] font-medium">
-                  Text
-                </span>
+                <span className="text-[10px] font-semibold">Text</span>
               </button>
             </div>
           </div>

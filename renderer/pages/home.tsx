@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
@@ -262,7 +263,7 @@ export default function HomePage() {
     return <Badge variant="gray">Not Synced</Badge>;
   };
 
-  // GitHub Sync Dropdown Component
+  // GitHub Sync Modal Dialog Component
   const GitHubSyncDropdown = ({
     issue,
     className = "",
@@ -294,6 +295,17 @@ export default function HomePage() {
       }
     };
 
+    // Get the connector this issue is currently synced to
+    const syncedConnector = issue.syncedTo?.find(
+      (sync) => sync.platform === "github"
+    );
+    const syncedConnectorId = syncedConnector?.connectorId;
+
+    const handleSelectRepository = (connectorId: string) => {
+      handleSync(issue, connectorId);
+      setIsOpen(false);
+    };
+
     if (loading) {
       return (
         <Button variant="ghost" size="sm" disabled className={className}>
@@ -321,7 +333,7 @@ export default function HomePage() {
           size="sm"
           disabled
           className={className}
-          title="No GitHub repositories configured"
+          title="No GitHub repositories configured. Go to Settings to add one."
         >
           <svg
             className="w-4 h-4 opacity-50"
@@ -335,70 +347,276 @@ export default function HomePage() {
     }
 
     if (connectors.length === 1) {
+      const connector = connectors[0];
+      const isAlreadySynced = syncedConnectorId === connector.id;
+
       return (
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => handleSync(issue, connectors[0].id)}
-          disabled={issue.syncStatus === "syncing"}
+          onClick={() => handleSync(issue, connector.id)}
+          disabled={issue.syncStatus === "syncing" || isAlreadySynced}
           className={className}
-          title={`Sync to ${connectors[0].name}`}
+          title={
+            isAlreadySynced
+              ? `Already synced to ${connector.name}`
+              : `Sync to ${connector.name}`
+          }
         >
           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
             <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
           </svg>
+          {isAlreadySynced && (
+            <svg
+              className="w-3 h-3 text-green-400 ml-1"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+          )}
         </Button>
       );
     }
 
+    // Centered Modal Dialog for Multiple Connectors
     return (
-      <div className="relative">
+      <>
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => setIsOpen(true)}
           disabled={issue.syncStatus === "syncing"}
-          className={`${className} flex items-center space-x-1`}
+          className={className}
           title="Sync to GitHub repository"
         >
           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
             <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
           </svg>
-          <svg
-            className="w-3 h-3"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M19 9l-7 7-7-7"
-            />
-          </svg>
         </Button>
 
-        {isOpen && (
-          <div className="absolute top-full right-0 mt-1 bg-gray-900/95 backdrop-blur-xl border border-gray-800/50 rounded-lg shadow-2xl z-50 min-w-48">
-            {connectors.map((connector) => (
-              <button
-                key={connector.id}
-                onClick={() => {
-                  handleSync(issue, connector.id);
-                  setIsOpen(false);
-                }}
-                className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-gray-800/50 hover:text-gray-100 transition-colors duration-150 first:rounded-t-lg last:rounded-b-lg flex items-center justify-between"
-              >
-                <span className="truncate">{connector.name}</span>
-                <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
-                  {connector.config.owner}/{connector.config.repo}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+        {/* Centered Modal Dialog */}
+        {typeof window !== "undefined" &&
+          createPortal(
+            <AnimatePresence mode="wait">
+              {isOpen && (
+                <>
+                  {/* Backdrop */}
+                  <motion.div
+                    key="backdrop"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9998]"
+                    onClick={() => setIsOpen(false)}
+                  />
+
+                  {/* Modal */}
+                  <div
+                    key="modal-container"
+                    className="fixed inset-0 flex items-center justify-center z-[9999] p-4 pointer-events-none"
+                  >
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      className="bg-gray-900/98 backdrop-blur-xl border border-gray-700/70 rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col pointer-events-auto"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {/* Header */}
+                      <div className="px-6 py-4 border-b border-gray-800/50 flex items-center justify-between flex-shrink-0">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-blue-600/20 border border-blue-500/30 rounded-xl flex items-center justify-center">
+                            <svg
+                              className="w-5 h-5 text-blue-400"
+                              fill="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-100">
+                              Select Repository
+                            </h3>
+                            <p className="text-xs text-gray-400">
+                              Choose where to sync this issue
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setIsOpen(false)}
+                          className="w-8 h-8 rounded-lg hover:bg-gray-800/70 transition-colors flex items-center justify-center text-gray-400 hover:text-gray-200"
+                        >
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+
+                      {/* Repository List */}
+                      <div className="flex-1 overflow-y-auto p-4">
+                        <div className="space-y-2">
+                          {connectors.map((connector, index) => {
+                            const isAlreadySynced =
+                              syncedConnectorId === connector.id;
+                            return (
+                              <motion.button
+                                key={connector.id}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: index * 0.05 }}
+                                onClick={() => {
+                                  if (!isAlreadySynced) {
+                                    handleSelectRepository(connector.id);
+                                  }
+                                }}
+                                disabled={isAlreadySynced}
+                                className={`w-full p-4 rounded-xl border transition-all duration-200 flex items-start gap-3 group ${
+                                  isAlreadySynced
+                                    ? "bg-green-500/10 border-green-500/30 cursor-not-allowed"
+                                    : "bg-gray-800/30 border-gray-700/50 hover:bg-gray-800/60 hover:border-gray-600/50 active:scale-[0.98] cursor-pointer"
+                                }`}
+                              >
+                                <div
+                                  className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                                    isAlreadySynced
+                                      ? "bg-green-500/20 text-green-400"
+                                      : "bg-gray-700/50 text-gray-400 group-hover:bg-gray-700/80 group-hover:text-gray-300"
+                                  }`}
+                                >
+                                  {isAlreadySynced ? (
+                                    <svg
+                                      className="w-6 h-6"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M5 13l4 4L19 7"
+                                      />
+                                    </svg>
+                                  ) : (
+                                    <svg
+                                      className="w-6 h-6"
+                                      fill="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                                    </svg>
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0 text-left">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <p
+                                      className={`text-base font-semibold truncate ${
+                                        isAlreadySynced
+                                          ? "text-green-300"
+                                          : "text-gray-100 group-hover:text-white"
+                                      }`}
+                                    >
+                                      {connector.name}
+                                    </p>
+                                    {isAlreadySynced && (
+                                      <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-bold rounded-md uppercase tracking-wide flex-shrink-0">
+                                        Synced
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p
+                                    className={`text-sm font-mono truncate ${
+                                      isAlreadySynced
+                                        ? "text-green-400/70"
+                                        : "text-gray-500 group-hover:text-gray-400"
+                                    }`}
+                                  >
+                                    {connector.config.owner}/
+                                    {connector.config.repo}
+                                  </p>
+                                </div>
+                                {!isAlreadySynced && (
+                                  <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <svg
+                                      className="w-5 h-5 text-gray-400"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M9 5l7 7-7 7"
+                                      />
+                                    </svg>
+                                  </div>
+                                )}
+                              </motion.button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Footer */}
+                      <div className="px-6 py-4 border-t border-gray-800/50 bg-gray-900/50 flex-shrink-0">
+                        <button
+                          onClick={() => {
+                            setIsOpen(false);
+                            router.push("/settings?tab=connectors");
+                          }}
+                          className="w-full text-sm text-blue-400 hover:text-blue-300 transition-colors flex items-center justify-center gap-2 py-2 rounded-lg hover:bg-blue-500/10"
+                        >
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                            />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            />
+                          </svg>
+                          Manage Repositories
+                        </button>
+                      </div>
+                    </motion.div>
+                  </div>
+                </>
+              )}
+            </AnimatePresence>,
+            document.body
+          )}
+      </>
     );
   };
 

@@ -21,9 +21,11 @@ export interface Issue {
     platform: string;
     externalId: string;
     url?: string;
+    connectorId?: string;
   }[];
   userId: string;
   tags?: string[];
+  [key: string]: unknown;
 }
 
 export interface Connector {

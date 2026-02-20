@@ -30,6 +30,16 @@ export default function SettingsPage() {
     loadUser();
   }, []);
 
+  // Set active tab from query parameter
+  useEffect(() => {
+    if (router.query.tab) {
+      const tab = router.query.tab as string;
+      if (["account", "connectors", "sync", "general"].includes(tab)) {
+        setActiveTab(tab as Tab);
+      }
+    }
+  }, [router.query.tab]);
+
   const loadUser = async () => {
     try {
       setIsLoading(true);

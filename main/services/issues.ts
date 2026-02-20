@@ -1,6 +1,7 @@
 import Store from "electron-store";
 import { generateIssueId } from "../utils/id-generator";
 import { storageManager } from "../utils/storage";
+import log from "electron-log";
 
 interface Issue {
   id: string;
@@ -17,9 +18,11 @@ interface Issue {
     platform: string;
     externalId: string;
     url?: string;
+    connectorId?: string;
   }[];
   userId: string;
   tags?: string[];
+  [key: string]: unknown;
 }
 
 const store = new Store<{ issues: Issue[] }>({
@@ -38,11 +41,11 @@ export class IssueService {
     description?: string,
     thumbnailPath?: string
   ): Promise<Issue> {
-    console.log("[Issue Service] === CREATE ISSUE START ===");
-    console.log("[Issue Service] User ID:", userId);
-    console.log("[Issue Service] Title:", title);
-    console.log("[Issue Service] Type:", type);
-    console.log("[Issue Service] File path:", filePath);
+    log.info("[Issue Service] === CREATE ISSUE START ===");
+    log.info("[Issue Service] User ID:", userId);
+    log.info("[Issue Service] Title:", title);
+    log.info("[Issue Service] Type:", type);
+    log.info("[Issue Service] File path:", filePath);
 
     const issue: Issue = {
       id: generateIssueId(),
@@ -57,31 +60,31 @@ export class IssueService {
       userId,
     };
 
-    console.log("[Issue Service] Generated issue ID:", issue.id);
+    log.info("[Issue Service] Generated issue ID:", issue.id);
 
     const issues = store.get("issues");
     issues.push(issue);
     store.set("issues", issues);
-    console.log("[Issue Service] Saved to store, total issues:", issues.length);
+    log.info("[Issue Service] Saved to store, total issues:", issues.length);
 
     // Save metadata to file system
-    console.log("[Issue Service] Saving metadata to file system...");
+    log.info("[Issue Service] Saving metadata to file system...");
     await storageManager.saveMetadata(issue.id, issue);
 
-    console.log("[Issue Service] ✓ Issue created successfully");
-    console.log("[Issue Service] === CREATE ISSUE END ===");
+    log.info("[Issue Service] ✓ Issue created successfully");
+    log.info("[Issue Service] === CREATE ISSUE END ===");
     return issue;
   }
 
   getIssues(userId?: string): Issue[] {
-    console.log("[Issue Service] Getting issues for user:", userId || "all");
+    log.info("[Issue Service] Getting issues for user:", userId || "all");
     const issues = store.get("issues");
     if (userId) {
       const filtered = issues.filter((issue) => issue.userId === userId);
-      console.log("[Issue Service] Found", filtered.length, "issues for user");
+      log.info("[Issue Service] Found", filtered.length, "issues for user");
       return filtered;
     }
-    console.log("[Issue Service] Found", issues.length, "total issues");
+    log.info("[Issue Service] Found", issues.length, "total issues");
     return issues;
   }
 
@@ -91,15 +94,15 @@ export class IssueService {
   }
 
   async updateIssue(issueId: string, updates: Partial<Issue>): Promise<Issue> {
-    console.log("[Issue Service] === UPDATE ISSUE START ===");
-    console.log("[Issue Service] Issue ID:", issueId);
-    console.log("[Issue Service] Updates:", JSON.stringify(updates));
+    log.info("[Issue Service] === UPDATE ISSUE START ===");
+    log.info("[Issue Service] Issue ID:", issueId);
+    log.info("[Issue Service] Updates:", JSON.stringify(updates));
 
     const issues = store.get("issues");
     const index = issues.findIndex((issue) => issue.id === issueId);
 
     if (index === -1) {
-      console.error("[Issue Service] ✗ Issue not found");
+      log.error("[Issue Service] ✗ Issue not found");
       throw new Error("Issue not found");
     }
 
@@ -111,38 +114,43 @@ export class IssueService {
 
     issues[index] = updatedIssue;
     store.set("issues", issues);
-    console.log("[Issue Service] Saved to store");
+    log.info("[Issue Service] Saved to store");
 
     // Update metadata in file system
-    console.log("[Issue Service] Updating metadata in file system...");
+    log.info("[Issue Service] Updating metadata in file system...");
     await storageManager.saveMetadata(issueId, updatedIssue);
 
-    console.log("[Issue Service] ✓ Issue updated successfully");
-    console.log("[Issue Service] === UPDATE ISSUE END ===");
+    log.info("[Issue Service] ✓ Issue updated successfully");
+    log.info("[Issue Service] === UPDATE ISSUE END ===");
     return updatedIssue;
   }
 
   async deleteIssue(issueId: string): Promise<void> {
-    console.log("[Issue Service] === DELETE ISSUE START ===");
-    console.log("[Issue Service] Issue ID:", issueId);
+    log.info("[Issue Service] === DELETE ISSUE START ===");
+    log.info("[Issue Service] Issue ID:", issueId);
 
     const issues = store.get("issues");
     const filteredIssues = issues.filter((issue) => issue.id !== issueId);
     store.set("issues", filteredIssues);
-    console.log("[Issue Service] Removed from store");
+    log.info("[Issue Service] Removed from store");
 
     // Delete from file system
-    console.log("[Issue Service] Deleting from file system...");
+    log.info("[Issue Service] Deleting from file system...");
     await storageManager.deleteIssue(issueId);
 
-    console.log("[Issue Service] ✓ Issue deleted successfully");
-    console.log("[Issue Service] === DELETE ISSUE END ===");
+    log.info("[Issue Service] ✓ Issue deleted successfully");
+    log.info("[Issue Service] === DELETE ISSUE END ===");
   }
 
   async updateSyncStatus(
     issueId: string,
     status: "local" | "synced" | "syncing" | "failed",
-    syncInfo?: { platform: string; externalId: string; url?: string }
+    syncInfo?: {
+      platform: string;
+      externalId: string;
+      url?: string;
+      connectorId?: string;
+    }
   ): Promise<Issue> {
     const issues = store.get("issues");
     const index = issues.findIndex((issue) => issue.id === issueId);

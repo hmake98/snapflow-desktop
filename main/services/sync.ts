@@ -2,6 +2,7 @@ import { getSupabase } from "../utils/supabase";
 import { issueService } from "./issues";
 import fs from "fs/promises";
 import path from "path";
+import log from "electron-log";
 
 interface SyncResult {
   success: boolean;
@@ -33,14 +34,14 @@ export class SyncService {
   private async ensureBucketExists(): Promise<boolean> {
     const supabase = getSupabase();
     if (!supabase) {
-      console.error("[Sync] Supabase client not initialized");
+      log.error("[Sync] Supabase client not initialized");
       return false;
     }
 
     try {
       // Instead of listing buckets (which requires admin permissions),
       // try to list files in the bucket to verify it exists and is accessible
-      console.log("[Sync] Verifying bucket access...");
+      log.info("[Sync] Verifying bucket access...");
       const { error } = await supabase.storage
         .from(BUCKET_NAME)
         .list("", { limit: 1 });
@@ -51,34 +52,34 @@ export class SyncService {
           error.message?.includes("not found") ||
           error.message?.includes("does not exist")
         ) {
-          console.error("[Sync] Storage bucket does not exist:", BUCKET_NAME);
-          console.error(
+          log.error("[Sync] Storage bucket does not exist:", BUCKET_NAME);
+          log.error(
             "[Sync] Please create the bucket manually in Supabase Dashboard:"
           );
-          console.error("[Sync]   1. Go to Supabase Dashboard > Storage");
-          console.error("[Sync]   2. Create a bucket named:", BUCKET_NAME);
-          console.error(
+          log.error("[Sync]   1. Go to Supabase Dashboard > Storage");
+          log.error("[Sync]   2. Create a bucket named:", BUCKET_NAME);
+          log.error(
             "[Sync]   3. Configure as Public with 50MB file size limit"
           );
-          console.error("[Sync]   4. Set allowed MIME types: image/*, video/*");
+          log.error("[Sync]   4. Set allowed MIME types: image/*, video/*");
           return false;
         }
 
         // If it's a different error, log it but assume bucket exists
-        console.warn(
+        log.warn(
           "[Sync] Bucket verification returned error (bucket may still exist):",
           error
         );
-        console.log("[Sync] Proceeding with upload attempt...");
+        log.info("[Sync] Proceeding with upload attempt...");
         return true;
       }
 
-      console.log("[Sync] Bucket is accessible:", BUCKET_NAME);
+      log.info("[Sync] Bucket is accessible:", BUCKET_NAME);
       return true;
     } catch (error) {
-      console.error("[Sync] Error checking bucket:", error);
+      log.error("[Sync] Error checking bucket:", error);
       // Assume bucket exists if we get an unexpected error
-      console.log("[Sync] Proceeding with upload attempt...");
+      log.info("[Sync] Proceeding with upload attempt...");
       return true;
     }
   }
@@ -112,14 +113,14 @@ export class SyncService {
         .single();
 
       if (error) {
-        console.error("[Sync] Failed to create sync history:", error);
+        log.error("[Sync] Failed to create sync history:", error);
         return null;
       }
 
-      console.log(`[Sync] Created sync history record: ${data.id}`);
+      log.info(`[Sync] Created sync history record: ${data.id}`);
       return data.id;
     } catch (error) {
-      console.error("[Sync] Error creating sync history:", error);
+      log.error("[Sync] Error creating sync history:", error);
       return null;
     }
   }
@@ -154,12 +155,12 @@ export class SyncService {
         .eq("id", syncHistoryId);
 
       if (error) {
-        console.error("[Sync] Failed to update sync history:", error);
+        log.error("[Sync] Failed to update sync history:", error);
       } else {
-        console.log(`[Sync] Updated sync history record: ${syncHistoryId}`);
+        log.info(`[Sync] Updated sync history record: ${syncHistoryId}`);
       }
     } catch (error) {
-      console.error("[Sync] Error updating sync history:", error);
+      log.error("[Sync] Error updating sync history:", error);
     }
   }
 
@@ -186,13 +187,13 @@ export class SyncService {
           // No rows found
           return null;
         }
-        console.error("[Sync] Failed to get latest sync history:", error);
+        log.error("[Sync] Failed to get latest sync history:", error);
         return null;
       }
 
       return data as SyncHistory;
     } catch (error) {
-      console.error("[Sync] Error getting latest sync history:", error);
+      log.error("[Sync] Error getting latest sync history:", error);
       return null;
     }
   }
@@ -207,7 +208,7 @@ export class SyncService {
   ): Promise<string | null> {
     const supabase = getSupabase();
     if (!supabase) {
-      console.error("[Sync] Supabase client not initialized");
+      log.error("[Sync] Supabase client not initialized");
       return null;
     }
 
@@ -216,12 +217,12 @@ export class SyncService {
       try {
         await fs.access(filePath);
       } catch {
-        console.error(`[Sync] File does not exist: ${filePath}`);
+        log.error(`[Sync] File does not exist: ${filePath}`);
         return null;
       }
 
       // Read the file
-      console.log(`[Sync] Reading file: ${filePath}`);
+      log.info(`[Sync] Reading file: ${filePath}`);
       const fileBuffer = await fs.readFile(filePath);
       const fileName = path.basename(filePath);
       const fileExt = path.extname(fileName);
@@ -229,9 +230,9 @@ export class SyncService {
       // Create a unique path in the bucket: userId/issueId/filename
       const storagePath = `${userId}/${issueId}/${fileName}`;
 
-      console.log(`[Sync] Uploading to storage path: ${storagePath}`);
-      console.log(`[Sync] File size: ${fileBuffer.length} bytes`);
-      console.log(`[Sync] Content type: ${this.getContentType(fileExt)}`);
+      log.info(`[Sync] Uploading to storage path: ${storagePath}`);
+      log.info(`[Sync] File size: ${fileBuffer.length} bytes`);
+      log.info(`[Sync] Content type: ${this.getContentType(fileExt)}`);
 
       // Upload to Supabase storage
       const { data, error } = await supabase.storage
@@ -242,24 +243,24 @@ export class SyncService {
         });
 
       if (error) {
-        console.error(`[Sync] Failed to upload file ${fileName}:`, error);
-        console.error(`[Sync] Error details:`, JSON.stringify(error, null, 2));
+        log.error(`[Sync] Failed to upload file ${fileName}:`, error);
+        log.error(`[Sync] Error details:`, JSON.stringify(error, null, 2));
         return null;
       }
 
-      console.log(`[Sync] Upload successful, data:`, data);
+      log.info(`[Sync] Upload successful, data:`, data);
 
       // Get public URL
       const { data: urlData } = supabase.storage
         .from(BUCKET_NAME)
         .getPublicUrl(storagePath);
 
-      console.log(`[Sync] Generated public URL: ${urlData.publicUrl}`);
+      log.info(`[Sync] Generated public URL: ${urlData.publicUrl}`);
       return urlData.publicUrl;
     } catch (error) {
-      console.error("[Sync] File upload error:", error);
+      log.error("[Sync] File upload error:", error);
       if (error instanceof Error) {
-        console.error("[Sync] Error stack:", error.stack);
+        log.error("[Sync] Error stack:", error.stack);
       }
       return null;
     }
@@ -291,12 +292,12 @@ export class SyncService {
     fileName: string
   ): Promise<string | null> {
     try {
-      console.log(`[Sync] Downloading file from cloud: ${cloudUrl}`);
+      log.info(`[Sync] Downloading file from cloud: ${cloudUrl}`);
 
       // Fetch file from URL
       const response = await fetch(cloudUrl);
       if (!response.ok) {
-        console.error(
+        log.error(
           `[Sync] Failed to download file: ${response.status} ${response.statusText}`
         );
         return null;
@@ -306,7 +307,7 @@ export class SyncService {
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
-      console.log(`[Sync] Downloaded ${buffer.length} bytes`);
+      log.info(`[Sync] Downloaded ${buffer.length} bytes`);
 
       // Import storage manager to save the file
       const { storageManager } = await import("../utils/storage");
@@ -318,10 +319,10 @@ export class SyncService {
         buffer
       );
 
-      console.log(`[Sync] ✓ File saved to local storage: ${filePath}`);
+      log.info(`[Sync] ✓ File saved to local storage: ${filePath}`);
       return filePath;
     } catch (error) {
-      console.error("[Sync] Error downloading file from cloud:", error);
+      log.error("[Sync] Error downloading file from cloud:", error);
       return null;
     }
   }
@@ -348,28 +349,28 @@ export class SyncService {
     };
 
     // Ensure storage bucket exists
-    console.log("[Sync] ==========================================");
-    console.log("[Sync] Starting cloud sync for user:", userId);
-    console.log(
+    log.info("[Sync] ==========================================");
+    log.info("[Sync] Starting cloud sync for user:", userId);
+    log.info(
       "[Sync] Supabase URL:",
       process.env.SUPABASE_URL ? "Configured" : "NOT CONFIGURED"
     );
-    console.log(
+    log.info(
       "[Sync] Supabase Key:",
       process.env.SUPABASE_ANON_KEY ? "Configured" : "NOT CONFIGURED"
     );
-    console.log("[Sync] Checking if storage bucket exists...");
+    log.info("[Sync] Checking if storage bucket exists...");
 
     const bucketReady = await this.ensureBucketExists();
     if (!bucketReady) {
       const error =
         "Storage bucket is not available. Please check Supabase configuration.";
-      console.error("[Sync]", error);
+      log.error("[Sync]", error);
       result.success = false;
       result.errors.push(error);
       return result;
     }
-    console.log("[Sync] Storage bucket is ready!");
+    log.info("[Sync] Storage bucket is ready!");
 
     // Get all local issues for this user
     const localIssues = issueService.getIssues(userId);
@@ -398,11 +399,9 @@ export class SyncService {
       // Upload each issue to Supabase
       for (const issue of localIssues) {
         try {
-          console.log(`[Sync] Processing issue: ${issue.id} - ${issue.title}`);
-          console.log(`[Sync] File path: ${issue.filePath}`);
-          console.log(
-            `[Sync] Thumbnail path: ${issue.thumbnailPath || "none"}`
-          );
+          log.info(`[Sync] Processing issue: ${issue.id} - ${issue.title}`);
+          log.info(`[Sync] File path: ${issue.filePath}`);
+          log.info(`[Sync] Thumbnail path: ${issue.thumbnailPath || "none"}`);
 
           // Upload file to storage and get public URL
           let cloudFileUrl: string | null = null;
@@ -411,7 +410,7 @@ export class SyncService {
           try {
             // Upload main file
             if (issue.filePath) {
-              console.log(
+              log.info(
                 `[Sync] Starting main file upload for issue ${issue.id}`
               );
               cloudFileUrl = await this.uploadFileToStorage(
@@ -420,11 +419,11 @@ export class SyncService {
                 issue.id
               );
               if (cloudFileUrl) {
-                console.log(
+                log.info(
                   `[Sync] Main file uploaded successfully: ${cloudFileUrl}`
                 );
               } else {
-                console.warn(
+                log.warn(
                   `[Sync] Main file upload returned null for issue ${issue.id}`
                 );
               }
@@ -432,7 +431,7 @@ export class SyncService {
 
             // Upload thumbnail if exists
             if (issue.thumbnailPath) {
-              console.log(
+              log.info(
                 `[Sync] Starting thumbnail upload for issue ${issue.id}`
               );
               cloudThumbnailUrl = await this.uploadFileToStorage(
@@ -441,17 +440,17 @@ export class SyncService {
                 `${issue.id}_thumbnail`
               );
               if (cloudThumbnailUrl) {
-                console.log(
+                log.info(
                   `[Sync] Thumbnail uploaded successfully: ${cloudThumbnailUrl}`
                 );
               } else {
-                console.warn(
+                log.warn(
                   `[Sync] Thumbnail upload returned null for issue ${issue.id}`
                 );
               }
             }
           } catch (uploadError) {
-            console.error(
+            log.error(
               `[Sync] File upload error for issue ${issue.id}:`,
               uploadError
             );
@@ -484,19 +483,17 @@ export class SyncService {
             tags: issue.tags || [],
           };
 
-          console.log(`[Sync] Preparing to save issue ${issue.id} to database`);
-          console.log(
+          log.info(`[Sync] Preparing to save issue ${issue.id} to database`);
+          log.info(
             `[Sync] Cloud file URL: ${issueData.cloud_file_url || "null"}`
           );
-          console.log(
+          log.info(
             `[Sync] Cloud thumbnail URL: ${issueData.cloud_thumbnail_url || "null"}`
           );
 
           if (existingIssue) {
             // Update existing issue
-            console.log(
-              `[Sync] Updating existing issue in database: ${issue.id}`
-            );
+            log.info(`[Sync] Updating existing issue in database: ${issue.id}`);
             const { error } = await supabase
               .from("issues")
               .update(issueData)
@@ -504,28 +501,26 @@ export class SyncService {
               .eq("user_id", userId);
 
             if (error) {
-              console.error(
+              log.error(
                 `[Sync] Database update error for issue ${issue.id}:`,
                 error
               );
               throw error;
             }
-            console.log(`[Sync] Issue updated successfully in database`);
+            log.info(`[Sync] Issue updated successfully in database`);
           } else {
             // Insert new issue
-            console.log(
-              `[Sync] Inserting new issue into database: ${issue.id}`
-            );
+            log.info(`[Sync] Inserting new issue into database: ${issue.id}`);
             const { error } = await supabase.from("issues").insert(issueData);
 
             if (error) {
-              console.error(
+              log.error(
                 `[Sync] Database insert error for issue ${issue.id}:`,
                 error
               );
               throw error;
             }
-            console.log(`[Sync] Issue inserted successfully into database`);
+            log.info(`[Sync] Issue inserted successfully into database`);
           }
 
           // Update local sync status and cloud URLs
@@ -548,7 +543,7 @@ export class SyncService {
               error instanceof Error ? error.message : String(error)
             }`
           );
-          console.error(`Failed to sync issue ${issue.id}:`, error);
+          log.error(`Failed to sync issue ${issue.id}:`, error);
         }
       }
 
@@ -568,7 +563,7 @@ export class SyncService {
       result.errors.push(
         error instanceof Error ? error.message : String(error)
       );
-      console.error("Sync error:", error);
+      log.error("Sync error:", error);
 
       // Update sync history as failed
       if (syncHistoryId) {
@@ -623,7 +618,7 @@ export class SyncService {
       }
 
       if (!cloudIssues || cloudIssues.length === 0) {
-        console.log("[Sync] No cloud issues found for user");
+        log.info("[Sync] No cloud issues found for user");
         // Update sync history
         if (syncHistoryId) {
           await this.updateSyncHistory(syncHistoryId, {
@@ -635,7 +630,7 @@ export class SyncService {
         return result;
       }
 
-      console.log(`[Sync] Found ${cloudIssues.length} cloud issues`);
+      log.info(`[Sync] Found ${cloudIssues.length} cloud issues`);
 
       // Update total count in sync history
       if (syncHistoryId) {
@@ -652,7 +647,7 @@ export class SyncService {
       // Merge cloud issues with local data
       for (const cloudIssue of cloudIssues) {
         try {
-          console.log(
+          log.info(
             `[Sync] Processing cloud issue: ${cloudIssue.id} - ${cloudIssue.title}`
           );
 
@@ -661,7 +656,7 @@ export class SyncService {
 
           // Check if this is a cloud-only issue (not in local storage)
           if (!localIssueIds.has(cloudIssue.id)) {
-            console.log(
+            log.info(
               `[Sync] Cloud-only issue detected: ${cloudIssue.id}, downloading files...`
             );
 
@@ -677,9 +672,9 @@ export class SyncService {
               );
               if (downloadedPath) {
                 localFilePath = downloadedPath;
-                console.log(`[Sync] ✓ Main file downloaded: ${downloadedPath}`);
+                log.info(`[Sync] ✓ Main file downloaded: ${downloadedPath}`);
               } else {
-                console.warn(
+                log.warn(
                   `[Sync] Failed to download main file for issue ${cloudIssue.id}`
                 );
                 // Skip this issue if we can't download the main file
@@ -690,7 +685,7 @@ export class SyncService {
                 continue;
               }
             } else {
-              console.warn(
+              log.warn(
                 `[Sync] No cloud URL for issue ${cloudIssue.id}, skipping`
               );
               continue;
@@ -708,7 +703,7 @@ export class SyncService {
               );
               if (downloadedThumbnail) {
                 localThumbnailPath = downloadedThumbnail;
-                console.log(
+                log.info(
                   `[Sync] ✓ Thumbnail downloaded: ${downloadedThumbnail}`
                 );
               }
@@ -733,20 +728,20 @@ export class SyncService {
 
           if (localIssueIds.has(cloudIssue.id)) {
             // Update existing local issue
-            console.log(
-              `[Sync] Updating existing local issue: ${cloudIssue.id}`
-            );
+            log.info(`[Sync] Updating existing local issue: ${cloudIssue.id}`);
             await issueService.updateIssue(cloudIssue.id, issueData);
           } else {
             // Create new local issue with downloaded files
-            console.log(`[Sync] Creating new local issue: ${cloudIssue.id}`);
+            log.info(`[Sync] Creating new local issue: ${cloudIssue.id}`);
             // We need to create the issue directly in the store
             // Import Store to directly manipulate the issues
             const Store = (await import("electron-store")).default;
-            const store = new Store<{ issues: any[] }>({
-              name: "snapflow-issues",
-              defaults: { issues: [] },
-            });
+            const store = new Store<{ issues: Array<Record<string, unknown>> }>(
+              {
+                name: "snapflow-issues",
+                defaults: { issues: [] },
+              }
+            );
             const issues = store.get("issues");
             issues.push(issueData);
             store.set("issues", issues);
@@ -757,7 +752,7 @@ export class SyncService {
           }
 
           result.syncedCount++;
-          console.log(`[Sync] ✓ Issue synced: ${cloudIssue.id}`);
+          log.info(`[Sync] ✓ Issue synced: ${cloudIssue.id}`);
         } catch (error) {
           result.failedCount++;
           result.errors.push(
@@ -765,7 +760,7 @@ export class SyncService {
               error instanceof Error ? error.message : String(error)
             }`
           );
-          console.error(`[Sync] Failed to sync issue ${cloudIssue.id}:`, error);
+          log.error(`[Sync] Failed to sync issue ${cloudIssue.id}:`, error);
         }
       }
 
@@ -781,7 +776,7 @@ export class SyncService {
         });
       }
 
-      console.log(
+      log.info(
         `[Sync] Fetch from cloud complete: ${result.syncedCount} synced, ${result.failedCount} failed`
       );
     } catch (error) {
@@ -789,7 +784,7 @@ export class SyncService {
       result.errors.push(
         error instanceof Error ? error.message : String(error)
       );
-      console.error("[Sync] Fetch error:", error);
+      log.error("[Sync] Fetch error:", error);
 
       // Update sync history
       if (syncHistoryId) {

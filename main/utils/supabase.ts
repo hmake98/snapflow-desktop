@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import Store from "electron-store";
+import log from "electron-log";
 
 // Singleton pattern for Supabase Client in Electron
 // Prevents multiple instances during hot-reload in development
@@ -23,7 +24,7 @@ function initializeSupabase(): SupabaseClient | null {
   const supabaseAnonKey = getSupabaseAnonKey();
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    console.warn(
+    log.warn(
       "⚠️ Supabase credentials not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY in your .env file."
     );
     return null;
