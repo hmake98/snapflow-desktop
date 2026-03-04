@@ -1,275 +1,306 @@
 /**
- * Session Manager for storing current logged-in user with Supabase
- * Uses electron-store for persistence across app restarts
+ * Session Manager — Main Process
+ *
+ * Responsibilities:
+ *  1. On startup: ask Supabase for the existing session (reads from
+ *     electron-store via the custom adapter — no network unless token expired).
+ *  2. Validate the session user against the server; fall back to the locally
+ *     cached AuthUser if the network is unavailable.
+ *  3. Expose the current AuthUser synchronously to the rest of the main process.
+ *  4. Listen to Supabase auth-state events to keep in-memory state current.
+ *  5. On login/logout: update in-memory state + notify storage manager.
+ *
+ * What we deliberately DO NOT do here:
+ *  • Mirror session tokens manually — the Supabase SDK + electron-store adapter
+ *    in supabase.ts already own that persistence.
+ *  • Refresh tokens manually — autoRefreshToken handles it automatically.
  */
 
 import Store from "electron-store";
-import { authService } from "../services/auth";
+import log from "electron-log";
+import { authService, type AuthUser } from "../services/auth";
 import { getSupabase } from "./supabase";
 import { storageManager } from "./storage";
 import { syncService } from "../services/sync";
-import log from "electron-log";
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
+// ─── Persistent store (user profile cache only) ───────────────────────────────
 
-interface SessionData {
+interface SessionCache {
   userId: string | null;
-  user: User | null;
-  supabaseSession: {
-    accessToken: string;
-    refreshToken: string;
-    expiresAt: number;
-  } | null;
+  user: AuthUser | null;
+  expiresAt: number | null; // UNIX timestamp in milliseconds
 }
 
-const sessionStore = new Store<SessionData>({
+const sessionStore = new Store<SessionCache>({
   name: "snapflow-session",
-  defaults: {
-    userId: null,
-    user: null,
-    supabaseSession: null,
-  },
+  defaults: { userId: null, user: null, expiresAt: null },
 });
 
-// Log the session store path for debugging
-log.info("[Session Store] Path:", sessionStore.path);
+log.info("[Session] Store initialised");
+
+// ─── SessionManager ───────────────────────────────────────────────────────────
 
 class SessionManager {
-  private currentUser: User | null = null;
-  private sessionListenerInitialized = false;
-  private isClearing = false; // Flag to prevent circular clearUser calls
+  private currentUser: AuthUser | null = null;
+  private listenerAttached = false;
+  private isClearing = false;
+  private initializationComplete = false;
+
+  // ── Startup ────────────────────────────────────────────────────────────────
 
   /**
-   * Sync from cloud on login to restore user's screenshots
-   * This ensures multi-account support
-   */
-  private async syncFromCloudOnLogin(userId: string): Promise<void> {
-    try {
-      log.info("[Session] Starting cloud sync for user:", userId);
-      const result = await syncService.fetchFromCloud(userId);
-      if (result.success) {
-        log.info(
-          `[Session] ✓ Cloud sync complete: ${result.syncedCount} items synced`
-        );
-      } else {
-        log.warn(
-          `[Session] Cloud sync completed with errors: ${result.errors.join(", ")}`
-        );
-      }
-    } catch (error) {
-      log.error("[Session] Cloud sync failed:", error);
-      // Don't throw - allow login to continue even if sync fails
-    }
-  }
-
-  /**
-   * Initialize session from persistent storage
-   * Restores Supabase session if it exists
-   * Call this when app starts
+   * Restore session on app startup.
+   *
+   * Flow:
+   *   getSession()  — reads tokens from electron-store (no network)
+   *     └─ session found  → getUser() to validate with server
+   *         ├─ success    → restore in-memory state, trigger background sync
+   *         └─ offline    → fall back to cached user (best-effort)
+   *     └─ no session    → clear stale cache, proceed to auth screen
    */
   async initialize(): Promise<void> {
-    log.info("[Session] Initializing session...");
+    log.info("[Session] Initialising...");
 
     const supabase = getSupabase();
     if (!supabase) {
-      log.warn("[Session] Supabase not available");
+      log.warn("[Session] Supabase not available — skipping session restore");
       return;
     }
 
-    // Try to get the session from Supabase's storage (which now uses electron-store)
-    const {
-      data: { session },
-      error,
-    } = await supabase.auth.getSession();
-
-    if (error) {
-      log.error("[Session] Error getting session:", error);
-      await this.clearUser();
-      // Setup auth state listener after handling error
-      this.setupAuthStateListener();
-      return;
-    }
-
-    if (session) {
-      try {
-        log.info("[Session] Found existing Supabase session, restoring...");
-
-        // Get the current user
-        const user = await authService.getCurrentUser();
-        if (user) {
-          this.currentUser = user;
-
-          // Set current user in storage manager for user-specific paths
-          storageManager.setCurrentUser(user.id);
-          // Ensure user-specific directories exist
-          await storageManager.ensureDirectories();
-
-          // Store user data for quick access
-          sessionStore.set("user", user);
-          sessionStore.set("userId", user.id);
-          // Also store session tokens for backup
-          sessionStore.set("supabaseSession", {
-            accessToken: session.access_token,
-            refreshToken: session.refresh_token,
-            expiresAt: session.expires_at || 0,
-          });
-          log.info("✓ Session restored successfully for:", user.email);
-
-          // Setup auth state listener AFTER successful session restoration
-          this.setupAuthStateListener();
-
-          // Sync from cloud after session restore
-          await this.syncFromCloudOnLogin(user.id);
+    // getSession() is synchronous against the electron-store adapter.
+    // It only hits the network if the access token is expired (to refresh it).
+    let session: Awaited<
+      ReturnType<typeof supabase.auth.getSession>
+    >["data"]["session"];
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        if (error.status === 0) {
+          // Network unreachable during startup — restore from cache offline
+          log.warn("[Session] Network unreachable at startup, going offline");
+          await this.restoreFromCache();
+          this.attachAuthListener();
           return;
-        } else {
-          log.warn("[Session] Session exists but no user found");
-          await this.clearUser();
         }
-      } catch (error) {
-        log.error("[Session] Failed to restore session:", error);
+        log.error("[Session] getSession error:", error.message);
+        await this.clearUser();
+        this.attachAuthListener();
+        return;
+      }
+      session = data.session;
+    } catch (err) {
+      // Safety net — custom fetch converts network errors to AbortError, but
+      // if something slips through we still don't want to crash startup.
+      log.warn("[Session] getSession threw, going offline:", err);
+      await this.restoreFromCache();
+      this.attachAuthListener();
+      return;
+    }
+
+    if (!session) {
+      log.info("[Session] No stored session found");
+      this.clearCache();
+      this.attachAuthListener();
+      return;
+    }
+
+    // Check if stored token has expired
+    if (this.isTokenExpired()) {
+      log.warn("[Session] Stored session token has expired");
+      await this.clearUser();
+      this.attachAuthListener();
+      return;
+    }
+
+    // Session found — validate the user against the server.
+    log.info("[Session] Stored session found, validating user...");
+    try {
+      // Extract and cache token expiry time
+      if (session.expires_at) {
+        const expiresAt = session.expires_at * 1000; // Convert to milliseconds
+        (sessionStore as any).set("expiresAt", expiresAt);
+      }
+      let user = await authService.getCurrentUser();
+
+      if (!user) {
+        // Server unreachable — try cached user
+        user = this.getCachedUser();
+        if (user) {
+          log.warn(
+            "[Session] Server unreachable — restoring from local cache:",
+            user.email
+          );
+        }
+      }
+
+      if (user) {
+        await this.applyUser(user);
+        // TODO: Re-enable cloud sync after refactoring for workspace-scoped architecture
+        // Background cloud sync — non-blocking, best-effort
+        // this.syncFromCloudOnLogin(user.id).catch((err) =>
+        //   log.warn("[Session] Background sync failed:", err)
+        // );
+      } else {
+        log.warn("[Session] Could not resolve user — clearing session");
         await this.clearUser();
       }
-    } else {
-      log.info("[Session] No session found");
-      // Clear any stale data
-      sessionStore.set("user", null);
-      sessionStore.set("userId", null);
-      sessionStore.set("supabaseSession", null);
+    } catch (err) {
+      log.error("[Session] Error restoring session:", err);
+      await this.clearUser();
     }
 
-    // Setup auth state listener after session check
-    this.setupAuthStateListener();
+    this.attachAuthListener();
+    this.initializationComplete = true;
+    log.info("[Session] ✓ Initialization complete");
   }
 
-  /**
-   * Setup Supabase auth state change listener
-   * This monitors token refresh and session changes
-   */
-  private setupAuthStateListener(): void {
-    if (this.sessionListenerInitialized) {
-      return;
-    }
+  // ── Auth state listener ────────────────────────────────────────────────────
+
+  private attachAuthListener(): void {
+    if (this.listenerAttached) return;
 
     const supabase = getSupabase();
     if (!supabase) {
       log.warn(
-        "[Session] Cannot setup auth listener - Supabase not initialized"
+        "[Session] Cannot attach auth listener — Supabase not initialised"
       );
       return;
     }
 
     supabase.auth.onAuthStateChange(async (event, session) => {
-      log.info("[Session] Auth state changed:", event);
+      log.info("[Session] Auth event:", event);
 
-      if (event === "TOKEN_REFRESHED" && session) {
-        log.info("[Session] Token refreshed, updating stored session");
-        sessionStore.set("supabaseSession", {
-          accessToken: session.access_token,
-          refreshToken: session.refresh_token,
-          expiresAt: session.expires_at || 0,
-        });
-      } else if (event === "SIGNED_OUT") {
-        log.info("[Session] User signed out via auth state change");
-        await this.clearUser();
-      } else if (event === "SIGNED_IN" && session) {
-        log.info("[Session] User signed in via auth state change");
-        // Update session tokens
-        sessionStore.set("supabaseSession", {
-          accessToken: session.access_token,
-          refreshToken: session.refresh_token,
-          expiresAt: session.expires_at || 0,
-        });
+      switch (event) {
+        case "TOKEN_REFRESHED":
+          // Tokens are already written back to electron-store by the SDK adapter.
+          // Update the expiry time in our cache.
+          if (session?.expires_at) {
+            const expiresAt = session.expires_at * 1000; // Convert to milliseconds
+            (sessionStore as any).set("expiresAt", expiresAt);
+            log.info("[Session] Token refreshed ✓ (expires at", new Date(expiresAt).toISOString(), ")");
+          } else {
+            log.info("[Session] Token refreshed ✓");
+          }
+          break;
+
+        case "SIGNED_IN":
+          log.info("[Session] SIGNED_IN: session exists:", !!session);
+          if (session) {
+            // Extract user from session object to avoid extra network call.
+            // The session contains the authenticated user data.
+            // This is the expected flow for OAuth callbacks where setSession
+            // already has the user info embedded in the JWT.
+            if (session.user) {
+              const user = {
+                id: session.user.id,
+                name:
+                  session.user.user_metadata?.name ??
+                  session.user.email?.split("@")[0] ??
+                  "User",
+                email: session.user.email!,
+                createdAt: new Date(session.user.created_at),
+                updatedAt: new Date(
+                  session.user.updated_at ?? session.user.created_at
+                ),
+              };
+
+              if (user.id !== this.currentUser?.id) {
+                log.info(
+                  "[Session] SIGNED_IN: Applying user from session:",
+                  user.email
+                );
+                await this.applyUser(user);
+                // Store token expiry time
+                if (session.expires_at) {
+                  const expiresAt = session.expires_at * 1000; // Convert to milliseconds
+                  (sessionStore as any).set("expiresAt", expiresAt);
+                  log.info("[Session] SIGNED_IN: Session expires at", new Date(expiresAt).toISOString());
+                }
+                log.info("[Session] SIGNED_IN: User applied successfully");
+              } else {
+                log.info("[Session] SIGNED_IN: User already set, skipping");
+              }
+            } else {
+              log.warn("[Session] SIGNED_IN: No user in session");
+            }
+          } else {
+            log.warn("[Session] SIGNED_IN: No session provided");
+          }
+          break;
+
+        case "SIGNED_OUT":
+          log.info("[Session] SIGNED_OUT event — clearing session");
+          await this.clearUser();
+          break;
       }
     });
 
-    this.sessionListenerInitialized = true;
-    log.info("[Session] Auth state listener initialized");
+    this.listenerAttached = true;
+    log.info("[Session] Auth listener attached");
   }
+
+  // ── Public API ─────────────────────────────────────────────────────────────
 
   /**
-   * Set user and store Supabase session
+   * Call after a successful login (email/password or OAuth).
+   * Persists the user to cache and sets up storage paths.
    */
-  async setUser(user: User): Promise<void> {
-    log.info("[Session] Setting user:", user.email);
-    this.currentUser = user;
+  async setUser(user: AuthUser): Promise<void> {
+    log.info("[Session] setUser:", user.email);
+    await this.applyUser(user);
+    this.attachAuthListener();
 
-    // Set current user in storage manager for user-specific paths
-    storageManager.setCurrentUser(user.id);
-    // Ensure user-specific directories exist
-    await storageManager.ensureDirectories();
-
-    // Setup auth state listener if not already done
-    this.setupAuthStateListener();
-
-    // Get current Supabase session
-    const session = await authService.getSession();
-
-    if (session) {
-      log.info("[Session] Storing user and Supabase tokens");
-      // Store both user data and Supabase tokens
-      sessionStore.set("user", user);
-      sessionStore.set("userId", user.id);
-      sessionStore.set("supabaseSession", {
-        accessToken: session.access_token,
-        refreshToken: session.refresh_token,
-        expiresAt: session.expires_at || 0,
-      });
-      log.info("✓ Session persisted for:", user.email);
-      log.info(
-        "[Session] Token expires at:",
-        new Date((session.expires_at || 0) * 1000).toLocaleString()
-      );
-
-      // Sync from cloud after login
-      await this.syncFromCloudOnLogin(user.id);
-    } else {
-      log.warn("[Session] No Supabase session found - storing user only");
-      // Just store user if no session (shouldn't happen normally)
-      sessionStore.set("user", user);
-      sessionStore.set("userId", user.id);
-    }
+    // TODO: Re-enable cloud sync after refactoring for workspace-scoped architecture
+    // Sync from cloud after explicit login
+    // await this.syncFromCloudOnLogin(user.id);
   }
 
-  getUser(): User | null {
+  getUser(): AuthUser | null {
     return this.currentUser;
   }
 
+  getUserId(): string | null {
+    return this.currentUser?.id ?? null;
+  }
+
+  isAuthenticated(): boolean {
+    return this.currentUser !== null;
+  }
+
+  isInitialized(): boolean {
+    return this.initializationComplete;
+  }
+
   /**
-   * Clear user session and sign out from Supabase
+   * Synchronous pre-flight check — reads from cache without any network call.
+   * Used by background.ts to decide the initial route before initialize() runs.
+   */
+  hasStoredSession(): boolean {
+    return (sessionStore as any).get("userId") !== null;
+  }
+
+  /**
+   * Sign the user out: clears in-memory + cached state and calls Supabase signOut.
+   * Guarded against re-entrant calls from the SIGNED_OUT auth event.
    */
   async clearUser(): Promise<void> {
-    // Prevent circular calls from auth state listener
     if (this.isClearing) {
       log.info("[Session] clearUser already in progress, skipping");
       return;
     }
-
-    log.info("[Session] Clearing user session...");
     this.isClearing = true;
+    log.info("[Session] Clearing session...");
 
     try {
       this.currentUser = null;
-
-      // Clear current user from storage manager
       storageManager.clearCurrentUser();
+      this.clearCache();
 
-      // Clear from persistent storage
-      sessionStore.set("user", null);
-      sessionStore.set("userId", null);
-      sessionStore.set("supabaseSession", null);
-
-      // Sign out from Supabase
       try {
         await authService.logout();
-        log.info("[Session] ✓ Supabase logout complete");
-      } catch (error) {
-        log.error("[Session] Error signing out from Supabase:", error);
+        log.info("[Session] ✓ Supabase signOut complete");
+      } catch (err) {
+        log.error("[Session] Error during Supabase signOut:", err);
       }
     } finally {
       this.isClearing = false;
@@ -277,63 +308,97 @@ class SessionManager {
     }
   }
 
-  isAuthenticated(): boolean {
-    return this.currentUser !== null;
-  }
+  // ── Private helpers ────────────────────────────────────────────────────────
 
-  getUserId(): string | null {
-    return this.currentUser?.id || null;
+  /**
+   * Check if the stored token has expired (or is about to expire within 5 minutes).
+   * Returns true if expired or expiry time is unknown.
+   */
+  private isTokenExpired(): boolean {
+    const expiresAt = ((sessionStore as any).get("expiresAt") as
+      | number
+      | undefined) ?? null;
+    if (!expiresAt) return false; // No expiry info, assume valid
+
+    const now = Date.now();
+    const bufferMs = 5 * 60 * 1000; // 5-minute buffer
+    return now + bufferMs >= expiresAt;
   }
 
   /**
-   * Refresh Supabase session tokens
-   * Note: This is automatically handled by Supabase's autoRefreshToken
-   * and our auth state change listener. This method is kept for manual refresh if needed.
+   * Apply a resolved user: set in-memory state, update storage manager,
+   * and write the user profile to the cache store.
    */
-  async refreshSession(): Promise<void> {
-    const storedSession = sessionStore.get("supabaseSession");
+  private async applyUser(user: AuthUser): Promise<void> {
+    this.currentUser = user;
+    storageManager.setCurrentUser(user.id);
+    await storageManager.ensureDirectories();
+    this.writeCache(user);
+    log.info("[Session] ✓ User applied:", user.email);
+  }
 
-    if (storedSession) {
-      try {
-        log.info("[Session] Manually refreshing session...");
-        const session = await authService.setSession(
-          storedSession.accessToken,
-          storedSession.refreshToken
-        );
+  /** Attempt to restore in-memory state from the local cache only. */
+  private async restoreFromCache(): Promise<void> {
+    const user = this.getCachedUser();
+    if (user) {
+      log.info("[Session] Restored from cache (offline):", user.email);
+      // Don't call applyUser — that would overwrite the cache with itself
+      // and call ensureDirectories, which is fine but unnecessary on offline path.
+      this.currentUser = user;
+      storageManager.setCurrentUser(user.id);
+      await storageManager.ensureDirectories();
+    }
+  }
 
-        if (session) {
-          // Update stored tokens
-          sessionStore.set("supabaseSession", {
-            accessToken: session.access_token,
-            refreshToken: session.refresh_token,
-            expiresAt: session.expires_at || 0,
-          });
-          log.info("[Session] Session manually refreshed successfully");
-        }
-      } catch (error) {
-        log.error("[Session] Failed to refresh session:", error);
-        await this.clearUser();
+  private getCachedUser(): AuthUser | null {
+    return ((sessionStore as any).get("user") as AuthUser | undefined) ?? null;
+  }
+
+  private writeCache(user: AuthUser): void {
+    (sessionStore as any).set("user", user);
+    (sessionStore as any).set("userId", user.id);
+  }
+
+  private clearCache(): void {
+    (sessionStore as any).set("user", null);
+    (sessionStore as any).set("userId", null);
+    (sessionStore as any).set("expiresAt", null);
+  }
+
+  /**
+   * Returns the session expiry time (UNIX timestamp in ms), or null if unavailable.
+   * Used by the renderer to show expiry warnings.
+   */
+  getSessionExpiryTime(): number | null {
+    return ((sessionStore as any).get("expiresAt") as number | undefined) ?? null;
+  }
+
+  /**
+   * Returns true if session is expiring within the next N minutes (default 30).
+   */
+  isSessionExpiringsoon(minutesBuffer: number = 30): boolean {
+    const expiresAt = this.getSessionExpiryTime();
+    if (!expiresAt) return false;
+
+    const now = Date.now();
+    const bufferMs = minutesBuffer * 60 * 1000;
+    return now + bufferMs >= expiresAt;
+  }
+
+  /** Download cloud captures for the user after login — best-effort. */
+  private async syncFromCloudOnLogin(userId: string): Promise<void> {
+    try {
+      log.info("[Session] Starting cloud sync for user:", userId);
+      const result = await syncService.fetchFromCloud(userId);
+      if (result.success) {
+        log.info(`[Session] ✓ Cloud sync: ${result.syncedCount} items synced`);
+      } else {
+        log.warn(`[Session] Cloud sync errors: ${result.errors.join(", ")}`);
       }
+    } catch (err) {
+      log.error("[Session] Cloud sync failed:", err);
+      // Don't rethrow — sync failure must never block login
     }
-  }
-
-  /**
-   * Check if the current session is valid and not expired
-   */
-  isSessionValid(): boolean {
-    const storedSession = sessionStore.get("supabaseSession");
-    if (!storedSession || !this.currentUser) {
-      return false;
-    }
-
-    // Check if token has expired
-    const now = Date.now() / 1000; // Convert to seconds
-    if (storedSession.expiresAt && storedSession.expiresAt < now) {
-      log.info("[Session] Token has expired");
-      return false;
-    }
-
-    return true;
   }
 }
 

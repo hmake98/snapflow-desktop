@@ -147,7 +147,11 @@ export class StorageManager {
    */
   getThumbnailPath(issueId: string): string {
     const dirPath = this.getCapturePath(issueId);
-    return path.join(dirPath, "thumbnail.png");
+    // For recordings, use recording_thumbnail.png; for screenshots, use thumbnail.png
+    const fileName = issueId.startsWith("rec_")
+      ? "recording_thumbnail.png"
+      : "thumbnail.png";
+    return path.join(dirPath, fileName);
   }
 
   /**
@@ -171,7 +175,11 @@ export class StorageManager {
    */
   async saveThumbnail(issueId: string, data: Buffer): Promise<string> {
     const dirPath = await this.createIssueDirectory(issueId);
-    const filePath = path.join(dirPath, "thumbnail.png");
+    // For recordings, use recording_thumbnail.png; for screenshots, use thumbnail.png
+    const fileName = issueId.startsWith("rec_")
+      ? "recording_thumbnail.png"
+      : "thumbnail.png";
+    const filePath = path.join(dirPath, fileName);
     await fs.writeFile(filePath, data);
     log.info("[Storage] ✓ Thumbnail saved:", filePath);
     return filePath;

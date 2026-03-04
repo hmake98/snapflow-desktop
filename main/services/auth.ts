@@ -1,8 +1,24 @@
-import { getSupabase } from "../utils/supabase";
+/**
+ * Auth Service — Main Process
+ *
+ * Thin wrapper around Supabase Auth for the main process.
+ * All network calls go through the custom fetch in supabase.ts which
+ * normalises connectivity errors to AbortError, so we never need to
+ * catch raw undici errors here — Supabase wraps them first.
+ *
+ * Public surface used by session.ts and background.ts:
+ *   createUser / login / logout / getCurrentUser / updateUser /
+ *   changePassword / deleteUser / googleSignIn / exchangeCodeForSession /
+ *   getSession / setSession / hasAnyUser / getUserById
+ */
+
 import { User as SupabaseUser } from "@supabase/supabase-js";
 import log from "electron-log";
+import { getSupabase } from "../utils/supabase";
 
-interface User {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface AuthUser {
   id: string;
   name: string;
   email: string;
@@ -10,379 +26,353 @@ interface User {
   updatedAt: Date;
 }
 
-export class AuthService {
-  /**
-   * Create a new user account using Supabase Auth
-   */
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Map a Supabase SDK user object to our lightweight AuthUser shape. */
+function mapUser(u: SupabaseUser): AuthUser {
+  return {
+    id: u.id,
+    name: u.user_metadata?.name ?? u.email?.split("@")[0] ?? "User",
+    email: u.email!,
+    createdAt: new Date(u.created_at),
+    updatedAt: new Date(u.updated_at ?? u.created_at),
+  };
+}
+
+/**
+ * Returns a configured Supabase client or throws a consistent error.
+ * Avoids repeating the same null-check boilerplate in every method.
+ */
+function requireSupabase() {
+  const client = getSupabase();
+  if (!client) {
+    throw new Error(
+      "Supabase is not configured. Please check your environment variables."
+    );
+  }
+  return client;
+}
+
+// ─── Service ──────────────────────────────────────────────────────────────────
+
+class AuthService {
+  // ── Account creation ────────────────────────────────────────────────────────
+
   async createUser(
     name: string,
     email: string,
     password: string
-  ): Promise<User> {
-    log.info("[Auth Service] === CREATE USER START ===");
-    log.info("[Auth Service] Name:", name);
-    log.info("[Auth Service] Email:", email);
+  ): Promise<AuthUser> {
+    log.info("[Auth] createUser →", email);
+    const supabase = requireSupabase();
 
-    const supabase = getSupabase();
-    if (!supabase) {
-      log.error("[Auth Service] ✗ Supabase not configured");
-      throw new Error(
-        "Supabase is not configured. Please check your environment variables."
-      );
-    }
-
-    log.info("[Auth Service] Calling supabase.auth.signUp...");
-    // Sign up user with Supabase Auth
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: {
-          name, // Store name in user metadata
-        },
-      },
+      options: { data: { name } },
     });
 
     if (error) {
-      log.error("[Auth Service] ✗ SignUp error:", error.message);
-      if (error.message.includes("already registered")) {
-        throw new Error("User with this email already exists");
+      log.error("[Auth] signUp error:", error.message);
+      if (error.message.toLowerCase().includes("already registered")) {
+        throw new Error("An account with this email already exists.");
       }
       throw new Error(error.message);
     }
 
-    if (!data.user) {
-      log.error("[Auth Service] ✗ No user data returned");
-      throw new Error("Failed to create user");
-    }
+    if (!data.user) throw new Error("Sign-up succeeded but no user returned.");
 
-    const user = this.mapSupabaseUser(data.user);
-    log.info("[Auth Service] ✓ User created successfully");
-    log.info("[Auth Service] User ID:", user.id);
-    log.info("[Auth Service] === CREATE USER END ===");
+    const user = mapUser(data.user);
+    log.info("[Auth] ✓ createUser", user.id);
     return user;
   }
 
-  /**
-   * Login with email and password using Supabase Auth
-   */
-  async login(email: string, password: string): Promise<User> {
-    log.info("[Auth Service] === LOGIN START ===");
-    log.info("[Auth Service] Email:", email);
+  // ── Sign-in ──────────────────────────────────────────────────────────────────
 
-    const supabase = getSupabase();
-    if (!supabase) {
-      log.error("[Auth Service] ✗ Supabase not configured");
-      throw new Error(
-        "Supabase is not configured. Please check your environment variables."
-      );
-    }
+  async login(email: string, password: string): Promise<AuthUser> {
+    log.info("[Auth] login →", email);
+    const supabase = requireSupabase();
 
-    log.info("[Auth Service] Calling supabase.auth.signInWithPassword...");
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
     if (error) {
-      log.error("[Auth Service] ✗ Login error:", error.message);
-      throw new Error("Invalid email or password");
-    }
-
-    if (!data.user) {
-      log.error("[Auth Service] ✗ No user data returned");
-      throw new Error("Failed to sign in");
-    }
-
-    const user = this.mapSupabaseUser(data.user);
-    log.info("[Auth Service] ✓ Login successful");
-    log.info("[Auth Service] User ID:", user.id);
-    log.info("[Auth Service] === LOGIN END ===");
-    return user;
-  }
-
-  /**
-   * Get user by ID using Supabase Auth
-   */
-  async getUserById(userId: string): Promise<User | null> {
-    const supabase = getSupabase();
-    if (!supabase) {
-      return null;
-    }
-
-    const { data, error } = await supabase.auth.admin.getUserById(userId);
-
-    if (error || !data.user) {
-      return null;
-    }
-
-    return this.mapSupabaseUser(data.user);
-  }
-
-  /**
-   * Get user by email
-   * Note: This requires RLS policies or admin access in Supabase
-   */
-  async getUserByEmail(email: string): Promise<User | null> {
-    const supabase = getSupabase();
-    if (!supabase) {
-      return null;
-    }
-
-    // Get current session user
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (user && user.email === email) {
-      return this.mapSupabaseUser(user);
-    }
-
-    return null;
-  }
-
-  /**
-   * Get current authenticated user
-   */
-  async getCurrentUser(): Promise<User | null> {
-    log.info("[Auth Service] Getting current user...");
-
-    const supabase = getSupabase();
-    if (!supabase) {
-      log.warn("[Auth Service] Supabase not configured");
-      return null;
-    }
-
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser();
-
-    if (error) {
-      log.error("[Auth Service] Error getting user:", error.message);
-      return null;
-    }
-
-    if (!user) {
-      log.info("[Auth Service] No current user");
-      return null;
-    }
-
-    const mappedUser = this.mapSupabaseUser(user);
-    log.info("[Auth Service] ✓ Current user:", mappedUser.email);
-    return mappedUser;
-  }
-
-  /**
-   * Check if any user exists (for initial setup)
-   * Since Supabase handles users globally, we check if there's a current session
-   */
-  async hasAnyUser(): Promise<boolean> {
-    const supabase = getSupabase();
-    if (!supabase) {
-      return false;
-    }
-
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    return session !== null;
-  }
-
-  /**
-   * Update user profile
-   */
-  async updateUser(
-    userId: string,
-    updates: Partial<Pick<User, "name" | "email">>
-  ): Promise<User> {
-    log.info("[Auth Service] === UPDATE USER START ===");
-    log.info("[Auth Service] User ID:", userId);
-    log.info("[Auth Service] Updates:", JSON.stringify(updates));
-
-    const supabase = getSupabase();
-    if (!supabase) {
-      log.error("[Auth Service] ✗ Supabase not configured");
-      throw new Error(
-        "Supabase is not configured. Please check your environment variables."
-      );
-    }
-
-    const updateData: Record<string, unknown> = {};
-
-    if (updates.email) {
-      updateData.email = updates.email;
-    }
-
-    if (updates.name) {
-      updateData.data = { name: updates.name };
-    }
-
-    log.info("[Auth Service] Calling supabase.auth.updateUser...");
-    const { data, error } = await supabase.auth.updateUser(updateData);
-
-    if (error) {
-      log.error("[Auth Service] ✗ Update error:", error.message);
-      if (error.message.includes("already in use")) {
-        throw new Error("Email is already in use");
+      log.error("[Auth] signIn error:", error.message);
+      const msg = error.message.toLowerCase();
+      if (
+        msg.includes("invalid_credentials") ||
+        msg.includes("invalid login")
+      ) {
+        throw new Error("Invalid email or password.");
       }
       throw new Error(error.message);
     }
 
-    if (!data.user) {
-      log.error("[Auth Service] ✗ No user data returned");
-      throw new Error("Failed to update user");
-    }
+    if (!data.user) throw new Error("Sign-in succeeded but no user returned.");
 
-    const user = this.mapSupabaseUser(data.user);
-    log.info("[Auth Service] ✓ User updated successfully");
-    log.info("[Auth Service] === UPDATE USER END ===");
+    const user = mapUser(data.user);
+    log.info("[Auth] ✓ login", user.id);
     return user;
   }
 
+  // ── Lookup ───────────────────────────────────────────────────────────────────
+
   /**
-   * Change user password
+   * Look up a user by ID.
+   *
+   * Strategy (anon-key safe):
+   *  1. If the requested ID matches the currently-authenticated user, return
+   *     their live session data — zero extra queries.
+   *  2. Otherwise query the `user_profiles` table which is readable by any
+   *     authenticated user (populated by a DB trigger on auth.users).
+   *     This avoids using auth.admin.getUserById which requires the service-role key.
    */
-  async changePassword(
-    userId: string,
-    currentPassword: string,
-    newPassword: string
-  ): Promise<void> {
+  async getUserById(userId: string): Promise<AuthUser | null> {
     const supabase = getSupabase();
-    if (!supabase) {
-      throw new Error(
-        "Supabase is not configured. Please check your environment variables."
-      );
+    if (!supabase) return null;
+
+    // Fast path: current user
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const sessionUser = sessionData?.session?.user;
+      if (sessionUser && sessionUser.id === userId) {
+        return mapUser(sessionUser);
+      }
+    } catch {
+      // ignore, fall through
     }
 
-    // First, verify current password by attempting to sign in
+    // Slow path: query public user_profiles table
+    try {
+      const { data, error } = await supabase
+        .from("user_profiles")
+        .select("id, name, email")
+        .eq("id", userId)
+        .single();
+
+      if (error || !data) return null;
+
+      return {
+        id: data.id as string,
+        name:
+          (data.name as string) ||
+          (data.email as string).split("@")[0] ||
+          "User",
+        email: data.email as string,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Returns the locally-cached user matching the given email by comparing
+   * against the current Supabase session user.  No separate DB query needed.
+   */
+  async getUserByEmail(email: string): Promise<AuthUser | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user) {
-      throw new Error("User not found");
-    }
-
-    // Re-authenticate with current password
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: user.email!,
-      password: currentPassword,
-    });
-
-    if (signInError) {
-      throw new Error("Invalid current password");
-    }
-
-    // Update to new password
-    const { error: updateError } = await supabase.auth.updateUser({
-      password: newPassword,
-    });
-
-    if (updateError) {
-      throw new Error(updateError.message);
-    }
+    if (user && user.email === email) return mapUser(user);
+    return null;
   }
 
-  /**
-   * Delete user account
-   */
-  async deleteUser(_userId: string): Promise<void> {
-    const supabase = getSupabase();
-    if (!supabase) {
-      throw new Error(
-        "Supabase is not configured. Please check your environment variables."
-      );
-    }
-
-    // Supabase doesn't have a direct client method to delete user
-    // This typically requires admin access or a backend function
-    // For now, we'll sign out the user
-    await supabase.auth.signOut();
-
-    // Note: To fully delete a user, you would need to:
-    // 1. Create a Supabase Edge Function
-    // 2. Call supabase.auth.admin.deleteUser(userId) from that function
-    log.warn(
-      "User deletion requires Supabase Edge Function. User signed out instead."
-    );
-  }
+  // ── Current session / user ───────────────────────────────────────────────────
 
   /**
-   * Logout - signs out user from Supabase
-   */
-  async logout(): Promise<void> {
-    log.info("[Auth Service] === LOGOUT START ===");
-
-    const supabase = getSupabase();
-    if (!supabase) {
-      log.warn("[Auth Service] Supabase not configured");
-      return;
-    }
-
-    log.info("[Auth Service] Calling supabase.auth.signOut...");
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      log.error("[Auth Service] ✗ Logout error:", error.message);
-    } else {
-      log.info("[Auth Service] ✓ Logout successful");
-    }
-    log.info("[Auth Service] === LOGOUT END ===");
-  }
-
-  /**
-   * Get current session
+   * Returns the locally-cached session from the electron-store adapter.
+   * Does NOT make a network request.
    */
   async getSession() {
     const supabase = getSupabase();
-    if (!supabase) {
-      return null;
-    }
+    if (!supabase) return null;
 
-    const {
-      data: { session },
-      error: _error,
-    } = await supabase.auth.getSession();
-    return session;
+    const { data } = await supabase.auth.getSession();
+    return data.session ?? null;
   }
 
   /**
-   * Set session (for restoring from storage)
+   * Validates the current JWT with the Supabase server (network call).
+   * Returns null instead of throwing when the network is unavailable —
+   * the caller (session.ts) decides whether to fall back to the cached user.
+   */
+  async getCurrentUser(): Promise<AuthUser | null> {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+
+    try {
+      const { data, error } = await supabase.auth.getUser();
+
+      if (error) {
+        // status === 0 means network unreachable (AbortError path from our custom fetch)
+        if (error.status === 0) {
+          log.warn("[Auth] getUser: server unreachable, returning null");
+          return null;
+        }
+        log.error("[Auth] getUser error:", error.message);
+        return null;
+      }
+
+      return data.user ? mapUser(data.user) : null;
+    } catch {
+      // Safety net — should not normally reach here because our custom fetch
+      // converts all network errors to AbortError before Supabase sees them.
+      log.warn("[Auth] getUser threw unexpectedly, returning null");
+      return null;
+    }
+  }
+
+  /**
+   * Explicitly restores a session from stored tokens.
+   * The SDK will attempt a network refresh if the access token is expired.
+   * Returns both the session and the user object for efficient OAuth flows.
    */
   async setSession(accessToken: string, refreshToken: string) {
-    const supabase = getSupabase();
-    if (!supabase) {
-      throw new Error(
-        "Supabase is not configured. Please check your environment variables."
-      );
-    }
+    const supabase = requireSupabase();
 
     const { data, error } = await supabase.auth.setSession({
       access_token: accessToken,
       refresh_token: refreshToken,
     });
+    if (error) throw new Error(error.message);
+
+    // Extract user from session to avoid subsequent network calls
+    const user = data.session?.user ? mapUser(data.session.user) : null;
+    return { session: data.session, user };
+  }
+
+  /** Returns true when there is an active Supabase session (no network call). */
+  async hasAnyUser(): Promise<boolean> {
+    const session = await this.getSession();
+    return session !== null;
+  }
+
+  // ── Account management ───────────────────────────────────────────────────────
+
+  async updateUser(
+    _userId: string,
+    updates: Partial<Pick<AuthUser, "name" | "email">>
+  ): Promise<AuthUser> {
+    log.info("[Auth] updateUser", updates);
+    const supabase = requireSupabase();
+
+    const payload: Record<string, unknown> = {};
+    if (updates.email) payload.email = updates.email;
+    if (updates.name) payload.data = { name: updates.name };
+
+    const { data, error } = await supabase.auth.updateUser(payload);
 
     if (error) {
+      log.error("[Auth] updateUser error:", error.message);
+      if (error.message.toLowerCase().includes("already in use")) {
+        throw new Error("That email address is already in use.");
+      }
       throw new Error(error.message);
     }
 
-    return data.session;
+    if (!data.user) throw new Error("Update succeeded but no user returned.");
+
+    const user = mapUser(data.user);
+    log.info("[Auth] ✓ updateUser", user.id);
+    return user;
+  }
+
+  async changePassword(
+    currentPassword: string,
+    newPassword: string
+  ): Promise<void> {
+    const supabase = requireSupabase();
+
+    // Verify current password by re-authenticating first.
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user?.email) throw new Error("No authenticated user found.");
+
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: currentPassword,
+    });
+    if (verifyError) throw new Error("Current password is incorrect.");
+
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw new Error(error.message);
+
+    log.info("[Auth] ✓ changePassword");
   }
 
   /**
-   * Helper: Map Supabase User to our User interface
+   * Signs the user out.  Full account deletion requires a server-side Edge
+   * Function (supabase.auth.admin.deleteUser) — out of scope for the client.
    */
-  private mapSupabaseUser(supabaseUser: SupabaseUser): User {
-    return {
-      id: supabaseUser.id,
-      name:
-        supabaseUser.user_metadata?.name ||
-        supabaseUser.email?.split("@")[0] ||
-        "User",
-      email: supabaseUser.email!,
-      createdAt: new Date(supabaseUser.created_at),
-      updatedAt: new Date(supabaseUser.updated_at || supabaseUser.created_at),
-    };
+  async deleteUser(_userId: string): Promise<void> {
+    log.warn(
+      "[Auth] deleteUser: client can only sign out. " +
+        "Full deletion requires a Supabase Edge Function."
+    );
+    await this.logout();
+  }
+
+  // ── Google OAuth ─────────────────────────────────────────────────────────────
+
+  /**
+   * Returns the OAuth redirect URL to be opened in the system browser.
+   * After the user completes the flow, the app handles the deep-link callback
+   * via exchangeCodeForSession.
+   */
+  async googleSignIn(): Promise<string> {
+    log.info("[Auth] googleSignIn");
+    const supabase = requireSupabase();
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: "snapflow://auth/callback",
+        skipBrowserRedirect: true,
+      },
+    });
+
+    if (error) throw new Error(error.message);
+    if (!data?.url) throw new Error("Failed to generate Google OAuth URL.");
+
+    log.info("[Auth] ✓ googleSignIn URL generated");
+    return data.url;
+  }
+
+  /** Exchange the PKCE code from the deep-link callback for a live session. */
+  async exchangeCodeForSession(callbackUrl: string) {
+    log.info("[Auth] exchangeCodeForSession");
+    const supabase = requireSupabase();
+
+    const { data, error } =
+      await supabase.auth.exchangeCodeForSession(callbackUrl);
+    if (error) throw new Error(error.message);
+
+    log.info("[Auth] ✓ exchangeCodeForSession");
+    return data.session;
+  }
+
+  // ── Sign-out ─────────────────────────────────────────────────────────────────
+
+  async logout(): Promise<void> {
+    log.info("[Auth] logout");
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      log.error("[Auth] signOut error:", error.message);
+    } else {
+      log.info("[Auth] ✓ logout");
+    }
   }
 }
 

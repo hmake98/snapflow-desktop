@@ -25,7 +25,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
   size = "md",
   variant = "default",
 }) => {
-  const [isFocused, setIsFocused] = useState(false);
+  const [_isFocused, setIsFocused] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -82,19 +82,12 @@ export const SearchInput: React.FC<SearchInputProps> = ({
     <div ref={containerRef} className={clsx("relative", className)}>
       <div className="relative">
         {/* Search Icon */}
-        <div className="absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-          <motion.svg
-            className={clsx(
-              "transition-colors duration-200",
-              isFocused ? "text-blue-400" : "text-gray-500"
-            )}
-            width="16"
-            height="16"
+        <div className="absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none flex items-center justify-center">
+          <svg
+            className="w-4 h-4 text-gray-500"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
-            animate={{ scale: isFocused ? 1.1 : 1 }}
-            transition={{ duration: 0.2 }}
           >
             <path
               strokeLinecap="round"
@@ -102,7 +95,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
               strokeWidth={2}
               d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
             />
-          </motion.svg>
+          </svg>
         </div>
 
         {/* Input */}
@@ -117,7 +110,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
           }}
           placeholder={placeholder}
           className={clsx(
-            "w-full rounded-lg border text-gray-100 placeholder:text-gray-500 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:ring-offset-2 focus:ring-offset-gray-950",
+            "w-full rounded-lg border text-gray-100 placeholder:text-gray-500 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/30",
             sizeClasses[size],
             variantClasses[variant],
             "pl-10",

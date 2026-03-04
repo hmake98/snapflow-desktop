@@ -1,6 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 @layer base {
   * {
@@ -73,8 +71,8 @@
   }
 
   .btn::before {
-    @apply absolute inset-0 bg-white/0 transition-all duration-300;
     content: "";
+    @apply absolute inset-0 bg-white/0 transition-all duration-300;
   }
 
   .btn:hover::before {
@@ -82,27 +80,27 @@
   }
 
   .btn-primary {
-    @apply btn bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 focus-visible:ring-blue-500 shadow-lg shadow-blue-600/25;
+    @apply inline-flex items-center justify-center rounded-lg font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 disabled:pointer-events-none disabled:opacity-50 relative overflow-hidden bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 focus-visible:ring-blue-500 shadow-lg shadow-blue-600/25;
   }
 
   .btn-secondary {
-    @apply btn bg-gray-800 text-gray-100 hover:bg-gray-700 active:bg-gray-600 focus-visible:ring-gray-500 shadow-lg shadow-gray-800/25;
+    @apply inline-flex items-center justify-center rounded-lg font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 disabled:pointer-events-none disabled:opacity-50 relative overflow-hidden bg-gray-800 text-gray-100 hover:bg-gray-700 active:bg-gray-600 focus-visible:ring-gray-500 shadow-lg shadow-gray-800/25;
   }
 
   .btn-success {
-    @apply btn bg-green-600 text-white hover:bg-green-700 active:bg-green-800 focus-visible:ring-green-500 shadow-lg shadow-green-600/25;
+    @apply inline-flex items-center justify-center rounded-lg font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 disabled:pointer-events-none disabled:opacity-50 relative overflow-hidden bg-green-600 text-white hover:bg-green-700 active:bg-green-800 focus-visible:ring-green-500 shadow-lg shadow-green-600/25;
   }
 
   .btn-danger {
-    @apply btn bg-red-600 text-white hover:bg-red-700 active:bg-red-800 focus-visible:ring-red-500 shadow-lg shadow-red-600/25;
+    @apply inline-flex items-center justify-center rounded-lg font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 disabled:pointer-events-none disabled:opacity-50 relative overflow-hidden bg-red-600 text-white hover:bg-red-700 active:bg-red-800 focus-visible:ring-red-500 shadow-lg shadow-red-600/25;
   }
 
   .btn-outline {
-    @apply btn border-2 border-gray-700 bg-transparent text-gray-300 hover:bg-gray-800/50 hover:border-gray-600 hover:text-gray-100 focus-visible:ring-gray-500 backdrop-blur-sm;
+    @apply inline-flex items-center justify-center rounded-lg font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 disabled:pointer-events-none disabled:opacity-50 relative overflow-hidden border-2 border-gray-700 bg-transparent text-gray-300 hover:bg-gray-800/50 hover:border-gray-600 hover:text-gray-100 focus-visible:ring-gray-500 backdrop-blur-sm;
   }
 
   .btn-ghost {
-    @apply btn bg-transparent text-gray-300 hover:bg-gray-800/50 hover:text-gray-100 active:bg-gray-700/50 focus-visible:ring-gray-500;
+    @apply inline-flex items-center justify-center rounded-lg font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 disabled:pointer-events-none disabled:opacity-50 relative overflow-hidden bg-transparent text-gray-300 hover:bg-gray-800/50 hover:text-gray-100 active:bg-gray-700/50 focus-visible:ring-gray-500;
   }
 
   /* Button sizes */
@@ -124,7 +122,7 @@
   }
 
   .card-interactive {
-    @apply card hover:scale-[1.02] hover:-translate-y-1;
+    @apply rounded-xl border border-gray-800/50 bg-gray-900/90 shadow-xl backdrop-blur-sm transition-all duration-300 hover:shadow-2xl hover:border-gray-700/50 hover:bg-gray-900 hover:scale-[1.02] hover:-translate-y-1;
   }
 
   /* Enhanced input component */

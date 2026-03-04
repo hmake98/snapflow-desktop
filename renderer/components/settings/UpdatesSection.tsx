@@ -159,7 +159,7 @@ export function UpdatesSection() {
           message: result.error || "Failed to check for updates",
         });
       }
-    } catch (error) {
+    } catch (_error) {
       setUpdateStatus({
         type: "error",
         message: "Network error. Please check your internet connection.",

@@ -12,7 +12,9 @@
     "moduleResolution": "node",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve"
+    "jsx": "preserve",
+    "typeRoots": ["./node_modules/@types", "./types"]
   },
+  "include": ["**/*.ts", "**/*.tsx", "**/*.d.ts"],
   "exclude": ["node_modules", "renderer/next.config.js", "app", "dist"]
 }

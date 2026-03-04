@@ -8,6 +8,7 @@ import {
   AccountSection,
   DisplaysSection,
   GitHubConnectorManager,
+  ZohoConnectorManager,
   UpdatesSection,
   CloudSyncIndicator,
 } from "../components/settings";
@@ -308,38 +309,39 @@ export default function SettingsPage() {
 
           {/* Tab Content */}
           <div className="space-y-6">
-            {activeTab === "account" && (
-              <>
-                {/* Account Header */}
-                <div className="mb-6">
-                  <h2 className="text-xl font-semibold text-gray-100 mb-2">
-                    Account Settings
-                  </h2>
-                  <p className="text-sm text-gray-400">
-                    Manage your personal information and account details
-                  </p>
-                </div>
-
-                {/* Account Section */}
-                <AccountSection />
-              </>
-            )}
+            {activeTab === "account" && <AccountSection />}
 
             {activeTab === "connectors" && (
               <>
-                {/* Simple Header */}
-                <div className="mb-6">
-                  <h2 className="text-xl font-semibold text-gray-100 mb-2">
-                    GitHub Integration
-                  </h2>
-                  <p className="text-sm text-gray-400">
-                    Connect your repositories to automatically sync screenshots
-                    as issues
-                  </p>
+                {/* GitHub Section */}
+                <div className="mb-8">
+                  <div className="mb-6">
+                    <h2 className="text-xl font-semibold text-gray-100 mb-2">
+                      GitHub Integration
+                    </h2>
+                    <p className="text-sm text-gray-400">
+                      Connect your repositories to automatically sync
+                      screenshots as issues
+                    </p>
+                  </div>
+                  <GitHubConnectorManager />
                 </div>
 
-                {/* GitHub Connector Manager */}
-                <GitHubConnectorManager />
+                {/* Divider */}
+                <div className="py-8 border-t border-gray-800"></div>
+
+                {/* Zoho Section */}
+                <div>
+                  <div className="mb-6">
+                    <h2 className="text-xl font-semibold text-gray-100 mb-2">
+                      Zoho Projects Integration
+                    </h2>
+                    <p className="text-sm text-gray-400">
+                      Connect your Zoho workspace to sync screenshots as tasks
+                    </p>
+                  </div>
+                  <ZohoConnectorManager />
+                </div>
               </>
             )}
 

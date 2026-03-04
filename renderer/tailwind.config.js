@@ -1,5 +1,3 @@
-const colors = require("tailwindcss/colors");
-
 module.exports = {
   darkMode: "class",
   content: [
@@ -9,61 +7,28 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Base colors
-        white: colors.white,
-        black: colors.black,
-        transparent: "transparent",
-        current: "currentColor",
-
         // Enhanced gray scale with better contrast
         gray: {
-          ...colors.gray,
           925: "#0f1419",
           975: "#0a0e13",
         },
-        slate: colors.slate,
-        zinc: colors.zinc,
-        neutral: colors.neutral,
-        stone: colors.stone,
 
         // Enhanced primary colors
         blue: {
-          ...colors.blue,
           450: "#5b9bd5",
           550: "#3b82f6",
         },
-        indigo: colors.indigo,
-        violet: colors.violet,
-        purple: colors.purple,
 
         // Success, warning, error with better variants
         green: {
-          ...colors.green,
           450: "#4ade80",
         },
-        emerald: colors.emerald,
-        teal: colors.teal,
-        cyan: colors.cyan,
         yellow: {
-          ...colors.yellow,
           450: "#fbbf24",
         },
-        amber: colors.amber,
-        orange: colors.orange,
         red: {
-          ...colors.red,
           450: "#f87171",
         },
-        rose: colors.rose,
-        pink: colors.pink,
-
-        // Custom semantic colors
-        primary: colors.blue,
-        secondary: colors.purple,
-        success: colors.green,
-        warning: colors.yellow,
-        error: colors.red,
-        info: colors.cyan,
       },
       fontFamily: {
         sans: [

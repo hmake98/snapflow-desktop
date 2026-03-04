@@ -9,17 +9,7 @@ files:
     filter:
       - package.json
       - app
-      - node_modules/.prisma/**/*
-      - "!node_modules/.prisma/client/libquery_engine-*"
-      - node_modules/@prisma/client/**/*
-  - from: prisma
-    to: prisma
-    filter:
-      - schema.prisma
-  - from: .
-    to: .
-    filter:
-      - .env
+      - node_modules/**/*
 
 # Extra resources that should be copied to app.asar.unpacked or Resources
 extraResources:
@@ -30,10 +20,10 @@ extraResources:
   - from: resources/icon.png
     to: icon.png
 
-# Include native modules
-asarUnpack:
-  - node_modules/.prisma/**/*
-  - node_modules/@prisma/client/**/*
+protocols:
+  - name: SnapFlow
+    schemes:
+      - snapflow
 
 mac:
   category: public.app-category.productivity
@@ -45,11 +35,8 @@ mac:
     - target: zip
       arch:
         - universal
-  hardenedRuntime: false
-  gatekeeperAssess: false
-  # Disable signature verification for adhoc-signed builds
-  signIgnore: true
-  identity: null
+  hardenedRuntime: true
+  gatekeeperAssess: true
   entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.plist
   extendInfo:
@@ -77,12 +64,9 @@ win:
     - target: nsis
       arch:
         - x64
-        - ia32
     - target: portable
       arch:
         - x64
-  publisherName: SnapFlow Team
-  verifyUpdateCodeSignature: false
 
 nsis:
   oneClick: false
@@ -90,9 +74,6 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: SnapFlow
-  perMachine: false
-  deleteAppDataOnUninstall: false
-  displayLanguageSelector: false
   installerIcon: resources/icon.ico
   uninstallerIcon: resources/icon.ico
 
@@ -112,25 +93,3 @@ linux:
   maintainer: SnapFlow Team
   vendor: SnapFlow Team
   description: Screenshot & Screen Recording Tool with Issue Tracking
-
-# Build configuration
-extraMetadata:
-  main: app/background.js
-
-# Auto-update configuration for electron-updater
-# This enables the app to check for updates from GitHub Releases
-publish:
-  provider: github
-  owner: harsh-simform
-  repo: snapflow-desktop
-  private: false
-  releaseType: release
-
-# Compression
-compression: normal
-
-# Node integration
-electronLanguages:
-  - en
-  - en-US
-# Environment

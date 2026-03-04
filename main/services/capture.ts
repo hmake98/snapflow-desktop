@@ -5,12 +5,9 @@ import {
   clipboard,
   DesktopCapturerSource,
   nativeImage,
-  app,
 } from "electron";
 import log from "electron-log";
 import { storageManager } from "../utils/storage";
-import path from "path";
-import fs from "fs";
 
 interface CaptureOptions {
   mode: "fullscreen" | "window" | "region" | "all-screens" | "specific-screen";
@@ -279,9 +276,8 @@ export class CaptureService {
     // Convert to PNG buffer
     const thumbnailBuffer = resizedImage.toPNG();
 
-    const thumbnailPath = await storageManager.saveCapture(
+    const thumbnailPath = await storageManager.saveThumbnail(
       issueId,
-      "thumbnail.png",
       thumbnailBuffer
     );
     return thumbnailPath;
@@ -557,203 +553,146 @@ export class CaptureService {
     const primaryDisplay = screen.getPrimaryDisplay();
     const scaleFactor = primaryDisplay.scaleFactor || 1;
 
-    // Store chunks globally in the window
-    const recordingHTML = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-      </head>
-      <body>
-        <canvas id="cropCanvas" style="display:none"></canvas>
-        <script>
-          // Global error handler
-          window.onerror = function(message, source, lineno, colno, error) {
-            console.error('[Recording HTML] Uncaught error:', message, 'at', source, lineno, colno, error);
-            return false;
-          };
+    // Grant media permissions so getUserMedia works inside the hidden window
+    this.recordingWindow.webContents.session.setPermissionRequestHandler(
+      (_webContents, permission, callback) => {
+        callback(permission === "media" || permission === "display-capture");
+      }
+    );
 
-          window.onunhandledrejection = function(event) {
-            console.error('[Recording HTML] Unhandled promise rejection:', event.reason);
-          };
+    // Load a minimal HTML page (no inline <script>) so the renderer gets a
+    // proper browsing context with navigator.mediaDevices available.
+    // All logic is injected afterwards via executeJavaScript, which bypasses
+    // the renderer's CSP entirely.
+    await this.recordingWindow.loadURL(
+      "data:text/html;charset=utf-8,<!DOCTYPE html><html><body></body></html>"
+    );
 
-          let mediaRecorder;
-          let recordedChunks = [];
-          let stream;
-          let screenStream;
-          let animationFrameId;
+    // Inject recording logic via executeJavaScript (runs in main-process context,
+    // not subject to renderer CSP).
+    const startScript = `
+      (async () => {
+        window.__recordingError = null;
 
-          async function startRecording() {
-            try {
-              console.log('[Recording HTML] Starting recording...');
-              console.log('[Recording HTML] Crop bounds:', ${JSON.stringify(bounds)});
-              console.log('[Recording HTML] Scale factor:', ${scaleFactor});
+        try {
+          console.log('[Recording] Starting recording...');
 
-              // Get full screen stream
-              screenStream = await navigator.mediaDevices.getUserMedia({
-                audio: false,
-                video: {
-                  mandatory: {
-                    chromeMediaSource: 'desktop',
-                    chromeMediaSourceId: '${primarySource.id}',
-                    minWidth: 1920,
-                    maxWidth: 4096,
-                    minHeight: 1080,
-                    maxHeight: 2160
-                  }
-                }
-              });
-
-              console.log('[Recording HTML] Full screen stream acquired');
-
-              // Create video element to read from the screen stream
-              const video = document.createElement('video');
-              video.srcObject = screenStream;
-              video.play();
-
-              // Wait for video to be ready
-              await new Promise((resolve) => {
-                video.onloadedmetadata = () => {
-                  console.log('[Recording HTML] Video dimensions:', video.videoWidth, 'x', video.videoHeight);
-                  resolve();
-                };
-              });
-
-              // Setup canvas for cropping
-              const canvas = document.getElementById('cropCanvas');
-              const scaleFactor = ${scaleFactor};
-
-              // Canvas dimensions should match the selected area (accounting for scale factor)
-              canvas.width = ${bounds.width} * scaleFactor;
-              canvas.height = ${bounds.height} * scaleFactor;
-
-              console.log('[Recording HTML] Canvas dimensions:', canvas.width, 'x', canvas.height);
-
-              const ctx = canvas.getContext('2d');
-
-              // Calculate source rectangle (accounting for scale factor)
-              const sourceX = ${bounds.x} * scaleFactor;
-              const sourceY = ${bounds.y} * scaleFactor;
-              const sourceWidth = ${bounds.width} * scaleFactor;
-              const sourceHeight = ${bounds.height} * scaleFactor;
-
-              console.log('[Recording HTML] Source rect:', sourceX, sourceY, sourceWidth, sourceHeight);
-
-              // Draw cropped video to canvas in a loop
-              function drawFrame() {
-                ctx.drawImage(
-                  video,
-                  sourceX, sourceY, sourceWidth, sourceHeight,  // source rectangle
-                  0, 0, canvas.width, canvas.height              // destination rectangle
-                );
-                animationFrameId = requestAnimationFrame(drawFrame);
+          // Get full-screen stream using the desktop capture source
+          const screenStream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {
+              mandatory: {
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: ${JSON.stringify(primarySource.id)},
+                minWidth: 1,
+                maxWidth: 4096,
+                minHeight: 1,
+                maxHeight: 2160
               }
-              drawFrame();
-
-              // Get stream from canvas
-              stream = canvas.captureStream(30); // 30 FPS
-              console.log('[Recording HTML] Cropped stream created from canvas');
-
-              // Create MediaRecorder from the cropped canvas stream
-              const options = {
-                mimeType: 'video/webm;codecs=vp9',
-                videoBitsPerSecond: 2500000
-              };
-
-              mediaRecorder = new MediaRecorder(stream, options);
-
-              mediaRecorder.ondataavailable = (e) => {
-                if (e.data && e.data.size > 0) {
-                  recordedChunks.push(e.data);
-                  console.log('[Recording HTML] Chunk received:', e.data.size, 'bytes');
-                }
-              };
-
-              mediaRecorder.onerror = (e) => {
-                console.error('[Recording HTML] MediaRecorder error:', e);
-              };
-
-              mediaRecorder.start(1000); // Capture in 1-second chunks
-              console.log('[Recording HTML] MediaRecorder started with cropped stream');
-
-              // Store globally so stopRecording can access
-              window.mediaRecorder = mediaRecorder;
-              window.recordedChunks = recordedChunks;
-              window.stream = stream;
-              window.screenStream = screenStream;
-              window.animationFrameId = animationFrameId;
-
-            } catch (error) {
-              console.error('[Recording HTML] Error starting recording:', error);
             }
+          });
+
+          console.log('[Recording] Full screen stream acquired');
+
+          // Feed stream into a hidden <video> element
+          const video = document.createElement('video');
+          video.srcObject = screenStream;
+          video.muted = true;
+          document.body.appendChild(video);
+          await video.play();
+
+          await new Promise((resolve) => {
+            if (video.readyState >= 2) { resolve(); return; }
+            video.onloadedmetadata = resolve;
+          });
+
+          console.log('[Recording] Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+
+          // Create an off-screen canvas cropped to the selected region
+          const sf = ${scaleFactor};
+          const canvas = document.createElement('canvas');
+          canvas.width  = ${bounds.width}  * sf;
+          canvas.height = ${bounds.height} * sf;
+          document.body.appendChild(canvas);
+
+          const ctx = canvas.getContext('2d');
+          const srcX = ${bounds.x} * sf;
+          const srcY = ${bounds.y} * sf;
+          const srcW = ${bounds.width}  * sf;
+          const srcH = ${bounds.height} * sf;
+
+          console.log('[Recording] Canvas:', canvas.width, 'x', canvas.height,
+                      '| source rect:', srcX, srcY, srcW, srcH);
+
+          let animId;
+          function drawFrame() {
+            ctx.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, canvas.width, canvas.height);
+            animId = requestAnimationFrame(drawFrame);
           }
+          drawFrame();
 
-          window.stopRecording = function() {
-            return new Promise((resolve, reject) => {
-              if (!window.mediaRecorder) {
-                reject(new Error('No active recording'));
-                return;
-              }
+          const canvasStream = canvas.captureStream(30);
+          console.log('[Recording] Canvas stream created (30 fps)');
 
-              window.mediaRecorder.onstop = () => {
-                console.log('[Recording HTML] Recording stopped, chunks:', window.recordedChunks.length);
+          // Pick the best supported mimeType
+          const mimeType = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+            .find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
 
-                // Stop animation frame
-                if (window.animationFrameId) {
-                  cancelAnimationFrame(window.animationFrameId);
-                }
+          const recorder = new MediaRecorder(canvasStream, {
+            mimeType,
+            videoBitsPerSecond: 2_500_000
+          });
 
-                // Stop all tracks
-                if (window.stream) {
-                  window.stream.getTracks().forEach(track => track.stop());
-                }
-                if (window.screenStream) {
-                  window.screenStream.getTracks().forEach(track => track.stop());
-                }
-
-                const blob = new Blob(window.recordedChunks, { type: 'video/webm' });
-                console.log('[Recording HTML] Blob created:', blob.size, 'bytes');
-
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                  console.log('[Recording HTML] Blob converted to array buffer');
-                  resolve(reader.result);
-                };
-                reader.onerror = reject;
-                reader.readAsArrayBuffer(blob);
-              };
-
-              if (window.mediaRecorder.state !== 'inactive') {
-                window.mediaRecorder.stop();
-              } else {
-                reject(new Error('MediaRecorder already inactive'));
-              }
-            });
+          const chunks = [];
+          recorder.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) chunks.push(e.data);
+          };
+          recorder.onerror = (e) => {
+            console.error('[Recording] MediaRecorder error:', e.error);
           };
 
-          startRecording();
-        </script>
-      </body>
-      </html>
+          recorder.start(1000);
+          console.log('[Recording] MediaRecorder started, mimeType:', mimeType);
+
+          // Expose stop helper so stopRecording() can call it later
+          window.__stopRecording = () => new Promise((resolve, reject) => {
+            recorder.onstop = () => {
+              cancelAnimationFrame(animId);
+              canvasStream.getTracks().forEach(t => t.stop());
+              screenStream.getTracks().forEach(t => t.stop());
+
+              const blob = new Blob(chunks, { type: 'video/webm' });
+              console.log('[Recording] Blob size:', blob.size, 'bytes');
+
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result);
+              reader.onerror   = reject;
+              reader.readAsArrayBuffer(blob);
+            };
+
+            if (recorder.state !== 'inactive') {
+              recorder.stop();
+            } else {
+              reject(new Error('MediaRecorder already inactive'));
+            }
+          });
+
+        } catch (err) {
+          window.__recordingError = err && err.message ? err.message : String(err);
+          console.error('[Recording] Failed to start:', window.__recordingError);
+        }
+      })();
     `;
 
-    // Write HTML to a temporary file to ensure proper browser context
-    const tempDir = app.getPath("temp");
-    const tempHtmlPath = path.join(tempDir, `recording-${Date.now()}.html`);
-    fs.writeFileSync(tempHtmlPath, recordingHTML);
+    await this.recordingWindow.webContents.executeJavaScript(startScript);
 
-    await this.recordingWindow.loadFile(tempHtmlPath);
-
-    // Clean up temp file after a delay
-    setTimeout(() => {
-      try {
-        if (fs.existsSync(tempHtmlPath)) {
-          fs.unlinkSync(tempHtmlPath);
-        }
-      } catch (err) {
-        log.warn("[Recording] Failed to clean up temp file:", err);
-      }
-    }, 5000);
+    // Verify recording actually started
+    const startError = await this.recordingWindow.webContents.executeJavaScript(
+      "window.__recordingError"
+    );
+    if (startError) {
+      throw new Error(`Recording failed to start: ${startError}`);
+    }
 
     log.info("[Recording] Recording window loaded and started");
   }
@@ -781,7 +720,7 @@ export class CaptureService {
       // Execute stop in the recording window
       const videoData =
         await this.recordingWindow.webContents.executeJavaScript(
-          `window.stopRecording()`
+          `window.__stopRecording()`
         );
 
       log.info(
@@ -847,101 +786,75 @@ export class CaptureService {
     try {
       log.info("[Recording] Creating thumbnail from video:", videoPath);
 
-      // Create a hidden window to extract video frame
+      // Create a hidden window to extract a video frame for the thumbnail.
+      // We load about:blank and inject all logic via executeJavaScript so that
+      // inline-script CSP restrictions are completely bypassed.
       const thumbWindow = new BrowserWindow({
         show: false,
-        width: 800,
-        height: 600,
+        width: 1,
+        height: 1,
         webPreferences: {
           nodeIntegration: false,
           contextIsolation: false,
+          webSecurity: false, // needed to load file:// video URLs
         },
       });
 
-      const thumbnailHTML = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-        </head>
-        <body>
-          <video id="video" style="display:none"></video>
-          <canvas id="canvas" style="display:none"></canvas>
-          <script>
-            window.extractThumbnail = function(videoPath) {
-              return new Promise((resolve, reject) => {
-                const video = document.getElementById('video');
-                const canvas = document.getElementById('canvas');
-
-                video.onloadeddata = () => {
-                  // Seek to 1 second or 10% of video
-                  video.currentTime = Math.min(video.duration * 0.1, 1);
-                };
-
-                video.onseeked = () => {
-                  try {
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-                    canvas.toBlob((blob) => {
-                      if (blob) {
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          resolve(reader.result);
-                        };
-                        reader.readAsArrayBuffer(blob);
-                      } else {
-                        reject(new Error('Failed to create blob'));
-                      }
-                    }, 'image/png');
-                  } catch (error) {
-                    reject(error);
-                  }
-                };
-
-                video.onerror = (error) => {
-                  reject(new Error('Video load error: ' + error));
-                };
-
-                video.src = videoPath;
-                video.load();
-              });
-            };
-          </script>
-        </body>
-        </html>
-      `;
-
       await thumbWindow.loadURL(
-        `data:text/html;charset=utf-8,${encodeURIComponent(thumbnailHTML)}`
+        "data:text/html;charset=utf-8,<!DOCTYPE html><html><body></body></html>"
       );
 
-      // Use file:// protocol for local video file
       const videoUrl = `file://${videoPath}`;
-      const thumbnailData = await thumbWindow.webContents.executeJavaScript(
-        `window.extractThumbnail('${videoUrl}')`
-      );
+      const thumbnailData = await thumbWindow.webContents.executeJavaScript(`
+        (function() {
+          return new Promise((resolve, reject) => {
+            const video = document.createElement('video');
+            const canvas = document.createElement('canvas');
+            video.muted = true;
+            document.body.appendChild(video);
+            document.body.appendChild(canvas);
+
+            video.onloadeddata = () => {
+              video.currentTime = Math.min(video.duration * 0.1, 1);
+            };
+
+            video.onseeked = () => {
+              try {
+                canvas.width  = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob((blob) => {
+                  if (!blob) { reject(new Error('toBlob returned null')); return; }
+                  const reader = new FileReader();
+                  reader.onloadend = () => resolve(reader.result);
+                  reader.onerror   = reject;
+                  reader.readAsArrayBuffer(blob);
+                }, 'image/png');
+              } catch (err) {
+                reject(err);
+              }
+            };
+
+            video.onerror = () => reject(new Error('Video load error'));
+            video.src  = ${JSON.stringify(videoUrl)};
+            video.load();
+          });
+        })()
+      `);
 
       thumbWindow.close();
 
       // Save thumbnail
       const thumbnailBuffer = Buffer.from(thumbnailData);
       const resizedThumbnail = await this.resizeThumbnail(thumbnailBuffer);
-      const thumbnailPath = await storageManager.saveFile(
+      const thumbnailPath = await storageManager.saveThumbnail(
         issueId,
-        resizedThumbnail,
-        "png"
+        resizedThumbnail
       );
 
-      // Rename to thumbnail.png
-      const finalThumbnailPath = storageManager.getThumbnailPath(issueId);
-      const fs = await import("fs");
-      fs.renameSync(thumbnailPath, finalThumbnailPath);
-
-      return finalThumbnailPath;
+      log.info("[Recording] Thumbnail created successfully:", thumbnailPath);
+      return thumbnailPath;
     } catch (error) {
       log.error("[Recording] Failed to create thumbnail:", error);
 

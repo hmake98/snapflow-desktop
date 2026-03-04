@@ -335,7 +335,8 @@ export class UpdaterService {
           error.message.includes("EAI_AGAIN")
         ) {
           throw new Error(
-            "ENOTFOUND - Unable to connect to update server. Please check your internet connection."
+            "ENOTFOUND - Unable to connect to update server. Please check your internet connection.",
+            { cause: error }
           );
         }
 
@@ -345,14 +346,16 @@ export class UpdaterService {
           error.message.includes("EPERM")
         ) {
           throw new Error(
-            "EACCES - Permission denied. Please ensure the application has necessary permissions."
+            "EACCES - Permission denied. Please ensure the application has necessary permissions.",
+            { cause: error }
           );
         }
 
         // 404 errors (no releases found)
         if (error.message.includes("404")) {
           throw new Error(
-            "404 - No releases found. This may be a development or pre-release build."
+            "404 - No releases found. This may be a development or pre-release build.",
+            { cause: error }
           );
         }
 
@@ -362,16 +365,20 @@ export class UpdaterService {
           error.message.includes("not signed")
         ) {
           throw new Error(
-            "code signature - Unable to verify update signature. Please download updates manually."
+            "code signature - Unable to verify update signature. Please download updates manually.",
+            { cause: error }
           );
         }
 
         // Re-throw the original error with more context
-        throw new Error(`Update check failed: ${error.message}`);
+        throw new Error(`Update check failed: ${error.message}`, {
+          cause: error,
+        });
       }
 
       throw new Error(
-        "An unexpected error occurred while checking for updates"
+        "An unexpected error occurred while checking for updates",
+        { cause: error }
       );
     }
   }
@@ -403,14 +410,16 @@ export class UpdaterService {
           error.message.includes("ETIMEDOUT")
         ) {
           throw new Error(
-            "Download failed: Unable to connect to update server. Please check your internet connection."
+            "Download failed: Unable to connect to update server. Please check your internet connection.",
+            { cause: error }
           );
         }
 
         // Disk space errors
         if (error.message.includes("ENOSPC")) {
           throw new Error(
-            "Download failed: Insufficient disk space. Please free up some space and try again."
+            "Download failed: Insufficient disk space. Please free up some space and try again.",
+            { cause: error }
           );
         }
 
@@ -420,15 +429,19 @@ export class UpdaterService {
           error.message.includes("EPERM")
         ) {
           throw new Error(
-            "Download failed: Permission denied. Please ensure the application has write permissions."
+            "Download failed: Permission denied. Please ensure the application has write permissions.",
+            { cause: error }
           );
         }
 
-        throw new Error(`Download failed: ${error.message}`);
+        throw new Error(`Download failed: ${error.message}`, {
+          cause: error,
+        });
       }
 
       throw new Error(
-        "An unexpected error occurred while downloading the update"
+        "An unexpected error occurred while downloading the update",
+        { cause: error }
       );
     }
   }

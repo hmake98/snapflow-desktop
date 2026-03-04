@@ -1,10 +1,14 @@
 import { create } from "zustand";
-import type { User, Issue, Connector } from "../types";
+import type { User, Issue, Connector, Workspace } from "../types";
 
 interface AppState {
   // User state
   user: User | null;
   setUser: (user: User | null) => void;
+
+  // Active workspace state (persisted across pages)
+  activeWorkspace: Workspace | null;
+  setActiveWorkspace: (workspace: Workspace | null) => void;
 
   // Issues state
   issues: Issue[];
@@ -29,6 +33,10 @@ export const useStore = create<AppState>((set) => ({
   // User state
   user: null,
   setUser: (user) => set({ user }),
+
+  // Active workspace
+  activeWorkspace: null,
+  setActiveWorkspace: (activeWorkspace) => set({ activeWorkspace }),
 
   // Issues state
   issues: [],

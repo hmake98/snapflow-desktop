@@ -24,7 +24,7 @@ export default function WindowCapture() {
 
     // Listen for background screenshot
     const unsubscribeScreenshot = window.api.onBackgroundScreenshot(
-      (data: any) => {
+      (data: { dataUrl: string }) => {
         console.log("Received background screenshot for window selection");
         setBackgroundImage(data.dataUrl);
         setIsLoading(false);

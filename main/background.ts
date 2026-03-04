@@ -3,6 +3,9 @@ import path from "path";
 import electron from "electron";
 import serve from "electron-serve";
 import log from "electron-log";
+import http from "http";
+import { URL } from "url";
+import Store from "electron-store";
 import { createWindow, WindowInstance } from "./helpers";
 import { authService } from "./services/auth";
 import { issueService } from "./services/issues";
@@ -10,9 +13,15 @@ import { captureService } from "./services/capture";
 import { connectorService } from "./services/connectors";
 import { updaterService } from "./services/updater";
 import { syncService } from "./services/sync";
+import { tenantService } from "./services/tenant";
+import { workspaceService } from "./services/workspace";
+import { onboardingService } from "./services/onboarding";
+import { zohoService } from "./services/zoho";
+import { githubService } from "./services/github";
 import { storageManager } from "./utils/storage";
 import { sessionManager } from "./utils/session";
 import { TrayIconManager } from "./utils/tray-icon-manager";
+import { getSupabase } from "./utils/supabase";
 import fs from "fs";
 
 const {
@@ -28,6 +37,11 @@ const {
   screen,
   globalShortcut,
 } = electron;
+
+// Catch any genuinely unhandled promise rejections so they don't crash the app.
+process.on("unhandledRejection", (reason: unknown) => {
+  log.error("[Process] Unhandled promise rejection:", reason);
+});
 
 // Determine if we're in production
 const isProd = process.env.NODE_ENV === "production";
@@ -88,6 +102,23 @@ let tray: typeof Tray.prototype | null = null;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 let isQuitting = false;
 let pendingScreenshot: { dataUrl: string; mode: string } | null = null;
+let pendingZohoTokens: {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  accountsServer?: string;
+  apiDomain?: string;
+} | null = null;
+let pendingGitHubTokens: {
+  accessToken: string;
+  expiresAt: number;
+} | null = null;
+
+// App settings store
+const appSettingsStore = new Store({
+  name: "snapflow-app-settings",
+  defaults: { autoSync: false },
+}) as any;
 
 // State tracking for tray actions to prevent race conditions
 let isShowingWindow = false;
@@ -102,7 +133,12 @@ let recordingBounds: {
   width: number;
   height: number;
 } | null = null;
-let pendingRecording: { dataUrl: string; duration: number } | null = null;
+let pendingRecording: {
+  dataUrl: string;
+  duration: number;
+  thumbnailPath?: string;
+  issueId?: string;
+} | null = null;
 
 if (isProd) {
   serve({ directory: "app" });
@@ -164,28 +200,57 @@ async function createMainWindow() {
     true // Enable preventClose for tray-based application
   );
 
-  // Check if user is already logged in (session exists)
-  const currentUser = sessionManager.getUser();
-  let hasUser = false;
+  // Set Content Security Policy to fix Electron security warning
+  mainWindow.webContents.session.webRequest.onHeadersReceived(
+    (details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          "Content-Security-Policy": [
+            isProd
+              ? "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'"
+              : "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: http://localhost:*",
+          ],
+        },
+      });
+    }
+  );
 
+  const port = process.argv[2];
+
+  // Navigate to a route, falling back to /500 on load failure
+  const navigateTo = async (route: string) => {
+    if (isProd) {
+      await mainWindow!.loadURL(`app://.${route}`);
+    } else {
+      await mainWindow!.loadURL(`http://localhost:${port}${route}`);
+      mainWindow!.webContents.openDevTools();
+    }
+  };
+
+  // Show 500 error page if the renderer fails to load
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription) => {
+      if (errorCode === -3) return; // ERR_ABORTED — user navigated away, not a real failure
+      log.error(
+        `[Window] Page failed to load (${errorCode}: ${errorDescription})`
+      );
+      navigateTo("/500").catch((err) =>
+        log.error("[Window] Failed to load error page:", err)
+      );
+    }
+  );
+
+  // Route based on stored session (no network call) — renderer re-checks auth on load
+  const initialRoute = sessionManager.hasStoredSession() ? "/home" : "/auth";
   try {
-    hasUser = await authService.hasAnyUser();
-  } catch (error) {
-    log.error("Database connection error:", error);
-    // Will show database setup screen
-  }
-
-  // Route logic:
-  // - If session exists and is valid, go to home
-  // - Otherwise, go to auth
-  const route = currentUser && hasUser ? "/home" : "/auth";
-
-  if (isProd) {
-    await mainWindow.loadURL(`app://.${route}`);
-  } else {
-    const port = process.argv[2];
-    await mainWindow.loadURL(`http://localhost:${port}${route}`);
-    mainWindow.webContents.openDevTools();
+    await navigateTo(initialRoute);
+  } catch (err) {
+    log.error("[Window] Initial load failed:", err);
+    await navigateTo("/500").catch((e) =>
+      log.error("[Window] Failed to load error page:", e)
+    );
   }
 
   return mainWindow;
@@ -330,31 +395,32 @@ function updateTrayMenu() {
     });
   }
 
-  // Recording menu item - changes based on recording state
-  let recordingMenuItem: electron.MenuItemConstructorOptions;
-
-  if (recordingState === "recording") {
-    recordingMenuItem = {
-      label: "■ Stop Recording",
-      click: async () => {
-        await handleStopRecording();
-      },
-    };
-  } else {
-    // idle or selecting state
-    recordingMenuItem = {
-      label: "Record Screen",
-      click: async () => {
-        await handleStartRecordingFlow();
-      },
-    };
-  }
+  // Recording menu item - disabled for now, code preserved for future re-enablement
+  // let recordingMenuItem: electron.MenuItemConstructorOptions;
+  //
+  // if (recordingState === "recording") {
+  //   recordingMenuItem = {
+  //     label: "■ Stop Recording",
+  //     click: async () => {
+  //       await handleStopRecording();
+  //     },
+  //   };
+  // } else {
+  //   // idle or selecting state
+  //   recordingMenuItem = {
+  //     label: "Record Screen",
+  //     click: async () => {
+  //       await handleStartRecordingFlow();
+  //     },
+  //   };
+  // }
 
   const contextMenu = Menu.buildFromTemplate([
     ...captureMenuItems,
     { type: "separator" },
-    recordingMenuItem,
-    { type: "separator" },
+    // Recording feature disabled for now - code preserved for future re-enablement
+    // recordingMenuItem,
+    // { type: "separator" },
     {
       label: "View My Snaps",
       click: async () => {
@@ -838,7 +904,7 @@ async function _createRecordingControlWindow(bounds: {
 }
 
 // Recording workflow functions
-async function handleStartRecordingFlow() {
+async function _handleStartRecordingFlow() {
   try {
     log.info("[Recording] Starting recording flow");
     recordingState = "selecting";
@@ -977,7 +1043,7 @@ async function handleRecordingAreaSelected(bounds: {
 // Note: handleBeginRecording is no longer needed as recording starts immediately
 // after area selection in handleRecordingAreaSelected()
 
-async function handleStopRecording() {
+async function _handleStopRecording() {
   try {
     log.info("[Recording] Stopping recording");
 
@@ -991,10 +1057,12 @@ async function handleStopRecording() {
     const result = await captureService.stopRecording();
     log.info("[Recording] Recording stopped:", result);
 
-    // Store recording data
+    // Store recording data including thumbnail path
     pendingRecording = {
       dataUrl: result.filePath, // Path to video file
       duration: result.duration,
+      thumbnailPath: result.thumbnailPath, // Path to thumbnail
+      issueId: result.issueId, // Issue ID for file organization
     };
 
     // Show main window and navigate to recording annotate page
@@ -1196,6 +1264,366 @@ async function handleCheckForUpdates() {
   }
 }
 
+/**
+ * Handle OAuth callback deep link (snapflow://auth/callback)
+ *
+ * Strategy: Just set the session and let the auth listener handle user setup.
+ * The auth listener (sessionManager.attachAuthListener) will fire on SIGNED_IN
+ * and call sessionManager.setUser() which handles all the business logic.
+ * We just need to ensure navigation happens after the user is set.
+ */
+const handleOAuthCallback = async (url: string) => {
+  log.info("[OAuth] Handling callback URL:", url);
+
+  try {
+    // Supabase v2 uses PKCE by default: callback has ?code=... in query params.
+    // Older implicit flow puts tokens in the hash (#access_token=...).
+    // Try PKCE first, fall back to implicit.
+    const parsedUrl = new URL(url);
+    const code = parsedUrl.searchParams.get("code");
+
+    if (code) {
+      // PKCE flow — exchange authorization code for session
+      log.info("[OAuth] PKCE flow detected, exchanging code for session");
+      const session = await authService.exchangeCodeForSession(url);
+      if (!session) {
+        log.error("[OAuth] Failed to exchange code for session");
+        return;
+      }
+      log.info("[OAuth] Session exchanged successfully");
+      // PKCE flow is handled by Supabase and will trigger auth listener
+    } else {
+      // Implicit flow — extract tokens from hash fragment
+      const hashFragment = url.substring(url.indexOf("#") + 1);
+      const params = new URLSearchParams(hashFragment);
+      const accessToken = params.get("access_token");
+      const refreshToken = params.get("refresh_token");
+
+      if (!accessToken || !refreshToken) {
+        log.warn("[OAuth] No code or tokens found in callback URL:", url);
+        return;
+      }
+
+      log.info("[OAuth] Implicit flow detected, setting session from tokens");
+      try {
+        // Set session - this returns both session and user object
+        log.info("[OAuth] Calling setSession...");
+        const result = await authService.setSession(accessToken, refreshToken);
+        log.info(
+          "[OAuth] setSession returned, session exists:",
+          !!result.session
+        );
+        if (result.user) {
+          log.info(
+            "[OAuth] Applying user directly from setSession:",
+            result.user.email
+          );
+          await sessionManager.setUser(result.user);
+          log.info(
+            "[OAuth] User applied successfully, skipping auth listener wait"
+          );
+        }
+      } catch (setSessionError) {
+        log.error("[OAuth] Error in setSession:", setSessionError);
+        throw setSessionError;
+      }
+    }
+
+    // User is now set via setSession (implicit flow) or auth listener (PKCE flow)
+
+    // Determine where to navigate: invited users (already workspace members) go to /home,
+    // new users who need to set up their org go to /onboarding.
+    let navigateTo = "/onboarding";
+    try {
+      const currentUserId = sessionManager.getUserId();
+      if (currentUserId) {
+        const existingTenant =
+          await tenantService.getTenantByOwner(currentUserId);
+        if (existingTenant) {
+          // User owns a tenant — they've completed onboarding already
+          log.info("[OAuth] User owns a tenant, navigating to /home");
+          navigateTo = "/home";
+        } else {
+          // Check if user is a member of any workspace (invited user)
+          const supabase = getSupabase();
+          if (supabase) {
+            const { data: memberData } = await supabase
+              .from("workspace_members")
+              .select("workspace_id")
+              .eq("user_id", currentUserId)
+              .limit(1)
+              .single();
+            if (memberData?.workspace_id) {
+              log.info(
+                "[OAuth] Invited user has workspace membership, navigating to /home"
+              );
+              navigateTo = "/home";
+            }
+          }
+        }
+      }
+    } catch (navCheckError) {
+      log.warn(
+        "[OAuth] Could not determine navigation target, defaulting to /onboarding:",
+        navCheckError
+      );
+    }
+
+    log.info("[OAuth] Attempting to send navigate event...");
+    log.info("[OAuth] mainWindow exists:", !!mainWindow);
+    if (mainWindow) {
+      log.info("[OAuth] mainWindow destroyed:", mainWindow.isDestroyed());
+      log.info(
+        "[OAuth] mainWindow.webContents exists:",
+        !!mainWindow.webContents
+      );
+    }
+
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+      try {
+        log.info(`[OAuth] Sending navigate event to renderer: ${navigateTo}`);
+        mainWindow.webContents.send("navigate", navigateTo);
+        log.info("[OAuth] Navigate event sent successfully ✓");
+      } catch (sendError) {
+        log.error("[OAuth] Error sending navigate event:", sendError);
+      }
+    } else {
+      log.warn("[OAuth] Cannot send navigate event - mainWindow not available");
+    }
+
+    log.info("[OAuth] ✓ OAuth callback handled");
+  } catch (error) {
+    log.error("[OAuth] Unexpected error handling OAuth callback:", error);
+  }
+};
+
+/**
+ * Handle Zoho OAuth callback
+ */
+const handleZohoCallback = async (url: string) => {
+  log.info("[Zoho OAuth] ========== CALLBACK HANDLER START ==========");
+  log.info("[Zoho OAuth] Full callback URL:", url);
+
+  try {
+    const parsedUrl = new URL(url);
+    log.info("[Zoho OAuth] Parsed URL pathname:", parsedUrl.pathname);
+    log.info("[Zoho OAuth] Parsed URL search:", parsedUrl.search);
+
+    const code = parsedUrl.searchParams.get("code");
+    const error = parsedUrl.searchParams.get("error");
+    const errorDescription = parsedUrl.searchParams.get("error_description");
+    const accountsServer = parsedUrl.searchParams.get("accounts-server");
+    const location = parsedUrl.searchParams.get("location");
+
+    log.info(
+      "[Zoho OAuth] Code extracted:",
+      code ? `${code.substring(0, 20)}...` : "NULL"
+    );
+    log.info("[Zoho OAuth] Error extracted:", error || "NULL");
+    log.info("[Zoho OAuth] Error description:", errorDescription || "NULL");
+    log.info("[Zoho OAuth] Accounts server:", accountsServer || "NULL");
+    log.info("[Zoho OAuth] Location:", location || "NULL");
+
+    if (error) {
+      log.warn(
+        "[Zoho OAuth] Authorization error from Zoho:",
+        error,
+        errorDescription
+      );
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+        mainWindow.webContents.send(
+          "zoho-oauth-error",
+          `Authorization failed: ${error} - ${errorDescription}`
+        );
+      }
+      return;
+    }
+
+    if (!code) {
+      log.warn("[Zoho OAuth] No authorization code in callback URL");
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+        mainWindow.webContents.send(
+          "zoho-oauth-error",
+          "No authorization code received"
+        );
+      }
+      return;
+    }
+
+    // Handle data center region mismatch - set the correct accounts server before token exchange
+    if (accountsServer) {
+      log.info(
+        "[Zoho OAuth] Setting Zoho service to use region-specific server:",
+        accountsServer
+      );
+      zohoService.setAccountsServer(accountsServer);
+    }
+
+    log.info("[Zoho OAuth] ✓ Code validation passed, proceeding to exchange");
+    log.info("[Zoho OAuth] Calling zohoService.exchangeCodeForTokens()");
+
+    const tokens = await zohoService.exchangeCodeForTokens(code);
+
+    log.info("[Zoho OAuth] ✓ Token exchange succeeded");
+    log.info(
+      "[Zoho OAuth] Received tokens - AccessToken length:",
+      tokens.accessToken.length
+    );
+    log.info(
+      "[Zoho OAuth] Received tokens - RefreshToken length:",
+      tokens.refreshToken.length
+    );
+    log.info("[Zoho OAuth] Received tokens - ExpiresIn:", tokens.expiresIn);
+    log.info(
+      "[Zoho OAuth] API Domain from response:",
+      tokens.apiDomain || "NOT PROVIDED"
+    );
+
+    // Update API domain if provided in token response
+    if (tokens.apiDomain) {
+      log.info("[Zoho OAuth] Updating API domain with response value");
+      zohoService.setAccountsServer(
+        accountsServer || "https://accounts.zoho.com",
+        tokens.apiDomain
+      );
+    }
+
+    // Normalize apiDomain to just the domain
+    let normalizedApiDomain = tokens.apiDomain;
+    if (normalizedApiDomain) {
+      // First, try to parse as URL if it looks like one
+      if (normalizedApiDomain.includes("://")) {
+        try {
+          const url = new URL(normalizedApiDomain);
+          normalizedApiDomain = url.hostname;
+          log.info(
+            "[Zoho OAuth] Normalized api_domain from URL to hostname:",
+            normalizedApiDomain
+          );
+        } catch (_e) {
+          log.warn(
+            "[Zoho OAuth] Failed to parse api_domain as URL, using as-is:",
+            normalizedApiDomain
+          );
+        }
+      }
+
+      // Remove www. prefix if present
+      if (normalizedApiDomain && normalizedApiDomain.startsWith("www.")) {
+        normalizedApiDomain = normalizedApiDomain.replace("www.", "");
+        log.info(
+          "[Zoho OAuth] Removed www. prefix from api_domain:",
+          normalizedApiDomain
+        );
+      }
+    }
+
+    // Store tokens temporarily in memory until connector is saved
+    pendingZohoTokens = {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresAt: Date.now() + tokens.expiresIn * 1000,
+      accountsServer: accountsServer || "https://accounts.zoho.com",
+      apiDomain:
+        normalizedApiDomain ||
+        (accountsServer ? accountsServer.replace("accounts.", "") : undefined),
+    };
+
+    log.info("[Zoho OAuth] ✓ Tokens stored in memory");
+    log.info(
+      "[Zoho OAuth] Stored accounts server:",
+      pendingZohoTokens.accountsServer
+    );
+    log.info("[Zoho OAuth] Stored API domain:", pendingZohoTokens.apiDomain);
+
+    // Notify renderer that OAuth is complete
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+      log.info("[Zoho OAuth] Sending 'zoho-oauth-success' event to renderer");
+      mainWindow.webContents.send("zoho-oauth-success");
+    }
+
+    log.info("[Zoho OAuth] ✓ OAuth callback handled successfully");
+    log.info("[Zoho OAuth] ========== CALLBACK HANDLER END ==========");
+  } catch (error) {
+    log.error("[Zoho OAuth] ✗ Error handling callback");
+    log.error(
+      "[Zoho OAuth] Error type:",
+      error instanceof Error ? error.constructor.name : typeof error
+    );
+    log.error(
+      "[Zoho OAuth] Error message:",
+      error instanceof Error ? error.message : String(error)
+    );
+    if (error instanceof Error && error.stack) {
+      log.error("[Zoho OAuth] Stack trace:", error.stack);
+    }
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      mainWindow.webContents.send("zoho-oauth-error", errorMsg);
+    }
+    log.info("[Zoho OAuth] ========== CALLBACK HANDLER END (ERROR) ==========");
+  }
+};
+
+/**
+ * Handle GitHub OAuth callback
+ */
+const handleGitHubCallback = async (url: string) => {
+  log.info("[GitHub OAuth] Handling callback URL");
+
+  try {
+    const parsedUrl = new URL(url);
+    const code = parsedUrl.searchParams.get("code");
+    const error = parsedUrl.searchParams.get("error");
+
+    if (error) {
+      log.warn("[GitHub OAuth] Authorization error:", error);
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+        mainWindow.webContents.send(
+          "github-oauth-error",
+          `Authorization failed: ${error}`
+        );
+      }
+      return;
+    }
+
+    if (!code) {
+      log.warn("[GitHub OAuth] No authorization code in callback URL");
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+        mainWindow.webContents.send(
+          "github-oauth-error",
+          "No authorization code received"
+        );
+      }
+      return;
+    }
+
+    log.info("[GitHub OAuth] Exchanging authorization code for token");
+    const tokens = await githubService.exchangeCodeForToken(code);
+
+    // Store token temporarily in memory until connector is saved
+    pendingGitHubTokens = {
+      accessToken: tokens.accessToken,
+      expiresAt: Date.now() + (tokens.expiresIn || 28800) * 1000,
+    };
+
+    log.info("[GitHub OAuth] ✓ Token received and stored");
+
+    // Notify renderer that OAuth is complete
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+      mainWindow.webContents.send("github-oauth-success");
+    }
+
+    log.info("[GitHub OAuth] ✓ OAuth callback handled");
+  } catch (error) {
+    log.error("[GitHub OAuth] Error handling callback:", error.message);
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      mainWindow.webContents.send("github-oauth-error", errorMsg);
+    }
+  }
+};
+
 // Request single instance lock
 if (app && app.requestSingleInstanceLock) {
   const gotTheLock = app.requestSingleInstanceLock();
@@ -1204,10 +1632,41 @@ if (app && app.requestSingleInstanceLock) {
     // Another instance is already running, quit this one
     app.quit();
   } else {
-    // Handle second instance attempt - focus the existing window
-    app.on("second-instance", async () => {
-      // Someone tried to run a second instance, we should focus our window
-      await showMainWindow();
+    // Register snapflow:// as the default protocol handler so the OS routes
+    // OAuth callback URLs back to this app after the browser completes sign-in.
+    // In dev mode, Electron needs the executable path + script path explicitly.
+    if (isProd) {
+      app.setAsDefaultProtocolClient("snapflow");
+    } else {
+      app.setAsDefaultProtocolClient("snapflow", process.execPath, [
+        path.resolve(process.argv[1]),
+      ]);
+    }
+
+    // Handle macOS deep link (open-url event) — currently only for Google OAuth
+    // Zoho and GitHub OAuth now use localhost HTTP callbacks
+    app.on("open-url", (event, url) => {
+      event.preventDefault();
+      log.info("[Deep Link] Received deep link:", url);
+      if (url.startsWith("snapflow://auth/callback")) {
+        handleOAuthCallback(url);
+      }
+    });
+
+    // Handle Windows/Linux second instance with command line args
+    app.on("second-instance", async (_event, commandLine) => {
+      // Check if one of the command line arguments is a Google OAuth callback
+      const callbackUrl = commandLine.find((arg) =>
+        arg.startsWith("snapflow://auth/callback")
+      );
+      if (callbackUrl) {
+        log.info("[Deep Link] Second instance Google OAuth callback detected");
+        handleOAuthCallback(callbackUrl);
+      } else {
+        // Regular second instance - just focus the window
+        log.info("[Deep Link] Second instance focus");
+        await showMainWindow();
+      }
     });
 
     (async () => {
@@ -1233,10 +1692,30 @@ if (app && app.requestSingleInstanceLock) {
         app.dock?.show();
       }
 
-      // Register custom protocol for local file access
+      // Register custom protocol for local file access.
+      // IMPORTANT: OAuth deep-link callbacks arrive as snapflow://auth/callback?code=...
+      // Those must NOT be handled here — they are handled by the open-url / second-instance
+      // events above.  Skip them so the OS deep-link routing works correctly.
       protocol.registerFileProtocol("snapflow", (request, callback) => {
+        const rawUrl = request.url;
+
+        // Pass Google OAuth callback URLs through — do not try to serve them as files.
+        // (Zoho and GitHub OAuth now use localhost HTTP callbacks, not custom protocols)
+        if (rawUrl.startsWith("snapflow://auth/")) {
+          log.info(
+            "[Protocol] Skipping file-serve for Google OAuth callback URL:",
+            rawUrl
+          );
+          // Trigger the OAuth callback handler directly from here as a safety net,
+          // because on macOS the open-url event fires before the app is ready in
+          // some cases and can be missed.
+          handleOAuthCallback(rawUrl);
+          callback({ error: -3 }); // ERR_FILE_NOT_FOUND — benign, browser already closed
+          return;
+        }
+
         // Remove protocol - handle both snapflow:// and snapflow:///
-        let url = request.url.substring("snapflow://".length);
+        let url = rawUrl.substring("snapflow://".length);
 
         // Ensure absolute path starts with /
         if (!url.startsWith("/")) {
@@ -1260,8 +1739,10 @@ if (app && app.requestSingleInstanceLock) {
         }
       });
 
-      // Initialize session from persistent storage
-      await sessionManager.initialize();
+      // Initialize session from persistent storage (non-blocking — renderer handles auth state)
+      sessionManager.initialize().catch((err) => {
+        log.error("[App] Session initialization failed:", err);
+      });
 
       // Initialize storage
       await storageManager.ensureDirectories();
@@ -1336,6 +1817,12 @@ if (app && app.requestSingleInstanceLock) {
       // Setup IPC handlers
       setupIPCHandlers();
 
+      // Start session expiry monitor
+      startSessionExpiryMonitor();
+
+      // Start OAuth callback server (localhost HTTP server)
+      startOAuthCallbackServer();
+
       // Create system tray
       createSystemTray();
 
@@ -1382,6 +1869,189 @@ if (app && app.on) {
     log.info("[Shortcuts] Unregistering all global shortcuts");
     globalShortcut.unregisterAll();
   });
+}
+
+// Monitor session expiry and notify renderer
+let sessionExpiryCheckInterval: NodeJS.Timeout | null = null;
+
+function startSessionExpiryMonitor() {
+  if (sessionExpiryCheckInterval) return; // Already running
+
+  sessionExpiryCheckInterval = setInterval(() => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+
+    const expiresAt = sessionManager.getSessionExpiryTime();
+    if (!expiresAt) return; // No session
+
+    const now = Date.now();
+    const timeUntilExpiry = expiresAt - now;
+
+    // Warn if expiring in next 30 minutes but not yet expired
+    if (timeUntilExpiry > 0 && timeUntilExpiry <= 30 * 60 * 1000) {
+      log.info(
+        "[Session] Token expiring soon (",
+        Math.round(timeUntilExpiry / 60000),
+        "minutes)"
+      );
+      mainWindow.webContents.send("session-expiring-soon", expiresAt);
+    }
+
+    // Token expired
+    if (timeUntilExpiry <= 0) {
+      log.warn("[Session] Token has expired, clearing session");
+      sessionManager
+        .clearUser()
+        .catch((err) =>
+          log.error("[Session] Error clearing expired session:", err)
+        );
+      mainWindow.webContents.send("session-expired");
+    }
+  }, 60 * 1000); // Check every minute
+
+  log.info("[Session] Session expiry monitor started");
+}
+
+function _stopSessionExpiryMonitor() {
+  if (sessionExpiryCheckInterval) {
+    clearInterval(sessionExpiryCheckInterval);
+    sessionExpiryCheckInterval = null;
+    log.info("[Session] Session expiry monitor stopped");
+  }
+}
+
+// ─── OAuth Callback HTTP Server ────────────────────────────────────────────
+
+let oauthCallbackServer: http.Server | null = null;
+
+function startOAuthCallbackServer() {
+  if (oauthCallbackServer) {
+    log.info("[OAuth Server] Already running on port 3000");
+    return;
+  }
+
+  oauthCallbackServer = http.createServer((req, res) => {
+    const url = new URL(req.url || "/", "http://localhost:3000");
+    const pathname = url.pathname;
+
+    log.info("[OAuth Server] Request:", pathname);
+
+    // Handle Zoho OAuth callback
+    if (pathname === "/auth/zoho/callback") {
+      log.info("[OAuth Server] ========== ZOHO CALLBACK RECEIVED ==========");
+      log.info("[OAuth Server] Request URL:", req.url);
+      log.info(
+        "[OAuth Server] Full callback:",
+        `http://localhost:3000${req.url}`
+      );
+
+      const code = url.searchParams.get("code");
+      const error = url.searchParams.get("error");
+      const errorDescription = url.searchParams.get("error_description");
+
+      log.info(
+        "[OAuth Server] Code present:",
+        !!code,
+        code ? `(${code.substring(0, 20)}...)` : ""
+      );
+      log.info("[OAuth Server] Error present:", !!error, error || "");
+      log.info("[OAuth Server] Error description:", errorDescription || "");
+
+      if (error) {
+        log.warn(
+          "[OAuth Server] Zoho authorization error:",
+          error,
+          errorDescription
+        );
+        res.writeHead(400, { "Content-Type": "text/html" });
+        res.end(
+          `<html><body><h1>Authorization Failed</h1><p>${error}</p></body></html>`
+        );
+        return;
+      }
+
+      if (!code) {
+        log.warn("[OAuth Server] No code in Zoho callback");
+        res.writeHead(400, { "Content-Type": "text/html" });
+        res.end(
+          `<html><body><h1>Authorization Failed</h1><p>No authorization code received</p></body></html>`
+        );
+        return;
+      }
+
+      log.info("[OAuth Server] ✓ Zoho callback validation passed");
+      log.info("[OAuth Server] Triggering handleZohoCallback async handler");
+      // Trigger the Zoho handler with the full URL
+      const fullUrl = `http://localhost:3000${req.url}`;
+      handleZohoCallback(fullUrl).catch((err) => {
+        log.error(
+          "[OAuth Server] handleZohoCallback threw error:",
+          err.message
+        );
+      });
+
+      // Send success page to browser
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(
+        `<html><body><h1>Authorization Successful</h1><p>You can close this window and return to SnapFlow.</p></body></html>`
+      );
+      return;
+    }
+
+    // Handle GitHub OAuth callback
+    if (pathname === "/auth/github/callback") {
+      const code = url.searchParams.get("code");
+      const error = url.searchParams.get("error");
+
+      if (error) {
+        log.warn("[OAuth Server] GitHub error:", error);
+        res.writeHead(400, { "Content-Type": "text/html" });
+        res.end(
+          `<html><body><h1>Authorization Failed</h1><p>${error}</p></body></html>`
+        );
+        return;
+      }
+
+      if (!code) {
+        log.warn("[OAuth Server] No code in GitHub callback");
+        res.writeHead(400, { "Content-Type": "text/html" });
+        res.end(
+          `<html><body><h1>Authorization Failed</h1><p>No authorization code received</p></body></html>`
+        );
+        return;
+      }
+
+      log.info("[OAuth Server] GitHub callback received with code");
+      // Trigger the GitHub handler with the full URL
+      handleGitHubCallback(`http://localhost:3000${req.url}`);
+
+      // Send success page to browser
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(
+        `<html><body><h1>Authorization Successful</h1><p>You can close this window and return to SnapFlow.</p></body></html>`
+      );
+      return;
+    }
+
+    // 404 for unknown paths
+    res.writeHead(404, { "Content-Type": "text/html" });
+    res.end(`<html><body><h1>Not Found</h1></body></html>`);
+  });
+
+  oauthCallbackServer.listen(3000, "localhost", () => {
+    log.info("[OAuth Server] ✓ Listening on http://localhost:3000");
+  });
+
+  oauthCallbackServer.on("error", (err) => {
+    log.error("[OAuth Server] Error:", err);
+  });
+}
+
+function _stopOAuthCallbackServer() {
+  if (oauthCallbackServer) {
+    oauthCallbackServer.close();
+    oauthCallbackServer = null;
+    log.info("[OAuth Server] Stopped");
+  }
 }
 
 // Setup IPC Handlers function
@@ -1449,6 +2119,10 @@ function setupIPCHandlers() {
     }
   });
 
+  ipcMain.handle("session:is-initialized", () => {
+    return { success: true, data: sessionManager.isInitialized() };
+  });
+
   ipcMain.handle(
     "user:update",
     async (
@@ -1483,6 +2157,440 @@ function setupIPCHandlers() {
     }
   });
 
+  ipcMain.handle("user:get-session-expiry", () => {
+    try {
+      const expiresAt = sessionManager.getSessionExpiryTime();
+      if (!expiresAt) {
+        return { success: true, data: { expiresAt: null, expiresIn: null } };
+      }
+      const expiresIn = Math.max(0, expiresAt - Date.now());
+      return {
+        success: true,
+        data: {
+          expiresAt,
+          expiresIn,
+          expiresAtDate: new Date(expiresAt).toISOString(),
+        },
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("Get session expiry error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  ipcMain.handle(
+    "user:is-session-expiring-soon",
+    (_, { minutesBuffer = 30 } = {}) => {
+      try {
+        const expiringSoon =
+          sessionManager.isSessionExpiringsoon(minutesBuffer);
+        return { success: true, data: { expiringSoon } };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred";
+        log.error("Check session expiry error:", error);
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
+
+  ipcMain.handle("user:google-signin", async () => {
+    try {
+      const oauthUrl = await authService.googleSignIn();
+      // Open the URL in the default browser
+      shell.openExternal(oauthUrl);
+      return { success: true, data: { url: oauthUrl } };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("Google signin error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // Tenant handlers
+  ipcMain.handle("tenant:create", async (_event, { name, description }) => {
+    try {
+      const userId = sessionManager.getUserId();
+      if (!userId) {
+        throw new Error("User not authenticated");
+      }
+      const tenant = await tenantService.createTenant(
+        userId,
+        name,
+        description
+      );
+      return { success: true, data: tenant };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("Create tenant error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  ipcMain.handle("tenant:get", async () => {
+    try {
+      const userId = sessionManager.getUserId();
+      if (!userId) {
+        throw new Error("User not authenticated");
+      }
+      const tenant = await tenantService.getTenantByOwner(userId);
+      return { success: true, data: tenant };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("Get tenant error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  ipcMain.handle(
+    "tenant:update",
+    async (_event, { tenantId, name, description }) => {
+      try {
+        const userId = sessionManager.getUserId();
+        if (!userId) {
+          throw new Error("User not authenticated");
+        }
+        const tenant = await tenantService.updateTenant(tenantId, userId, {
+          name,
+          description,
+        });
+        return { success: true, data: tenant };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred";
+        log.error("Update tenant error:", error);
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
+
+  // Workspace handlers
+  ipcMain.handle(
+    "workspace:create",
+    async (_event, { tenantId, name, description }) => {
+      try {
+        const userId = sessionManager.getUserId();
+        if (!userId) {
+          throw new Error("User not authenticated");
+        }
+        const workspace = await workspaceService.createWorkspace(
+          userId,
+          tenantId,
+          name,
+          description
+        );
+        return { success: true, data: workspace };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred";
+        log.error("Create workspace error:", error);
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
+
+  ipcMain.handle("workspace:list", async (_event, { tenantId }) => {
+    try {
+      const workspaces = await workspaceService.listWorkspaces(tenantId);
+      return { success: true, data: workspaces };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("List workspaces error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  ipcMain.handle(
+    "workspace:update",
+    async (_event, { workspaceId, name, description }) => {
+      try {
+        const userId = sessionManager.getUserId();
+        if (!userId) {
+          throw new Error("User not authenticated");
+        }
+        const workspace = await workspaceService.updateWorkspace(
+          workspaceId,
+          userId,
+          {
+            name,
+            description,
+          }
+        );
+        return { success: true, data: workspace };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred";
+        log.error("Update workspace error:", error);
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
+
+  ipcMain.handle("workspace:delete", async (_event, { workspaceId }) => {
+    try {
+      const userId = sessionManager.getUserId();
+      if (!userId) {
+        throw new Error("User not authenticated");
+      }
+      await workspaceService.deleteWorkspace(workspaceId, userId);
+      return { success: true };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("Delete workspace error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  ipcMain.handle("workspace:get-user-workspaces", async () => {
+    try {
+      const userId = sessionManager.getUserId();
+      if (!userId) {
+        throw new Error("User not authenticated");
+      }
+      const workspaces = await workspaceService.getUserWorkspaces(userId);
+      return { success: true, data: workspaces };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("Get user workspaces error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // Workspace member handlers
+  ipcMain.handle(
+    "workspace-member:invite",
+    async (_event, { workspaceId, email, role }) => {
+      try {
+        await workspaceService.inviteByEmail(workspaceId, email, role);
+        return { success: true };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred";
+        log.error("Invite team member error:", error);
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
+
+  ipcMain.handle("workspace-member:list", async (_event, { workspaceId }) => {
+    try {
+      const members = await workspaceService.listMembers(workspaceId);
+      return { success: true, data: members };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("List workspace members error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  ipcMain.handle(
+    "workspace-member:list-with-users",
+    async (_event, { workspaceId }) => {
+      try {
+        const members =
+          await workspaceService.listMembersWithUsers(workspaceId);
+        return { success: true, data: members };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred";
+        log.error("List workspace members with users error:", error);
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    "workspace-member:remove",
+    async (_event, { workspaceId, userId }) => {
+      try {
+        await workspaceService.removeMember(workspaceId, userId);
+        return { success: true };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred";
+        log.error("Remove workspace member error:", error);
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    "workspace-member:update-role",
+    async (_event, { workspaceId, userId, role }) => {
+      try {
+        const member = await workspaceService.updateMemberRole(
+          workspaceId,
+          userId,
+          role
+        );
+        return { success: true, data: member };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred";
+        log.error("Update workspace member role error:", error);
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
+  ipcMain.handle("onboarding:get-status", async () => {
+    try {
+      const userId = sessionManager.getUserId();
+      if (!userId) {
+        return {
+          success: true,
+          data: {
+            hasTenant: false,
+            hasWorkspace: false,
+            hasConnector: false,
+            isComplete: false,
+            currentStep: 1,
+          },
+        };
+      }
+
+      const tenant = await tenantService.getTenantByOwner(userId);
+
+      // Check if user is an invited member of a workspace (non-owner)
+      let isInvitedMember = false;
+      if (!tenant) {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data: memberData } = await supabase
+            .from("workspace_members")
+            .select("workspace_id")
+            .eq("user_id", userId)
+            .limit(1)
+            .single();
+          if (memberData?.workspace_id) {
+            isInvitedMember = true;
+            log.info(
+              "[Onboarding] User is an invited workspace member, skipping onboarding"
+            );
+          }
+        }
+      }
+
+      // Invited members bypass onboarding entirely
+      if (isInvitedMember) {
+        // Auto-complete onboarding for invited users so they go straight to /home
+        let progress = await onboardingService.getProgress(userId);
+        if (!progress) {
+          await onboardingService.initializeProgress(userId);
+        }
+        if (!progress?.isComplete) {
+          await onboardingService.complete(userId);
+        }
+        return {
+          success: true,
+          data: {
+            hasTenant: false,
+            hasWorkspace: true,
+            hasConnector: false,
+            isComplete: true,
+            currentStep: 5,
+          },
+        };
+      }
+
+      const workspaces = tenant
+        ? await workspaceService.listWorkspaces(tenant.id)
+        : [];
+      const workspace = workspaces[0] ?? null;
+      const connectors = workspace
+        ? await connectorService.getConnectors(workspace.id)
+        : [];
+
+      const hasTenant = !!tenant;
+      const hasWorkspace = !!workspace;
+      const hasConnector = connectors.length > 0;
+      // Onboarding is complete after creating tenant + workspace (connectors optional)
+      const isComplete = hasTenant && hasWorkspace;
+
+      // Fetch persisted onboarding step
+      let persistedProgress = await onboardingService.getProgress(userId);
+      if (!persistedProgress) {
+        // Initialize if not exists
+        await onboardingService.initializeProgress(userId);
+        persistedProgress = {
+          currentStep: 1,
+          isComplete: false,
+        };
+      }
+
+      // If user has completed onboarding or completed flag is set, return step 5
+      let currentStep = persistedProgress.currentStep;
+      if (isComplete && !persistedProgress.isComplete) {
+        // User just completed onboarding (created tenant + workspace)
+        currentStep = 5;
+        await onboardingService.complete(userId);
+      } else if (persistedProgress.isComplete) {
+        // Already marked complete, show step 5
+        currentStep = 5;
+      }
+
+      return {
+        success: true,
+        data: {
+          hasTenant,
+          hasWorkspace,
+          hasConnector,
+          isComplete,
+          currentStep,
+          tenant: tenant ?? undefined,
+          workspace: workspace ?? undefined,
+        },
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("Get onboarding status error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // Onboarding set-step handler
+  ipcMain.handle("onboarding:set-step", async (_event, { step }) => {
+    try {
+      const userId = sessionManager.getUserId();
+      if (!userId) {
+        return { success: false, error: "User not authenticated" };
+      }
+
+      await onboardingService.setStep(userId, step);
+      return { success: true };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("Set onboarding step error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
   // Issue handlers
   ipcMain.handle(
     "issue:create",
@@ -1499,6 +2607,35 @@ function setupIPCHandlers() {
           description,
           thumbnailPath
         );
+
+        // Trigger auto-sync to cloud if enabled (fire-and-forget)
+        if (appSettingsStore.get("autoSync")) {
+          syncService
+            .syncAllToCloud(userId)
+            .then((result) => {
+              log.info("[AutoSync] Sync completed. Result:", {
+                success: result.success,
+                syncedCount: result.syncedCount,
+                failedCount: result.failedCount,
+              });
+              if (result.success && mainWindow && mainWindow.webContents) {
+                // Notify renderer that auto-sync completed so it can refresh
+                log.info(
+                  "[AutoSync] Sending auto-sync-completed event to renderer"
+                );
+                mainWindow.webContents.send("auto-sync-completed", {
+                  userId,
+                  syncedCount: result.syncedCount,
+                });
+              } else if (!result.success) {
+                log.warn("[AutoSync] Sync failed:", result.errors);
+              }
+            })
+            .catch((err) =>
+              log.warn("[AutoSync] Background cloud sync failed:", err.message)
+            );
+        }
+
         return { success: true, data: issue };
       } catch (error) {
         const errorMessage =
@@ -1526,6 +2663,97 @@ function setupIPCHandlers() {
   ipcMain.handle("issue:update", async (_event, { issueId, updates }) => {
     try {
       const issue = await issueService.updateIssue(issueId, updates);
+
+      // Propagate updates to external platforms if title/description/tags changed
+      const hasMetadataUpdates =
+        updates.title || updates.description || updates.tags;
+
+      // Update Supabase with metadata changes
+      if (hasMetadataUpdates) {
+        log.info("[Update] Syncing metadata changes to database...");
+        await syncService.updateSnapMetadata(issueId, issue.userId, {
+          title: updates.title,
+          description: updates.description,
+          tags: updates.tags,
+        });
+      }
+
+      if (hasMetadataUpdates && issue.syncedTo && issue.syncedTo.length > 0) {
+        // Update GitHub issues
+        const githubSync = issue.syncedTo.find((s) => s.platform === "github");
+        if (githubSync) {
+          try {
+            const connector = await connectorService.getConnectorById(
+              githubSync.connectorId || ""
+            );
+            if (connector && connector.enabled) {
+              await connectorService.syncToGitHub(connector, {
+                title: issue.title,
+                description: issue.description,
+                filePath: issue.filePath,
+                cloudFileUrl: issue.cloudFileUrl,
+                syncedTo: issue.syncedTo,
+                tags: issue.tags,
+                type: issue.type,
+              });
+              log.info(
+                `[Update] GitHub issue #${githubSync.externalId} updated`
+              );
+            }
+          } catch (error) {
+            log.warn(
+              "[Update] Failed to update GitHub issue:",
+              error instanceof Error ? error.message : String(error)
+            );
+          }
+        }
+
+        // Update Zoho bugs
+        const zohoSync = issue.syncedTo.find((s) => s.platform === "zoho");
+        if (zohoSync) {
+          try {
+            const connector = await connectorService.getConnectorById(
+              zohoSync.connectorId || ""
+            );
+            if (connector && connector.enabled) {
+              await connectorService.updateZohoBug(
+                connector,
+                zohoSync.externalId,
+                {
+                  title: updates.title,
+                  description: updates.description,
+                  tags: updates.tags,
+                }
+              );
+              log.info(`[Update] Zoho bug ${zohoSync.externalId} updated`);
+            }
+          } catch (error) {
+            log.warn(
+              "[Update] Failed to update Zoho bug:",
+              error instanceof Error ? error.message : String(error)
+            );
+          }
+        }
+      }
+
+      // Trigger auto-sync to cloud if enabled (fire-and-forget)
+      if (appSettingsStore.get("autoSync")) {
+        syncService
+          .syncAllToCloud(issue.userId)
+          .then((result) => {
+            if (result.success && mainWindow && mainWindow.webContents) {
+              // Notify renderer that auto-sync completed so it can refresh
+              mainWindow.webContents.send("auto-sync-completed", {
+                userId: issue.userId,
+                syncedCount: result.syncedCount,
+              });
+            }
+          })
+          .catch((err) =>
+            log.warn("[AutoSync] Background cloud sync failed:", err.message)
+          );
+      }
+
       return { success: true, data: issue };
     } catch (error) {
       const errorMessage =
@@ -1537,7 +2765,62 @@ function setupIPCHandlers() {
 
   ipcMain.handle("issue:delete", async (_event, { issueId }) => {
     try {
+      const user = sessionManager.getUser();
+      if (!user) {
+        throw new Error("User not authenticated");
+      }
+
+      // Get the issue to check if it's synced to any platforms
+      const issue = issueService.getIssueById(issueId);
+      if (!issue) {
+        throw new Error("Issue not found");
+      }
+
+      // Delete from external platforms
+      if (issue.syncedTo && issue.syncedTo.length > 0) {
+        for (const sync of issue.syncedTo) {
+          try {
+            if (sync.platform === "github") {
+              // Get GitHub connector
+              const connector = await connectorService.getConnectorById(
+                sync.connectorId || ""
+              );
+              if (connector && connector.enabled) {
+                const issueNumber = parseInt(sync.externalId, 10);
+                await connectorService.closeGitHubIssue(connector, issueNumber);
+                log.info(`[Delete] Closed GitHub issue #${issueNumber}`);
+              }
+            } else if (sync.platform === "zoho") {
+              // Get Zoho connector
+              const connector = await connectorService.getConnectorById(
+                sync.connectorId || ""
+              );
+              if (connector && connector.enabled) {
+                await connectorService.deleteZohoBug(
+                  connector,
+                  sync.externalId
+                );
+                log.info(`[Delete] Deleted Zoho bug ${sync.externalId}`);
+              }
+            }
+          } catch (platformError) {
+            // Log error but continue with deletion
+            log.warn(
+              `[Delete] Failed to delete from ${sync.platform}:`,
+              platformError instanceof Error
+                ? platformError.message
+                : String(platformError)
+            );
+          }
+        }
+      }
+
+      // Delete from cloud storage and database
+      await syncService.deleteFromCloud(user.id, issueId);
+
+      // Delete locally
       await issueService.deleteIssue(issueId);
+
       return { success: true };
     } catch (error) {
       const errorMessage =
@@ -1607,6 +2890,9 @@ function setupIPCHandlers() {
         if (windowCaptureOverlay) {
           windowCaptureOverlay.close();
           windowCaptureOverlay = null;
+          // Wait for the OS compositor to fully remove the overlay from screen
+          // before capturing, so it doesn't appear in the screenshot
+          await new Promise((resolve) => setTimeout(resolve, 150));
         }
 
         const result = await captureService.captureScreenshot({
@@ -1627,6 +2913,14 @@ function setupIPCHandlers() {
           const port = process.argv[2];
           await mainWindow?.loadURL(`http://localhost:${port}/annotate`);
         }
+
+        // After page has loaded, also send the screenshot via IPC event as a
+        // reliable backup in case the renderer's getPendingScreenshot fires
+        // before pendingScreenshot was set (race condition safeguard)
+        mainWindow?.webContents.send("screenshot-captured", {
+          dataUrl: result.dataUrl,
+          mode,
+        });
 
         return { success: true, data: result };
       } catch (error) {
@@ -1888,13 +3182,13 @@ function setupIPCHandlers() {
   });
 
   // Connector handlers
-  ipcMain.handle("connector:list", async () => {
+  ipcMain.handle("connector:list", async (_event, { workspaceId }) => {
     try {
       const user = sessionManager.getUser();
       if (!user) {
         throw new Error("User not authenticated");
       }
-      const connectors = await connectorService.getConnectors(user.id);
+      const connectors = await connectorService.getConnectors(workspaceId);
       return { success: true, data: connectors };
     } catch (error) {
       const errorMessage =
@@ -1904,36 +3198,110 @@ function setupIPCHandlers() {
     }
   });
 
-  ipcMain.handle("connector:add", async (_event, connector) => {
-    try {
-      const user = sessionManager.getUser();
-      if (!user) {
-        throw new Error("User not authenticated");
+  ipcMain.handle(
+    "connector:add",
+    async (_event, { workspaceId, ...connector }) => {
+      try {
+        const user = sessionManager.getUser();
+        if (!user) {
+          throw new Error("User not authenticated");
+        }
+        let newConnector = await connectorService.addConnector(
+          user.id,
+          workspaceId,
+          connector
+        );
+
+        // If this is a GitHub connector and we have pending tokens, update the connector
+        if (connector.type === "github") {
+          log.info("[Connector:Add] GitHub connector created");
+          log.info(
+            "[Connector:Add] Incoming connector token:",
+            connector.config?.accessToken ? "present" : "empty"
+          );
+          log.info(
+            "[Connector:Add] Pending GitHub tokens exist:",
+            !!pendingGitHubTokens
+          );
+
+          if (pendingGitHubTokens) {
+            log.info("[Connector:Add] Updating connector with pending tokens");
+            newConnector = await connectorService.updateConnector(
+              newConnector.id,
+              {
+                config: {
+                  ...newConnector.config,
+                  accessToken: pendingGitHubTokens.accessToken,
+                },
+              }
+            );
+            // Clear pending tokens
+            pendingGitHubTokens = null;
+            log.info(
+              "[Connector:Add] Connector updated and pending tokens cleared"
+            );
+          } else {
+            log.warn(
+              "[Connector:Add] No pending tokens, connector has token from renderer:",
+              !!connector.config?.accessToken
+            );
+          }
+        }
+
+        // If this is a Zoho connector and we have pending tokens, update the connector
+        if (connector.type === "zoho") {
+          log.info("[Connector:Add] Zoho connector created");
+          log.info(
+            "[Connector:Add] Incoming connector token:",
+            connector.config?.accessToken ? "present" : "empty"
+          );
+          log.info(
+            "[Connector:Add] Pending Zoho tokens exist:",
+            !!pendingZohoTokens
+          );
+
+          if (pendingZohoTokens) {
+            log.info("[Connector:Add] Updating connector with pending tokens");
+            newConnector = await connectorService.updateConnector(
+              newConnector.id,
+              {
+                config: {
+                  ...newConnector.config,
+                  accessToken: pendingZohoTokens.accessToken,
+                  refreshToken: pendingZohoTokens.refreshToken,
+                  apiDomain: pendingZohoTokens.apiDomain,
+                  accountsServer: pendingZohoTokens.accountsServer,
+                },
+              }
+            );
+            // Clear pending tokens
+            pendingZohoTokens = null;
+            log.info(
+              "[Connector:Add] Connector updated and pending tokens cleared"
+            );
+          } else {
+            log.warn(
+              "[Connector:Add] No pending tokens, connector has token from renderer:",
+              !!connector.config?.accessToken
+            );
+          }
+        }
+
+        return { success: true, data: newConnector };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred";
+        log.error("IPC Handler error:", error);
+        return { success: false, error: errorMessage };
       }
-      const newConnector = await connectorService.addConnector(
-        user.id,
-        connector
-      );
-      return { success: true, data: newConnector };
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "An unexpected error occurred";
-      log.error("IPC Handler error:", error);
-      return { success: false, error: errorMessage };
     }
-  });
+  );
 
   ipcMain.handle("connector:update", async (_event, { id, updates }) => {
     try {
-      const user = sessionManager.getUser();
-      if (!user) {
-        throw new Error("User not authenticated");
-      }
-      const connector = await connectorService.updateConnector(
-        user.id,
-        id,
-        updates
-      );
+      const connector = await connectorService.updateConnector(id, updates);
       return { success: true, data: connector };
     } catch (error) {
       const errorMessage =
@@ -1945,11 +3313,7 @@ function setupIPCHandlers() {
 
   ipcMain.handle("connector:delete", async (_event, { id }) => {
     try {
-      const user = sessionManager.getUser();
-      if (!user) {
-        throw new Error("User not authenticated");
-      }
-      await connectorService.deleteConnector(user.id, id);
+      await connectorService.deleteConnector(id);
       return { success: true };
     } catch (error) {
       const errorMessage =
@@ -1972,10 +3336,7 @@ function setupIPCHandlers() {
         throw new Error("Issue not found");
       }
 
-      const connector = await connectorService.getConnectorById(
-        user.id,
-        connectorId
-      );
+      const connector = await connectorService.getConnectorById(connectorId);
       if (!connector || !connector.enabled) {
         throw new Error("GitHub connector not found or disabled");
       }
@@ -2016,6 +3377,66 @@ function setupIPCHandlers() {
       return { success: false, error: errorMessage };
     }
   });
+
+  // Sync handler - Zoho
+  ipcMain.handle(
+    "sync:issue-zoho",
+    async (_event, { issueId, connectorId }) => {
+      try {
+        const user = sessionManager.getUser();
+        if (!user) {
+          throw new Error("User not authenticated");
+        }
+
+        const issue = await issueService.getIssueById(issueId);
+        if (!issue) {
+          throw new Error("Issue not found");
+        }
+
+        const connector = await connectorService.getConnectorById(connectorId);
+        if (!connector || connector.type !== "zoho" || !connector.enabled) {
+          throw new Error("Zoho connector not found or disabled");
+        }
+
+        await issueService.updateSyncStatus(issueId, "syncing");
+
+        const result = await connectorService.syncToZoho(connector, {
+          title: issue.title,
+          description: issue.description,
+          filePath: issue.filePath,
+          cloudFileUrl: issue.cloudFileUrl,
+          syncedTo: issue.syncedTo,
+          tags: issue.tags,
+          type: issue.type,
+        });
+
+        await issueService.updateSyncStatus(issueId, "synced", {
+          platform: "zoho",
+          externalId: result.bugId,
+          url: result.url,
+          connectorId,
+        });
+
+        return {
+          success: true,
+          data: {
+            ...result,
+            message: result.isUpdate
+              ? "Zoho bug already exists"
+              : "Zoho bug created successfully",
+          },
+        };
+      } catch (error) {
+        await issueService.updateSyncStatus(issueId, "failed");
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred";
+        log.error("IPC Handler error:", error);
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
 
   // Sync handler - Cloud (Supabase)
   ipcMain.handle("sync:to-cloud", async (_event, { userId }) => {
@@ -2066,6 +3487,37 @@ function setupIPCHandlers() {
     }
   });
 
+  // Settings handlers
+  ipcMain.handle("settings:get-auto-sync", async () => {
+    try {
+      const autoSync = appSettingsStore.get("autoSync");
+      return { success: true, data: autoSync };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("IPC Handler error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  ipcMain.handle(
+    "settings:set-auto-sync",
+    async (_event, { enabled }: { enabled: boolean }) => {
+      try {
+        appSettingsStore.set("autoSync", enabled);
+        log.info("[Settings] Auto-sync setting updated to:", enabled);
+        return { success: true };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred";
+        log.error("IPC Handler error:", error);
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
+
   // Validate GitHub connector
   ipcMain.handle(
     "connector:validate-github",
@@ -2088,15 +3540,253 @@ function setupIPCHandlers() {
     }
   );
 
+  // Validate Zoho connector
+  ipcMain.handle(
+    "connector:validate-zoho",
+    async (_event, { accessToken, portalId }) => {
+      try {
+        const isValid = await connectorService.validateZohoConnector(
+          accessToken,
+          portalId
+        );
+        return { success: true, data: { isValid } };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred";
+        log.error("IPC Handler error:", error);
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
+
+  // Zoho OAuth Sign In
+  ipcMain.handle("connector:zoho-signin", async () => {
+    log.info("[Zoho OAuth] IPC Handler: connector:zoho-signin called");
+    try {
+      log.info("[Zoho OAuth] Generating authorization URL");
+      const url = zohoService.getAuthUrl();
+      log.info("[Zoho OAuth] ✓ Auth URL generated, length:", url.length);
+      log.info("[Zoho OAuth] Opening browser to OAuth consent screen");
+      await shell.openExternal(url);
+      log.info("[Zoho OAuth] ✓ Browser opened successfully");
+      return { success: true };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("[Zoho OAuth] ✗ IPC Handler error:", error);
+      log.error("[Zoho OAuth] Error message:", errorMessage);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // Get Zoho Portals
+  ipcMain.handle("connector:get-zoho-portals", async () => {
+    try {
+      if (!pendingZohoTokens) {
+        return {
+          success: false,
+          error: "No pending Zoho authorization. Please sign in first.",
+        };
+      }
+
+      // Configure Zoho service with region info before making API calls
+      if (pendingZohoTokens.accountsServer || pendingZohoTokens.apiDomain) {
+        const accountsServerUrl =
+          pendingZohoTokens.accountsServer ||
+          `https://accounts.${pendingZohoTokens.apiDomain}`;
+        zohoService.setAccountsServer(
+          accountsServerUrl,
+          pendingZohoTokens.apiDomain
+        );
+      }
+
+      const portals = await zohoService.getPortals(
+        pendingZohoTokens.accessToken
+      );
+      return { success: true, data: portals };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("[Zoho Portals] IPC Handler error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // Get Zoho Projects for a Portal
+  ipcMain.handle(
+    "connector:get-zoho-projects",
+    async (_event, { portalId }) => {
+      try {
+        if (!pendingZohoTokens) {
+          return {
+            success: false,
+            error: "No pending Zoho authorization. Please sign in first.",
+          };
+        }
+
+        // Configure Zoho service with region info before making API calls
+        if (pendingZohoTokens.accountsServer || pendingZohoTokens.apiDomain) {
+          const accountsServerUrl =
+            pendingZohoTokens.accountsServer ||
+            `https://accounts.${pendingZohoTokens.apiDomain}`;
+          zohoService.setAccountsServer(
+            accountsServerUrl,
+            pendingZohoTokens.apiDomain
+          );
+        }
+
+        const projects = await zohoService.getProjects(
+          pendingZohoTokens.accessToken,
+          portalId
+        );
+        return { success: true, data: projects };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred";
+        log.error("[Zoho Projects] IPC Handler error:", error);
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
+
+  // GitHub OAuth Sign In
+  ipcMain.handle("connector:github-signin", async () => {
+    try {
+      const url = githubService.getAuthUrl();
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("[GitHub OAuth] IPC Handler error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // Get GitHub Repositories
+  ipcMain.handle("connector:get-github-repos", async () => {
+    try {
+      if (!pendingGitHubTokens) {
+        return {
+          success: false,
+          error: "No pending GitHub authorization. Please sign in first.",
+        };
+      }
+
+      const repos = await githubService.getRepositories(
+        pendingGitHubTokens.accessToken
+      );
+      return { success: true, data: repos };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("[GitHub Repositories] IPC Handler error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // Get GitHub Current User
+  ipcMain.handle("connector:get-github-user", async () => {
+    try {
+      if (!pendingGitHubTokens) {
+        return {
+          success: false,
+          error: "No pending GitHub authorization. Please sign in first.",
+        };
+      }
+
+      const user = await githubService.getCurrentUser(
+        pendingGitHubTokens.accessToken
+      );
+      return { success: true, data: user };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("[GitHub User] IPC Handler error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // Get GitHub Access Token
+  ipcMain.handle("connector:get-github-token", async () => {
+    try {
+      log.info("[GitHub Token] Request to get GitHub access token");
+      log.info(
+        "[GitHub Token] pendingGitHubTokens exists:",
+        !!pendingGitHubTokens
+      );
+
+      if (!pendingGitHubTokens) {
+        log.warn("[GitHub Token] No pending GitHub tokens available");
+        return {
+          success: false,
+          error: "No pending GitHub authorization. Please sign in first.",
+        };
+      }
+
+      log.info("[GitHub Token] Returning access token");
+      return { success: true, accessToken: pendingGitHubTokens.accessToken };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("[GitHub Token] IPC Handler error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // Get Zoho Access Token
+  ipcMain.handle("connector:get-zoho-token", async () => {
+    try {
+      log.info("[Zoho Token] Request to get Zoho access token");
+      log.info("[Zoho Token] pendingZohoTokens exists:", !!pendingZohoTokens);
+
+      if (!pendingZohoTokens) {
+        log.warn("[Zoho Token] No pending Zoho tokens available");
+        return {
+          success: false,
+          error: "No pending Zoho authorization. Please sign in first.",
+        };
+      }
+
+      log.info("[Zoho Token] Returning Zoho tokens");
+      return {
+        success: true,
+        accessToken: pendingZohoTokens.accessToken,
+        refreshToken: pendingZohoTokens.refreshToken,
+        apiDomain: pendingZohoTokens.apiDomain,
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("[Zoho Token] IPC Handler error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
   // Note: Database configuration handlers removed - Supabase config is now via environment variables
 
   // File access handler
   ipcMain.handle("file:read-image", async (_event, { filePath }) => {
     try {
-      if (!fs.existsSync(filePath)) {
-        return { success: false, error: "File not found" };
+      log.info("[File] Reading image:", filePath);
+
+      // Validate file path
+      if (!filePath || typeof filePath !== "string") {
+        log.error("[File] Invalid file path provided:", filePath);
+        return { success: false, error: `Invalid file path: ${filePath}` };
       }
 
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        log.warn("[File] File not found:", filePath);
+        return { success: false, error: `File not found: ${filePath}` };
+      }
+
+      // Read and convert file
       const buffer = fs.readFileSync(filePath);
       const base64 = buffer.toString("base64");
       const ext = path.extname(filePath).toLowerCase();
@@ -2105,16 +3795,23 @@ function setupIPCHandlers() {
           ? "image/png"
           : ext === ".jpg" || ext === ".jpeg"
             ? "image/jpeg"
-            : "image/png";
+            : ext === ".webm"
+              ? "video/webm"
+              : ext === ".mp4"
+                ? "video/mp4"
+                : "image/png";
       const dataUrl = `data:${mimeType};base64,${base64}`;
 
+      log.info("[File] Successfully read image, size:", buffer.length, "bytes");
       return { success: true, data: dataUrl };
     } catch (error) {
-      log.error("Error reading image:", error);
+      log.error("[File] Error reading image:", filePath, error);
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
-      log.error("IPC Handler error:", error);
-      return { success: false, error: errorMessage };
+      return {
+        success: false,
+        error: `Failed to read file ${filePath}: ${errorMessage}`,
+      };
     }
   });
 
@@ -2134,6 +3831,23 @@ function setupIPCHandlers() {
   ipcMain.handle("app:hide-window", () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.hide();
+    }
+  });
+
+  // Utility handler - Open external URL in default browser
+  ipcMain.handle("util:open-external", async (_event, { url }) => {
+    try {
+      if (!url) {
+        throw new Error("URL is required");
+      }
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (error) {
+      log.error("[Util] Failed to open external URL:", url, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to open URL",
+      };
     }
   });
 

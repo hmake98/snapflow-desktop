@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run lint)",
+      "Bash(npm view eslint-plugin-react-hooks versions --json)",
+      "Bash(npm ci --dry-run)",
+      "Bash(npm run lint:fix)",
+      "Bash(npm run lint -- --fix)",
+      "WebFetch(domain:www.zoho.com)",
+      "WebFetch(domain:projects.zoho.com)",
+      "Bash(grep -n \"issue:update\\\\|window.api.updateIssue\" /Users/hmake98/Documents/snapflow-desktop/renderer/pages/*.tsx)"
+    ]
+  }
+}

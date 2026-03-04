@@ -30,10 +30,39 @@ export function CloudSyncIndicator({ userId }: { userId: string }) {
     error: null,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [autoSync, setAutoSyncState] = useState(false);
+  const [loadingAutoSync, setLoadingAutoSync] = useState(true);
 
   useEffect(() => {
     loadSyncHistory();
+    loadAutoSyncSetting();
   }, [userId]);
+
+  const loadAutoSyncSetting = async () => {
+    try {
+      setLoadingAutoSync(true);
+      const result = await window.api.getAutoSync();
+      if (result.success) {
+        setAutoSyncState(result.data);
+      }
+    } catch (error) {
+      console.error("Failed to load auto-sync setting:", error);
+    } finally {
+      setLoadingAutoSync(false);
+    }
+  };
+
+  const handleAutoSyncToggle = async () => {
+    try {
+      const newValue = !autoSync;
+      const result = await window.api.setAutoSync(newValue);
+      if (result.success) {
+        setAutoSyncState(newValue);
+      }
+    } catch (error) {
+      console.error("Failed to update auto-sync setting:", error);
+    }
+  };
 
   const loadSyncHistory = async () => {
     try {
@@ -228,6 +257,32 @@ export function CloudSyncIndicator({ userId }: { userId: string }) {
             </p>
           </div>
         </div>
+
+        {/* Auto-Sync Toggle */}
+        {!loadingAutoSync && (
+          <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-700/30 flex items-center justify-between">
+            <div className="flex-1">
+              <h4 className="text-sm font-semibold text-gray-100">
+                Auto-sync on capture
+              </h4>
+              <p className="text-xs text-gray-400 mt-1">
+                Automatically back up to cloud when a screenshot is captured
+              </p>
+            </div>
+            <button
+              onClick={handleAutoSyncToggle}
+              className={`relative w-12 h-6 rounded-full transition-colors ml-4 flex-shrink-0 ${
+                autoSync ? "bg-blue-600" : "bg-gray-600"
+              }`}
+            >
+              <span
+                className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                  autoSync ? "translate-x-6" : ""
+                }`}
+              />
+            </button>
+          </div>
+        )}
 
         {/* Error Message */}
         {syncStatus.error && (

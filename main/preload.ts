@@ -29,6 +29,56 @@ const api = {
   updateUser: (userId: string, updates: { name?: string; email?: string }) =>
     ipcRenderer.invoke("user:update", { userId, updates }),
   logout: () => ipcRenderer.invoke("user:logout"),
+  googleSignIn: () => ipcRenderer.invoke("user:google-signin"),
+  getSessionExpiry: () => ipcRenderer.invoke("user:get-session-expiry"),
+  isSessionExpiringSoon: (minutesBuffer?: number) =>
+    ipcRenderer.invoke("user:is-session-expiring-soon", { minutesBuffer }),
+  isSessionInitialized: () => ipcRenderer.invoke("session:is-initialized"),
+
+  // Tenant methods
+  createTenant: (name: string, description?: string) =>
+    ipcRenderer.invoke("tenant:create", { name, description }),
+  getUserTenant: () => ipcRenderer.invoke("tenant:get"),
+  updateTenant: (tenantId: string, name?: string, description?: string) =>
+    ipcRenderer.invoke("tenant:update", { tenantId, name, description }),
+
+  // Workspace methods
+  createWorkspace: (tenantId: string, name: string, description?: string) =>
+    ipcRenderer.invoke("workspace:create", { tenantId, name, description }),
+  listWorkspaces: (tenantId: string) =>
+    ipcRenderer.invoke("workspace:list", { tenantId }),
+  updateWorkspace: (workspaceId: string, name?: string, description?: string) =>
+    ipcRenderer.invoke("workspace:update", { workspaceId, name, description }),
+  deleteWorkspace: (workspaceId: string) =>
+    ipcRenderer.invoke("workspace:delete", { workspaceId }),
+  getUserWorkspaces: () => ipcRenderer.invoke("workspace:get-user-workspaces"),
+  inviteTeamMember: (
+    workspaceId: string,
+    email: string,
+    role: "admin" | "pm" | "qa" | "dev" | "client"
+  ) =>
+    ipcRenderer.invoke("workspace-member:invite", { workspaceId, email, role }),
+  listWorkspaceMembers: (workspaceId: string) =>
+    ipcRenderer.invoke("workspace-member:list", { workspaceId }),
+  listWorkspaceMembersWithUsers: (workspaceId: string) =>
+    ipcRenderer.invoke("workspace-member:list-with-users", { workspaceId }),
+  removeWorkspaceMember: (workspaceId: string, userId: string) =>
+    ipcRenderer.invoke("workspace-member:remove", { workspaceId, userId }),
+  updateMemberRole: (
+    workspaceId: string,
+    userId: string,
+    role: "admin" | "pm" | "qa" | "dev" | "client"
+  ) =>
+    ipcRenderer.invoke("workspace-member:update-role", {
+      workspaceId,
+      userId,
+      role,
+    }),
+
+  // Onboarding
+  getOnboardingStatus: () => ipcRenderer.invoke("onboarding:get-status"),
+  setOnboardingStep: (step: number) =>
+    ipcRenderer.invoke("onboarding:set-step", { step }),
 
   // Issue methods
   createIssue: (
@@ -100,13 +150,27 @@ const api = {
   getPendingRecording: () => ipcRenderer.invoke("recording:get-pending"),
 
   // Connector methods
-  listConnectors: () => ipcRenderer.invoke("connector:list"),
-  addConnector: (connector: Record<string, unknown>) =>
-    ipcRenderer.invoke("connector:add", connector),
+  listConnectors: (workspaceId: string) =>
+    ipcRenderer.invoke("connector:list", { workspaceId }),
+  addConnector: (workspaceId: string, connector: Record<string, unknown>) =>
+    ipcRenderer.invoke("connector:add", { workspaceId, ...connector }),
   updateConnector: (id: string, updates: Record<string, unknown>) =>
     ipcRenderer.invoke("connector:update", { id, updates }),
   deleteConnector: (id: string) =>
     ipcRenderer.invoke("connector:delete", { id }),
+  validateZohoConnector: (accessToken: string, portalId: string) =>
+    ipcRenderer.invoke("connector:validate-zoho", { accessToken, portalId }),
+  zohoSignIn: () => ipcRenderer.invoke("connector:zoho-signin"),
+  getZohoPortals: () => ipcRenderer.invoke("connector:get-zoho-portals"),
+  getZohoProjects: (portalId: string) =>
+    ipcRenderer.invoke("connector:get-zoho-projects", { portalId }),
+  getZohoAccessToken: () => ipcRenderer.invoke("connector:get-zoho-token"),
+
+  // GitHub OAuth methods
+  githubSignIn: () => ipcRenderer.invoke("connector:github-signin"),
+  getGitHubRepositories: () => ipcRenderer.invoke("connector:get-github-repos"),
+  getGitHubUser: () => ipcRenderer.invoke("connector:get-github-user"),
+  getGitHubAccessToken: () => ipcRenderer.invoke("connector:get-github-token"),
 
   // Sync methods - GitHub
   syncIssue: (issueId: string, connectorId: string) =>
@@ -118,6 +182,10 @@ const api = {
       repo,
     }),
 
+  // Sync methods - Zoho
+  syncIssueToZoho: (issueId: string, connectorId: string) =>
+    ipcRenderer.invoke("sync:issue-zoho", { issueId, connectorId }),
+
   // Sync methods - Cloud (Supabase)
   syncToCloud: (userId: string) =>
     ipcRenderer.invoke("sync:to-cloud", { userId }),
@@ -126,6 +194,11 @@ const api = {
   fullSync: (userId: string) => ipcRenderer.invoke("sync:full", { userId }),
   getSyncHistory: (userId: string) =>
     ipcRenderer.invoke("sync:get-history", { userId }),
+
+  // Settings methods
+  getAutoSync: () => ipcRenderer.invoke("settings:get-auto-sync"),
+  setAutoSync: (enabled: boolean) =>
+    ipcRenderer.invoke("settings:set-auto-sync", { enabled }),
 
   // Database methods
   getDatabaseConfig: () => ipcRenderer.invoke("db:get-config"),
@@ -207,6 +280,61 @@ const api = {
     ipcRenderer.on("update-status", subscription);
     return () => ipcRenderer.removeListener("update-status", subscription);
   },
+  onZohoOAuthSuccess: (callback: () => void): (() => void) => {
+    const subscription = () => callback();
+    ipcRenderer.on("zoho-oauth-success", subscription);
+    return () => ipcRenderer.removeListener("zoho-oauth-success", subscription);
+  },
+  onZohoOAuthError: (callback: (error: string) => void): (() => void) => {
+    const subscription = (_event: IpcRendererEvent, error: string) =>
+      callback(error);
+    ipcRenderer.on("zoho-oauth-error", subscription);
+    return () => ipcRenderer.removeListener("zoho-oauth-error", subscription);
+  },
+  onGitHubOAuthSuccess: (callback: () => void): (() => void) => {
+    const subscription = () => callback();
+    ipcRenderer.on("github-oauth-success", subscription);
+    return () =>
+      ipcRenderer.removeListener("github-oauth-success", subscription);
+  },
+  onGitHubOAuthError: (callback: (error: string) => void): (() => void) => {
+    const subscription = (_event: IpcRendererEvent, error: string) =>
+      callback(error);
+    ipcRenderer.on("github-oauth-error", subscription);
+    return () => ipcRenderer.removeListener("github-oauth-error", subscription);
+  },
+
+  onSessionExpiringSoon: (
+    callback: (expiresAt: number) => void
+  ): (() => void) => {
+    const subscription = (_event: IpcRendererEvent, expiresAt: number) =>
+      callback(expiresAt);
+    ipcRenderer.on("session-expiring-soon", subscription);
+    return () =>
+      ipcRenderer.removeListener("session-expiring-soon", subscription);
+  },
+
+  onSessionExpired: (callback: () => void): (() => void) => {
+    const subscription = () => callback();
+    ipcRenderer.on("session-expired", subscription);
+    return () => ipcRenderer.removeListener("session-expired", subscription);
+  },
+
+  onAutoSyncCompleted: (
+    callback: (data: { userId: string; syncedCount: number }) => void
+  ): (() => void) => {
+    const subscription = (
+      _event: IpcRendererEvent,
+      data: { userId: string; syncedCount: number }
+    ) => callback(data);
+    ipcRenderer.on("auto-sync-completed", subscription);
+    return () =>
+      ipcRenderer.removeListener("auto-sync-completed", subscription);
+  },
+
+  // Utility methods
+  openExternalUrl: (url: string) =>
+    ipcRenderer.invoke("util:open-external", { url }),
 };
 
 contextBridge.exposeInMainWorld("ipc", handler);

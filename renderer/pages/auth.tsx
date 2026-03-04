@@ -3,6 +3,19 @@ import Head from "next/head";
 import { useRouter } from "next/router";
 import { WindowControls } from "../components/ui/WindowControls";
 
+const getDisplayError = (errorMsg: string): string => {
+  const msg = errorMsg.toLowerCase();
+  if (
+    msg.includes("unable to connect") ||
+    msg.includes("fetch failed") ||
+    msg.includes("network") ||
+    msg.includes("connection")
+  ) {
+    return "Connection failed. Please check your internet and try again.";
+  }
+  return errorMsg;
+};
+
 export default function AuthPage() {
   const router = useRouter();
   const [isLogin, setIsLogin] = useState(false);
@@ -15,6 +28,16 @@ export default function AuthPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const googleSigninTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup timeout on unmount
+  React.useEffect(() => {
+    return () => {
+      if (googleSigninTimeoutRef.current) {
+        clearTimeout(googleSigninTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,58 +45,43 @@ export default function AuthPage() {
     setSuccess("");
     setLoading(true);
 
+    // Set a 30-second timeout for auth operations
+    const authTimeout = setTimeout(() => {
+      setLoading(false);
+      setError("Request timeout. Please check your connection and try again.");
+    }, 30000);
+
     try {
       if (isLogin) {
         // Login
-        console.log("[AUTH] === LOGIN FLOW START ===");
-        console.log("[AUTH] Email:", formData.email);
-        console.log("[AUTH] Calling window.api.loginUser...");
-
         const result = await window.api.loginUser(
           formData.email,
           formData.password
         );
 
-        console.log("[AUTH] Login IPC returned");
-        console.log("[AUTH] Result:", JSON.stringify(result, null, 2));
+        clearTimeout(authTimeout);
 
         if (result.success) {
-          console.log("[AUTH] ✓ Login successful!");
-          console.log("[AUTH] User data:", result.data);
-          console.log("[AUTH] Starting navigation to /home...");
-
           // Navigate using Next.js router
           try {
-            console.log("[AUTH] Calling router.push('/home')...");
-            const pushResult = await router.push("/home");
-            console.log("[AUTH] ✓ router.push completed");
-            console.log("[AUTH] Push result:", pushResult);
+            await router.push("/home");
           } catch (navError) {
-            console.error("[AUTH] ✗ Navigation error:", navError);
-            console.log("[AUTH] Falling back to window.location.href");
+            console.error("[AUTH] Navigation error:", navError);
             window.location.href = "/home";
           }
-          console.log("[AUTH] === LOGIN FLOW END ===");
-          return; // Exit early, don't clear loading
+          return;
         } else {
-          console.error("[AUTH] ✗ Login failed:", result.error);
-          setError(result.error || "Login failed");
+          setError(getDisplayError(result.error || "Login failed"));
           setLoading(false);
         }
       } else {
         // Signup
-        console.log("[AUTH] === SIGNUP FLOW START ===");
-
         if (formData.password !== formData.confirmPassword) {
-          console.log("[AUTH] ✗ Passwords do not match");
+          clearTimeout(authTimeout);
           setError("Passwords do not match");
           setLoading(false);
           return;
         }
-
-        console.log("[AUTH] Name:", formData.name);
-        console.log("[AUTH] Email:", formData.email);
-        console.log("[AUTH] Calling window.api.createUser...");
 
         const result = await window.api.createUser(
           formData.name,
@@ -81,39 +89,25 @@ export default function AuthPage() {
           formData.password
         );
 
-        console.log("[AUTH] Signup IPC returned");
-        console.log("[AUTH] Result:", JSON.stringify(result, null, 2));
+        clearTimeout(authTimeout);
 
         if (result.success) {
-          console.log("[AUTH] ✓ Signup successful!");
-          console.log("[AUTH] User data:", result.data);
-          console.log("[AUTH] Starting navigation to /home...");
-
           // User is automatically logged in after signup, redirect to home
           try {
-            console.log("[AUTH] Calling router.push('/home')...");
-            const pushResult = await router.push("/home");
-            console.log("[AUTH] ✓ router.push completed");
-            console.log("[AUTH] Push result:", pushResult);
+            await router.push("/home");
           } catch (navError) {
-            console.error("[AUTH] ✗ Navigation error:", navError);
-            console.log("[AUTH] Falling back to window.location.href");
+            console.error("[AUTH] Navigation error:", navError);
             window.location.href = "/home";
           }
-          console.log("[AUTH] === SIGNUP FLOW END ===");
-          return; // Exit early, keep loading state during redirect
+          return;
         } else {
-          console.error("[AUTH] ✗ Signup failed:", result.error);
-          setError(result.error || "Signup failed");
+          setError(getDisplayError(result.error || "Signup failed"));
           setLoading(false);
         }
       }
     } catch (err) {
-      console.error("[AUTH] ✗ Unexpected error:", err);
-      console.error(
-        "[AUTH] Error details:",
-        JSON.stringify(err, Object.getOwnPropertyNames(err), 2)
-      );
+      clearTimeout(authTimeout);
+      console.error("[AUTH] Unexpected error:", err);
       setError("An unexpected error occurred");
       setLoading(false);
     }
@@ -139,11 +133,11 @@ export default function AuthPage() {
 
         {/* Auth Content */}
         <div className="flex-1 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="relative bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md p-8 border border-gray-800">
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4">
+          <div className="relative bg-gray-900 rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-gray-800">
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center w-12 h-12 bg-blue-600 rounded-2xl mb-3">
                 <svg
-                  className="w-8 h-8 text-white"
+                  className="w-6 h-6 text-white"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -156,10 +150,10 @@ export default function AuthPage() {
                   />
                 </svg>
               </div>
-              <h1 className="text-4xl font-bold text-gray-100 mb-2">
+              <h1 className="text-3xl font-bold text-gray-100 mb-1">
                 SnapFlow
               </h1>
-              <p className="text-gray-400 text-sm">
+              <p className="text-gray-400 text-xs">
                 {isLogin
                   ? "Welcome back! Please login to continue."
                   : "Create your account to get started."}
@@ -200,7 +194,7 @@ export default function AuthPage() {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-3">
               {!isLogin && (
                 <div>
                   <label
@@ -297,7 +291,7 @@ export default function AuthPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-800 disabled:opacity-50 text-white font-semibold py-3 rounded-lg transition-all duration-200"
+                className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-800 disabled:opacity-50 text-white font-semibold py-2 rounded-lg transition-all duration-200"
               >
                 {loading ? (
                   <span className="flex items-center justify-center">
@@ -329,6 +323,60 @@ export default function AuthPage() {
                 )}
               </button>
             </form>
+
+            <div className="my-4 flex items-center">
+              <div className="flex-1 border-t border-gray-700"></div>
+              <span className="px-3 text-xs text-gray-500">or</span>
+              <div className="flex-1 border-t border-gray-700"></div>
+            </div>
+
+            <button
+              type="button"
+              onClick={async () => {
+                setLoading(true);
+                setError("");
+
+                // Clear any existing timeout
+                if (googleSigninTimeoutRef.current) {
+                  clearTimeout(googleSigninTimeoutRef.current);
+                }
+
+                // Set a 120-second timeout for the OAuth flow
+                const timeout = setTimeout(() => {
+                  setLoading(false);
+                  setError(
+                    "Google sign-in timeout. Please close the browser window and try again."
+                  );
+                }, 120000);
+
+                googleSigninTimeoutRef.current = timeout;
+
+                try {
+                  const result = await window.api.googleSignIn();
+                  if (!result.success) {
+                    clearTimeout(timeout);
+                    googleSigninTimeoutRef.current = null;
+                    setLoading(false);
+                    setError(result.error || "Google sign-in failed");
+                  }
+                  // The OAuth callback will handle navigation and clear timeout
+                } catch (_err) {
+                  clearTimeout(timeout);
+                  googleSigninTimeoutRef.current = null;
+                  setLoading(false);
+                  setError("Failed to initiate Google sign-in");
+                }
+              }}
+              className="w-full flex items-center justify-center gap-3 bg-gray-800 hover:bg-gray-700 active:bg-gray-900 text-gray-100 font-semibold py-2 rounded-lg transition-all duration-200"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+              </svg>
+              Sign in with Google
+            </button>
 
             <div className="mt-6 text-center">
               <button

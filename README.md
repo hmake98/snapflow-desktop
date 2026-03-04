@@ -61,15 +61,21 @@
 - 🔍 **Smart Filtering** - Filter by type, status, tags, and search
 - 📊 **Sort Options** - Sort by date or name in ascending/descending order
 - 🖼️ **Preview Mode** - Full-resolution image preview with details sidebar
-- 💾 **Local Storage** - Organized file structure: `~/SnapFlow/Captures/YYYY/MM/DD/issueId/`
+- 💾 **Local Storage** - Organized file structure: `~/SnapFlow/Users/{userId}/Captures/YYYY/MM/DD/{issueId}/`
 
 ### Platform Integrations (✅)
 
 - 🐙 **GitHub Integration** - Create GitHub issues with embedded screenshots
+  - OAuth-based authentication flow
   - Upload screenshots directly to repository
   - Automatic issue creation with description and labels
   - Support for up to 5 repository connectors
   - Connector validation and error handling
+- 📊 **Zoho Projects Integration** - Create and manage bugs in Zoho Projects
+  - OAuth-based authentication flow
+  - Portal and project selection
+  - Automatic bug creation with screenshot URL
+  - Access token auto-refresh support
 - ☁️ **Cloud Sync** - Sync issues and screenshots to Supabase Storage
   - Automatic file and thumbnail uploads
   - Sync history tracking
@@ -95,10 +101,20 @@
 - 📄 **Pagination** - Efficient browsing with customizable items per page (6, 12, 24, 48)
 - 🪟 **Window Controls** - Draggable titlebar with minimize/maximize/close buttons
 - ⌨️ **Keyboard Shortcuts** - Global hotkeys for quick capture and in-app shortcuts for editing
+- 🏢 **Multi-Tenant Organizations** - Create and manage organizations with team members
+- 📁 **Workspaces** - Multiple workspaces per organization for project isolation
+- 📍 **Onboarding Flow** - Step-by-step guided setup for new users
+- 👥 **User Management** - Invite team members with role-based access (admin/dev)
+
+### Screen Recording (🚧 In Development)
+
+- 🎥 **Screen Recording** - Record screen activity with audio
+- 🎬 **Recording Controls** - Start, stop, pause recording from floating UI
+- ✂️ **Area Recording** - Record a selected region of the screen
+- 🖊️ **Recording Annotation** - Annotate recorded videos
 
 ### Planned Features (📋)
 
-- 🎥 **Screen Recording** - Record screen activity with audio (infrastructure in place)
 - 🔄 **Additional Platform Integrations** - Jira, Linear, Asana, etc.
 - 📤 **Export Options** - Export issues to PDF, ZIP archive
 - 🌐 **Public Sharing** - Generate shareable links for issues
@@ -111,40 +127,41 @@
 
 ### Frontend (Renderer Process)
 
-- **Framework**: [Next.js](https://nextjs.org/) 14.2.4 with [React](https://react.dev/) 18.3.1
-- **Language**: [TypeScript](https://www.typescriptlang.org/) 5.7.3
-- **Styling**: [Tailwind CSS](https://tailwindcss.com/) 3.4.3
+- **Framework**: [Next.js](https://nextjs.org/) 16.x with [React](https://react.dev/) 19.x
+- **Language**: [TypeScript](https://www.typescriptlang.org/) 5.9.x
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/) 4.x
 - **UI Components**: [Radix UI](https://www.radix-ui.com/) (Dialog, Select, Label, Tooltip, Slot, Visually Hidden)
-- **State Management**: [Zustand](https://zustand-demo.pmnd.rs/) 5.0.8
-- **Canvas Library**: [Konva.js](https://konvajs.org/) 9.3.16 with [React-Konva](https://konvajs.org/docs/react/) 18.2.10
-- **Animations**: [Framer Motion](https://www.framer.com/motion/) 12.23.24
-- **Notifications**: [Sonner](https://sonner.emilkowal.ski/) 2.0.7
-- **Date Utilities**: [date-fns](https://date-fns.org/) 3.3.1
-- **Icons**: [React Icons](https://react-icons.github.io/react-icons/) 5.0.1
-- **UI Utilities**: [clsx](https://github.com/lukeed/clsx) 2.1.0, [class-variance-authority](https://cva.style/docs) 0.7.1
+- **State Management**: [Zustand](https://zustand-demo.pmnd.rs/) 5.x
+- **Canvas Library**: [Konva.js](https://konvajs.org/) 10.x with [React-Konva](https://konvajs.org/docs/react/) 19.x
+- **Animations**: [Framer Motion](https://www.framer.com/motion/) 12.x
+- **Notifications**: [Sonner](https://sonner.emilkowal.ski/) 2.x
+- **Date Utilities**: [date-fns](https://date-fns.org/) 4.x
+- **Icons**: [React Icons](https://react-icons.github.io/react-icons/) 5.x
+- **UI Utilities**: [clsx](https://github.com/lukeed/clsx) 2.x, [class-variance-authority](https://cva.style/docs) 0.7.x
 
 ### Backend (Main Process)
 
-- **Runtime**: [Electron](https://www.electronjs.org/) 34.0.0
-- **Framework**: [Nextron](https://github.com/saltyshiomix/nextron) 9.5.0 (Next.js + Electron)
-- **Database**: [Supabase](https://supabase.com/) (PostgreSQL + Auth + Storage)
+- **Runtime**: [Electron](https://www.electronjs.org/) 40.x
+- **Framework**: [Nextron](https://github.com/saltyshiomix/nextron) 9.5.x (Next.js + Electron)
+- **Database**: [Supabase](https://supabase.com/) (PostgreSQL + Auth + Storage) via `@supabase/supabase-js` 2.x
 - **Capture**: Native Electron `desktopCapturer` API with `nativeImage.crop()`
+- **Image Processing**: [sharp](https://sharp.pixelplumbing.com/) 0.34.x for thumbnails and resizing
 - **Storage**:
-  - Local: Electron Store for metadata + file system for captures
+  - Local: [electron-store](https://github.com/sindresorhus/electron-store) 11.x for metadata + file system for captures
   - Cloud: Supabase Storage (`snapflow-public-bucket`)
-- **HTTP Client**: [axios](https://axios-http.com/) 1.6.7 (GitHub API integration)
-- **Logging**: [electron-log](https://www.npmjs.com/package/electron-log) 5.4.3
-- **Auto-Updates**: [electron-updater](https://www.electron.build/auto-update) 6.6.2
+- **HTTP Client**: [axios](https://axios-http.com/) 1.x (GitHub & Zoho API integrations)
+- **Logging**: [electron-log](https://www.npmjs.com/package/electron-log) 5.x
+- **Auto-Updates**: [electron-updater](https://www.electron.build/auto-update) 6.x
 
 ### Development Tools
 
-- **Build Tool**: [electron-builder](https://www.electron.build/) 24.13.3
+- **Build Tool**: [electron-builder](https://www.electron.build/) 26.x
 - **Package Manager**: npm (with package-lock.json)
-- **Code Quality**: [ESLint](https://eslint.org/) 9.38.0 with [@typescript-eslint](https://typescript-eslint.io/) 8.46.1
-- **Code Formatting**: [Prettier](https://prettier.io/) 3.6.2
-- **Pre-commit Hooks**: [Husky](https://typicode.github.io/husky/) 9.1.7
-- **Staged Files Linting**: [lint-staged](https://github.com/okonet/lint-staged) 16.2.4
-- **PostCSS**: [PostCSS](https://postcss.org/) 8.4.38 with [Autoprefixer](https://github.com/postcss/autoprefixer) 10.4.19
+- **Code Quality**: [ESLint](https://eslint.org/) 10.x with [@typescript-eslint](https://typescript-eslint.io/) 8.x
+- **Code Formatting**: [Prettier](https://prettier.io/) 3.x
+- **Pre-commit Hooks**: [Husky](https://typicode.github.io/husky/) 9.x
+- **Staged Files Linting**: [lint-staged](https://github.com/okonet/lint-staged) 16.x
+- **PostCSS**: [PostCSS](https://postcss.org/) 8.x with [Autoprefixer](https://github.com/postcss/autoprefixer) 10.x
 
 ---
 
@@ -228,8 +245,9 @@ npm run dev
 
 1. The app will open automatically
 2. Create an account with your email and password
-3. Grant Screen Recording permission when prompted (macOS)
-4. Start capturing screenshots from the system tray icon!
+3. Complete the onboarding flow (create organization, workspace, and optional connectors)
+4. Grant Screen Recording permission when prompted (macOS)
+5. Start capturing screenshots from the system tray icon!
 
 ---
 
@@ -294,6 +312,15 @@ SnapFlow uses Supabase for:
 - Issue is created with screenshot embedded inline
 - Tags are converted to GitHub labels
 - Issue URL is stored for future reference
+
+#### Zoho Projects Integration
+
+1. Go to **Settings** → **Connectors** tab
+2. Click **Connect Zoho**
+3. Authorize via the Zoho OAuth browser window
+4. Select your **Portal** and **Project**
+5. Click **Save Connector**
+6. Access tokens are automatically refreshed when expired
 
 ---
 
@@ -409,22 +436,31 @@ SnapFlow uses Supabase for:
 ```
 snapflow-desktop/
 ├── main/                          # Electron main process
-│   ├── background.ts              # App lifecycle, IPC handlers, tray menu
-│   ├── preload.ts                 # Context bridge API (window.ipc, window.api)
+│   ├── background.ts              # App lifecycle, IPC handlers, tray menu, OAuth servers
+│   ├── preload.ts                 # Context bridge API (window.api)
 │   ├── services/                  # Business logic modules
 │   │   ├── auth.ts                # Supabase authentication
 │   │   ├── capture.ts             # Screenshot capture with nativeImage
+│   │   ├── connectors.ts          # GitHub & Zoho connector management
+│   │   ├── github.ts              # GitHub OAuth & API service
 │   │   ├── issues.ts              # Issue CRUD with local & cloud storage
-│   │   ├── connectors.ts          # GitHub integration management
+│   │   ├── onboarding.ts          # Onboarding flow management
 │   │   ├── sync.ts                # Supabase cloud sync service
-│   │   └── updater.ts             # Auto-update service
+│   │   ├── tenant.ts              # Multi-tenant organization management
+│   │   ├── updater.ts             # Auto-update service
+│   │   ├── workspace.ts           # Workspace management
+│   │   └── zoho.ts                # Zoho OAuth & Projects API service
 │   ├── utils/                     # Utilities
 │   │   ├── supabase.ts            # Supabase client singleton
 │   │   ├── session.ts             # Local session management
 │   │   ├── storage.ts             # Local file system storage
-│   │   └── id-generator.ts        # Unique ID generation
-│   └── helpers/
-│       └── create-window.ts       # BrowserWindow creation utility
+│   │   ├── id-generator.ts        # Unique ID generation
+│   │   └── tray-icon-manager.ts   # System tray icon management
+│   ├── helpers/
+│   │   └── create-window.ts       # BrowserWindow creation utility
+│   └── migrations/                # SQL migration files
+│       ├── add-user-profiles.sql
+│       └── supabase-mvp-migration.sql
 │
 ├── renderer/                      # Next.js frontend application
 │   ├── pages/                     # React pages
@@ -432,42 +468,44 @@ snapflow-desktop/
 │   │   ├── home.tsx               # Dashboard with issue gallery, filtering, pagination
 │   │   ├── auth.tsx               # Login/signup page
 │   │   ├── annotate.tsx           # Image annotation editor (Konva.js)
-│   │   ├── capture.tsx            # Capture mode selection
+│   │   ├── annotate-recording.tsx # Video recording annotation editor
+│   │   ├── area-capture.tsx       # Area selection capture mode
+│   │   ├── area-selector.tsx      # Region selection overlay tool
+│   │   ├── recording-area-selector.tsx # Area selector for screen recording
+│   │   ├── recording-control.tsx  # Floating recording controls window
 │   │   ├── window-capture.tsx     # Window capture with preview
-│   │   ├── window-picker.tsx      # Window selection overlay
-│   │   ├── area-capture.tsx       # Area selection mode
-│   │   ├── area-selector.tsx      # Region selection tool
-│   │   ├── settings.tsx           # Settings with tabs (Account, Connectors, Display, Sync, Updates)
-│   │   ├── next.tsx               # Next.js info page
-│   │   └── recording-control.tsx  # Recording controls window (infrastructure)
+│   │   ├── onboarding.tsx         # Multi-step onboarding flow
+│   │   ├── settings.tsx           # Settings with tabs (Account, Connectors, Display, Users, Workspaces, Updates)
+│   │   └── 500.tsx                # Error page
 │   ├── components/
-│   │   ├── ui/                    # Reusable UI components (20+ components)
-│   │   │   ├── Button.tsx         # Custom button component
+│   │   ├── ui/                    # Reusable UI components
+│   │   │   ├── Button.tsx         # CVA-based button component
 │   │   │   ├── Input.tsx          # Form input component
 │   │   │   ├── Card.tsx           # Issue card component
 │   │   │   ├── Badge.tsx          # Status badge component
 │   │   │   ├── Dialog.tsx         # Radix UI dialog wrapper
 │   │   │   ├── Select.tsx         # Custom select component
-│   │   │   ├── ChipsInput.tsx     # Tag input component
-│   │   │   ├── SearchInput.tsx    # Search input with icon
-│   │   │   ├── FilterBar.tsx      # Filter controls
+│   │   │   ├── ChipsInput.tsx     # Tag chips input component
+│   │   │   ├── SearchInput.tsx    # Search input with suggestions
+│   │   │   ├── FilterBar.tsx      # Issue filter controls
 │   │   │   ├── Pagination.tsx     # Pagination with page size selector
-│   │   │   ├── EmptyState.tsx     # Empty state component
-│   │   │   ├── LoadingSpinner.tsx # Loading indicator
+│   │   │   ├── EmptyState.tsx     # Empty state placeholder
+│   │   │   ├── Skeleton.tsx       # Loading skeleton component
 │   │   │   ├── LocalImage.tsx     # Local file image renderer
-│   │   │   ├── FloatingActionButton.tsx # FAB component
 │   │   │   ├── Tooltip.tsx        # Radix tooltip wrapper
-│   │   │   ├── Label.tsx          # Form label component
-│   │   │   ├── IssuePreviewDialog.tsx # Issue preview modal
+│   │   │   ├── WindowControls.tsx # Draggable titlebar controls
+│   │   │   ├── WorkspaceSwitcher.tsx # Workspace selection UI
 │   │   │   └── index.ts           # Component exports
 │   │   └── settings/              # Settings page components
-│   │       ├── AccountSection.tsx  # Account info and logout
-│   │       ├── ConnectorsTab.tsx   # Platform connectors management
-│   │       ├── GitHubConnectorManager.tsx # GitHub config
-│   │       ├── DisplaySection.tsx  # Display settings
-│   │       ├── SyncTab.tsx         # Sync status and history
-│   │       ├── UpdatesSection.tsx  # Update settings
-│   │       └── index.ts            # Component exports
+│   │       ├── AccountSection.tsx      # Account info and logout
+│   │       ├── DisplaysSection.tsx     # Display/monitor settings
+│   │       ├── GitHubConnectorManager.tsx # GitHub OAuth connector
+│   │       ├── SyncIndicators.tsx      # Sync status indicators
+│   │       ├── UpdatesSection.tsx      # Auto-update settings
+│   │       ├── UsersSection.tsx        # Team member management
+│   │       ├── WorkspacesSection.tsx   # Workspace management
+│   │       ├── ZohoConnectorManager.tsx # Zoho OAuth connector
+│   │       └── index.ts               # Component exports
 │   ├── store/
 │   │   └── useStore.ts            # Zustand state management
 │   ├── types/
@@ -488,6 +526,7 @@ snapflow-desktop/
 │   └── entitlements.mac.plist     # macOS app entitlements
 │
 ├── .github/                       # GitHub configuration
+│   ├── copilot-instructions.md    # AI coding agent instructions
 │   └── workflows/                 # CI/CD workflows
 │       ├── ci.yml                 # Lint, format, type-check, build validation
 │       └── release.yml            # Build and publish releases (triggered by tags)
@@ -495,7 +534,6 @@ snapflow-desktop/
 │   └── pre-commit                 # Pre-commit hook
 ├── app/                           # Build output (generated)
 ├── dist/                          # Distribution packages (generated)
-├── node_modules/                  # Dependencies (generated)
 │
 ├── supabase-schema.sql            # Database schema & RLS policies
 ├── CHANGELOG.md                   # Version history and release notes
@@ -503,7 +541,7 @@ snapflow-desktop/
 ├── package-lock.json              # Dependency lock file
 ├── tsconfig.json                  # Root TypeScript config
 ├── electron-builder.yml           # Electron build configuration
-├── eslint.config.mjs              # ESLint v9 flat config
+├── eslint.config.mjs              # ESLint v10 flat config
 ├── .prettierrc.json               # Prettier formatting rules
 ├── .prettierignore                # Prettier ignore patterns
 ├── .lintstagedrc.json             # Lint-staged configuration
@@ -781,7 +819,7 @@ npm run type-check          # Verify TypeScript types
 
 - **`.prettierrc.json`** - Prettier formatting rules (print width 80, double quotes, tab width 2)
 - **`.prettierignore`** - Files to skip formatting (node_modules, dist, app, .next, etc.)
-- **`eslint.config.mjs`** - ESLint v9 flat config with TypeScript support
+- **`eslint.config.mjs`** - ESLint v10 flat config with TypeScript support
 - **`.lintstagedrc.json`** - Lint-staged configuration (runs ESLint + Prettier on staged files)
 - **`.husky/pre-commit`** - Pre-commit hook script (runs lint-staged)
 

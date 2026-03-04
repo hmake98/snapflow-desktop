@@ -18,14 +18,14 @@ export default function AreaCapture() {
     null
   );
   const [selection, setSelection] = useState<SelectionBounds | null>(null);
-  const [scaleFactor, setScaleFactor] = useState(1);
-  const [displayBounds, setDisplayBounds] = useState<{
+  const [_scaleFactor, setScaleFactor] = useState(1);
+  const [_displayBounds, setDisplayBounds] = useState<{
     x: number;
     y: number;
     width: number;
     height: number;
   } | null>(null);
-  const [overlayBounds, setOverlayBounds] = useState<{
+  const [_overlayBounds, setOverlayBounds] = useState<{
     x: number;
     y: number;
     width: number;
@@ -34,11 +34,18 @@ export default function AreaCapture() {
 
   useEffect(() => {
     // Listen for area capture ready event
-    const unsubscribe = window.ipc.on("area-capture-ready", (data: any) => {
-      setScaleFactor(data.scaleFactor || 1);
-      setDisplayBounds(data.displayBounds || null);
-      setOverlayBounds(data.overlayBounds || null);
-    });
+    const unsubscribe = window.ipc.on(
+      "area-capture-ready",
+      (data: {
+        scaleFactor?: number;
+        displayBounds?: { x: number; y: number; width: number; height: number };
+        overlayBounds?: { x: number; y: number; width: number; height: number };
+      }) => {
+        setScaleFactor(data.scaleFactor || 1);
+        setDisplayBounds(data.displayBounds || null);
+        setOverlayBounds(data.overlayBounds || null);
+      }
+    );
 
     // Handle escape key to cancel
     const handleKeyDown = (e: KeyboardEvent) => {

@@ -2,36 +2,38 @@ import React, { useEffect, useState } from "react";
 import { Connector } from "../../types";
 import { Button } from "../ui/Button";
 
-interface GitHubRepo {
-  id: number;
+interface ZohoPortal {
+  id: string;
   name: string;
-  full_name: string;
-  owner: {
-    login: string;
-  };
+}
+
+interface ZohoProject {
+  id_string: string;
+  name: string;
 }
 
 type OAuthStage = "idle" | "waiting" | "selecting" | "saving";
 
-interface PendingGitHubAuth {
-  user: { login: string; name?: string; avatar_url?: string } | null;
-  repos: GitHubRepo[];
-  selectedRepoId: number;
-  selectedRepoName: string;
-  selectedRepoFullName: string;
+interface PendingZohoAuth {
+  portals: ZohoPortal[];
+  projects: ZohoProject[];
+  selectedPortalId: string;
+  selectedPortalName: string;
+  selectedProjectId: string;
+  selectedProjectName: string;
   connectorName: string;
   stage: OAuthStage;
   error: string;
 }
 
-export function GitHubConnectorManager() {
+export function ZohoConnectorManager() {
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [loading, setLoading] = useState(true);
   const [workspaceId, setWorkspaceId] = useState<string>("");
-  const [pendingAuth, setPendingAuth] = useState<PendingGitHubAuth | null>(null);
+  const [pendingAuth, setPendingAuth] = useState<PendingZohoAuth | null>(null);
 
   const log = (message: string, data?: unknown) => {
-    console.log(`[GitHubConnectorManager] ${message}`, data);
+    console.log(`[ZohoConnectorManager] ${message}`, data);
   };
 
   useEffect(() => {
@@ -46,8 +48,8 @@ export function GitHubConnectorManager() {
 
   // Listen for OAuth success
   useEffect(() => {
-    const unsubscribe = window.api.onGitHubOAuthSuccess(() => {
-      log("[OAuth] Success event received, fetching user and repos");
+    const unsubscribe = window.api.onZohoOAuthSuccess(() => {
+      log("[OAuth] Success event received, fetching portals");
       handleOAuthSuccess();
     });
     return unsubscribe;
@@ -55,7 +57,7 @@ export function GitHubConnectorManager() {
 
   // Listen for OAuth error
   useEffect(() => {
-    const unsubscribe = window.api.onGitHubOAuthError((error: string) => {
+    const unsubscribe = window.api.onZohoOAuthError((error: string) => {
       log("[OAuth] Error event received:", error);
       setPendingAuth((prev) =>
         prev ? { ...prev, error, stage: "idle" } : null
@@ -105,10 +107,10 @@ export function GitHubConnectorManager() {
     try {
       const result = await window.api.listConnectors(workspaceId);
       if (result.success) {
-        const githubConnectors = (result.data || []).filter(
-          (c: Connector) => c.type === "github"
+        const zohoConnectors = (result.data || []).filter(
+          (c: Connector) => c.type === "zoho"
         );
-        setConnectors(githubConnectors);
+        setConnectors(zohoConnectors);
       }
     } catch (error) {
       console.error("Failed to load connectors:", error);
@@ -120,18 +122,19 @@ export function GitHubConnectorManager() {
   const handleStartOAuth = async () => {
     log("Starting OAuth flow");
     setPendingAuth({
-      user: null,
-      repos: [],
-      selectedRepoId: 0,
-      selectedRepoName: "",
-      selectedRepoFullName: "",
+      portals: [],
+      projects: [],
+      selectedPortalId: "",
+      selectedPortalName: "",
+      selectedProjectId: "",
+      selectedProjectName: "",
       connectorName: "",
       stage: "waiting",
       error: "",
     });
 
     try {
-      const result = await window.api.githubSignIn();
+      const result = await window.api.zohoSignIn();
       if (!result.success) {
         setPendingAuth((prev) =>
           prev ? { ...prev, error: result.error || "Failed to start auth", stage: "idle" } : null
@@ -147,64 +150,103 @@ export function GitHubConnectorManager() {
   };
 
   const handleOAuthSuccess = async () => {
-    log("OAuth successful, fetching user and repos");
+    log("OAuth successful, fetching portals");
     try {
-      // Get user info
-      const userResult = await window.api.getGitHubUser();
-      if (!userResult.success) {
-        setPendingAuth((prev) =>
-          prev ? { ...prev, error: userResult.error || "Failed to fetch user info", stage: "idle" } : null
-        );
-        return;
-      }
+      const result = await window.api.getZohoPortals();
+      if (result.success) {
+        // Debug: log raw API response
+        log("Raw API response:", result.data);
+        if (result.data && result.data.length > 0) {
+          log("First portal fields:", Object.keys(result.data[0]));
+          log("First portal data:", result.data[0]);
+        }
 
-      // Get repos
-      const reposResult = await window.api.getGitHubRepositories();
-      if (!reposResult.success) {
+        // Transform API response to match interface (API returns portal_name, we expect name)
+        const portals = (result.data || []).map((p: any, index: number) => {
+          const transformed = {
+            id: String(p.id || p.portal_id || "unknown-" + index),
+            name: p.portal_name || p.name || "Unnamed Portal",
+          };
+          log(`Portal ${index} transformed:`, transformed);
+          return transformed;
+        });
+        log("Portals after transformation:", portals);
         setPendingAuth((prev) =>
-          prev ? { ...prev, error: reposResult.error || "Failed to fetch repos", stage: "idle" } : null
+          prev
+            ? {
+                ...prev,
+                portals,
+                stage: "selecting",
+                error: "",
+              }
+            : null
         );
-        return;
+      } else {
+        setPendingAuth((prev) =>
+          prev ? { ...prev, error: result.error || "Failed to fetch portals", stage: "idle" } : null
+        );
       }
-
-      const repos = reposResult.data || [];
-      log("User and repos fetched:", { user: userResult.data, repos });
-      setPendingAuth((prev) =>
-        prev
-          ? {
-              ...prev,
-              user: userResult.data,
-              repos,
-              stage: "selecting",
-              error: "",
-            }
-          : null
-      );
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Unknown error";
-      log("Failed to fetch user/repos:", error);
+      log("Failed to fetch portals:", error);
       setPendingAuth((prev) =>
         prev ? { ...prev, error: msg, stage: "idle" } : null
       );
     }
   };
 
-  const handleRepoSelect = (repoId: number, repoName: string, repoFullName: string) => {
-    log("Repository selected:", { repoId, repoFullName });
+  const handlePortalSelect = async (portalId: string, portalName: string) => {
+    log("Portal selected:", { portalId, portalName });
     setPendingAuth((prev) =>
       prev
         ? {
             ...prev,
-            selectedRepoId: repoId,
-            selectedRepoName: repoName,
-            selectedRepoFullName: repoFullName,
+            selectedPortalId: portalId,
+            selectedPortalName: portalName,
+            projects: [],
+            selectedProjectId: "",
+            selectedProjectName: "",
           }
+        : null
+    );
+
+    try {
+      const result = await window.api.getZohoProjects(portalId);
+      if (result.success) {
+        // Transform API response to match interface (API might return project_name)
+        const projects = (result.data || []).map((p: any) => ({
+          id_string: p.id_string || p.id,
+          name: p.name || p.project_name,
+        }));
+        log("Projects fetched:", projects);
+        setPendingAuth((prev) =>
+          prev ? { ...prev, projects } : null
+        );
+      } else {
+        setPendingAuth((prev) =>
+          prev ? { ...prev, error: result.error || "Failed to fetch projects" } : null
+        );
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      log("Failed to fetch projects:", error);
+      setPendingAuth((prev) =>
+        prev ? { ...prev, error: msg } : null
+      );
+    }
+  };
+
+  const handleProjectSelect = (projectId: string, projectName: string) => {
+    log("Project selected:", { projectId, projectName });
+    setPendingAuth((prev) =>
+      prev
+        ? { ...prev, selectedProjectId: projectId, selectedProjectName: projectName }
         : null
     );
   };
 
   const handleSaveConnector = async () => {
-    if (!pendingAuth || !pendingAuth.selectedRepoId) {
+    if (!pendingAuth || !pendingAuth.selectedPortalId || !pendingAuth.selectedProjectId) {
       return;
     }
 
@@ -214,33 +256,43 @@ export function GitHubConnectorManager() {
     );
 
     try {
-      // Get the access token from the main process (fallback to empty if not available)
+      // Get the Zoho tokens from the main process (fallback to empty if not available)
       let accessToken = "";
+      let refreshToken = "";
+      let apiDomain = "";
       try {
-        const tokenResult = await window.api.getGitHubAccessToken?.();
-        if (tokenResult?.success && tokenResult?.accessToken) {
-          accessToken = tokenResult.accessToken;
-          log("GitHub access token retrieved successfully");
+        const tokenResult = await window.api.getZohoAccessToken?.();
+        if (tokenResult?.success) {
+          accessToken = tokenResult.accessToken || "";
+          refreshToken = tokenResult.refreshToken || "";
+          apiDomain = tokenResult.apiDomain || "";
+          log("Zoho tokens retrieved successfully");
         } else {
-          log("Warning: GitHub access token not available, will be applied from pending tokens");
+          log("Warning: Zoho tokens not available, will be applied from pending tokens");
         }
       } catch (tokenError) {
-        log("Warning: Failed to get GitHub access token", tokenError);
-        // Continue anyway - the token will be applied from pendingGitHubTokens in the IPC handler
+        log("Warning: Failed to get Zoho tokens", tokenError);
+        // Continue anyway - the tokens will be applied from pendingZohoTokens in the IPC handler
       }
 
-      const [owner, repo] = pendingAuth.selectedRepoFullName.split("/");
       const connectorName =
-        pendingAuth.connectorName || `GitHub (${pendingAuth.selectedRepoFullName})`;
+        pendingAuth.connectorName ||
+        `Zoho (${pendingAuth.selectedPortalName} / ${pendingAuth.selectedProjectName})`;
 
       const result = await window.api.addConnector(workspaceId, {
         name: connectorName,
-        type: "github",
+        type: "zoho",
         enabled: true,
         config: {
           accessToken,
-          owner,
-          repo,
+          refreshToken,
+          clientId: "",
+          clientSecret: "",
+          portalId: pendingAuth.selectedPortalId,
+          portalName: pendingAuth.selectedPortalName,
+          projectId: pendingAuth.selectedProjectId,
+          projectName: pendingAuth.selectedProjectName,
+          apiDomain,
         },
       });
 
@@ -280,7 +332,7 @@ export function GitHubConnectorManager() {
 
   const handleDeleteConnector = async (id: string, name: string) => {
     const confirmed = confirm(
-      `🗑️ Remove "${name}"?\n\nThis will disconnect GitHub. You can always reconnect it later.`
+      `🗑️ Remove "${name}"?\n\nThis will disconnect Zoho. You can always reconnect it later.`
     );
     if (!confirmed) return;
 
@@ -299,9 +351,9 @@ export function GitHubConnectorManager() {
       <div className="flex items-center justify-center py-16">
         <div className="flex flex-col items-center space-y-4">
           <div className="relative">
-            <div className="w-10 h-10 border-3 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+            <div className="w-10 h-10 border-3 border-orange-500/20 border-t-orange-500 rounded-full animate-spin"></div>
             <div
-              className="absolute inset-0 w-10 h-10 border-3 border-transparent border-t-blue-400/40 rounded-full animate-spin"
+              className="absolute inset-0 w-10 h-10 border-3 border-transparent border-t-orange-400/40 rounded-full animate-spin"
               style={{
                 animationDuration: "1.5s",
                 animationDirection: "reverse",
@@ -309,7 +361,7 @@ export function GitHubConnectorManager() {
             ></div>
           </div>
           <span className="text-gray-300 font-medium">
-            Loading GitHub connectors...
+            Loading Zoho connectors...
           </span>
         </div>
       </div>
@@ -317,22 +369,22 @@ export function GitHubConnectorManager() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Connected GitHub connectors */}
+    <div className="space-y-8">
+      {/* Connected Zoho connectors */}
       {connectors.map((connector) => (
         <div
           key={connector.id}
-          className="group relative bg-gradient-to-br from-gray-800/50 to-gray-900/50 border border-gray-700/50 rounded-2xl p-6 hover:border-gray-600/50 transition-all duration-300 backdrop-blur-sm max-w-4xl"
+          className="group relative bg-gradient-to-br from-gray-800/40 to-gray-900/40 border border-orange-600/20 hover:border-orange-500/40 rounded-2xl p-7 transition-all duration-300 backdrop-blur-sm max-w-4xl shadow-lg hover:shadow-orange-500/5"
         >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4 flex-1">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-600/30 to-blue-700/20 border border-blue-600/50 rounded-xl flex items-center justify-center group-hover:border-blue-500/50 transition-all duration-300">
+          <div className="flex items-center justify-between gap-6">
+            <div className="flex items-center space-x-5 flex-1">
+              <div className="w-12 h-12 bg-gradient-to-br from-orange-600/30 to-orange-700/20 border border-orange-600/50 rounded-xl flex items-center justify-center group-hover:border-orange-500/50 transition-all duration-300">
                 <svg
-                  className="w-6 h-6 text-blue-400 group-hover:text-blue-300"
+                  className="w-6 h-6 text-orange-400 group-hover:text-orange-300"
                   fill="currentColor"
                   viewBox="0 0 24 24"
                 >
-                  <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v 3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z" />
                 </svg>
               </div>
 
@@ -340,8 +392,13 @@ export function GitHubConnectorManager() {
                 <h3 className="text-lg font-bold text-gray-100 group-hover:text-white transition-colors truncate">
                   {connector.name}
                 </h3>
-                <p className="text-sm text-gray-400 group-hover:text-gray-300 transition-colors font-mono truncate">
-                  {(connector.config as any).owner}/{(connector.config as any).repo}
+                <p className="text-sm text-gray-400 group-hover:text-gray-300 transition-colors truncate mt-1">
+                  <span className="inline-block mr-3">
+                    📁 {(connector.config as any).portalName || (connector.config as any).portalId}
+                  </span>
+                  <span className="inline-block">
+                    📌 {(connector.config as any).projectName || (connector.config as any).projectId}
+                  </span>
                 </p>
               </div>
 
@@ -371,7 +428,7 @@ export function GitHubConnectorManager() {
                   }
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 hover:bg-gray-500 peer-checked:hover:bg-blue-700 transition-colors"></div>
+                <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600 hover:bg-gray-500 peer-checked:hover:bg-orange-700 transition-colors"></div>
               </label>
 
               <Button
@@ -407,23 +464,23 @@ export function GitHubConnectorManager() {
         <div className="bg-gradient-to-br from-gray-800/60 to-gray-900/60 border border-gray-700/50 rounded-2xl p-6 backdrop-blur-sm max-w-4xl">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-blue-600/20 border border-blue-500/30 rounded-xl flex items-center justify-center">
+              <div className="w-10 h-10 bg-orange-600/20 border border-orange-500/30 rounded-xl flex items-center justify-center">
                 <svg
-                  className="w-5 h-5 text-blue-400"
+                  className="w-5 h-5 text-orange-400"
                   fill="currentColor"
                   viewBox="0 0 24 24"
                 >
-                  <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v 3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z" />
                 </svg>
               </div>
               <h3 className="text-lg font-semibold text-gray-100">
-                Connect GitHub
+                Connect Zoho Projects
               </h3>
             </div>
           </div>
 
           <p className="text-sm text-gray-400 mb-6">
-            Click below to sign in with GitHub and authorize SnapFlow to access your repositories.
+            Click below to sign in with your Zoho account and authorize SnapFlow to access your projects.
           </p>
 
           <div className="flex justify-end">
@@ -448,7 +505,7 @@ export function GitHubConnectorManager() {
               }
               className="px-8"
             >
-              Sign In with GitHub
+              Sign In with Zoho
             </Button>
           </div>
         </div>
@@ -456,16 +513,16 @@ export function GitHubConnectorManager() {
 
       {/* Limit Reached Message */}
       {!pendingAuth && connectors.length > 0 && (
-        <div className="bg-blue-900/20 border border-blue-700/50 rounded-2xl p-6 backdrop-blur-sm max-w-4xl">
+        <div className="bg-orange-900/20 border border-orange-700/50 rounded-2xl p-6 backdrop-blur-sm max-w-4xl">
           <div className="flex items-center space-x-3">
             <div className="flex-shrink-0">
-              <svg className="w-6 h-6 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-6 h-6 text-orange-400" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
             </div>
             <div>
-              <h3 className="text-sm font-medium text-blue-400">GitHub connector already added</h3>
-              <p className="text-xs text-blue-300 mt-1">Only one GitHub connector per workspace is allowed. Delete the existing one to add a different repository.</p>
+              <h3 className="text-sm font-medium text-orange-400">Zoho connector already added</h3>
+              <p className="text-xs text-orange-300 mt-1">Only one Zoho connector per workspace is allowed. Delete the existing one to add a different project.</p>
             </div>
           </div>
         </div>
@@ -473,12 +530,12 @@ export function GitHubConnectorManager() {
 
       {/* OAuth Flow - Stage 2: Waiting */}
       {pendingAuth && pendingAuth.stage === "waiting" && (
-        <div className="bg-gradient-to-br from-blue-900/20 to-gray-900/60 border border-blue-700/50 rounded-2xl p-8 backdrop-blur-sm max-w-4xl">
+        <div className="bg-gradient-to-br from-orange-900/20 to-gray-900/60 border border-orange-700/50 rounded-2xl p-8 backdrop-blur-sm max-w-4xl">
           <div className="flex flex-col items-center space-y-6">
             <div className="relative">
-              <div className="w-12 h-12 border-3 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+              <div className="w-12 h-12 border-3 border-orange-500/20 border-t-orange-500 rounded-full animate-spin"></div>
               <div
-                className="absolute inset-0 w-12 h-12 border-3 border-transparent border-t-blue-400/40 rounded-full animate-spin"
+                className="absolute inset-0 w-12 h-12 border-3 border-transparent border-t-orange-400/40 rounded-full animate-spin"
                 style={{
                   animationDuration: "1.5s",
                   animationDirection: "reverse",
@@ -487,7 +544,7 @@ export function GitHubConnectorManager() {
             </div>
             <div className="text-center">
               <h3 className="text-lg font-semibold text-gray-100 mb-2">
-                Authorizing with GitHub...
+                Authorizing with Zoho...
               </h3>
               <p className="text-sm text-gray-400">
                 Complete the authorization in your browser window
@@ -504,74 +561,80 @@ export function GitHubConnectorManager() {
         </div>
       )}
 
-      {/* OAuth Flow - Stage 3: Selecting Repository or Saving */}
+      {/* OAuth Flow - Stage 3: Selecting Portal & Project or Saving */}
       {pendingAuth && (pendingAuth.stage === "selecting" || pendingAuth.stage === "saving") && (
         <div className="bg-gradient-to-br from-gray-800/60 to-gray-900/60 border border-gray-700/50 rounded-2xl p-6 backdrop-blur-sm max-w-4xl">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-blue-600/20 border border-blue-500/30 rounded-xl flex items-center justify-center">
+              <div className="w-10 h-10 bg-orange-600/20 border border-orange-500/30 rounded-xl flex items-center justify-center">
                 <svg
-                  className="w-5 h-5 text-blue-400"
+                  className="w-5 h-5 text-orange-400"
                   fill="currentColor"
                   viewBox="0 0 24 24"
                 >
-                  <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v 3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z" />
                 </svg>
               </div>
               <h3 className="text-lg font-semibold text-gray-100">
-                Select Repository
+                Select Portal & Project
               </h3>
             </div>
-            {pendingAuth.user && (
-              <div className="flex items-center space-x-2">
-                {pendingAuth.user.avatar_url ? (
-                  <img
-                    src={pendingAuth.user.avatar_url}
-                    alt={pendingAuth.user.login}
-                    className="w-8 h-8 rounded-full"
-                    onError={(e) => {
-                      e.currentTarget.style.display = "none";
-                      const fallback = e.currentTarget.nextElementSibling as HTMLElement;
-                      if (fallback) fallback.style.display = "flex";
-                    }}
-                  />
-                ) : null}
-                {!pendingAuth.user.avatar_url && (
-                  <div className="w-8 h-8 bg-blue-600/20 border border-blue-500/30 rounded-full flex items-center justify-center text-xs text-blue-400 font-semibold">
-                    {pendingAuth.user.login.charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <span className="text-sm text-gray-400">{pendingAuth.user.login}</span>
-              </div>
-            )}
           </div>
 
           <div className="space-y-6">
-            {/* Repository Selection */}
+            {/* Portal Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-100 mb-2">
-                Repository <span className="text-red-400">*</span>
+                Zoho Portal <span className="text-red-400">*</span>
               </label>
               <select
-                value={pendingAuth.selectedRepoId}
+                value={pendingAuth.selectedPortalId}
                 onChange={(e) => {
-                  const repo = pendingAuth.repos.find(
-                    (r) => r.id === parseInt(e.target.value)
+                  const portal = pendingAuth.portals.find(
+                    (p) => p.id === e.target.value
                   );
-                  if (repo) {
-                    handleRepoSelect(repo.id, repo.name, repo.full_name);
+                  if (portal) {
+                    handlePortalSelect(portal.id, portal.name);
                   }
                 }}
-                className="w-full px-4 py-3 bg-gray-900/60 border border-gray-700/50 text-gray-100 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none transition-all duration-200"
+                className="w-full px-4 py-3 bg-gray-900/60 border border-gray-700/50 text-gray-100 rounded-xl focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 outline-none transition-all duration-200"
               >
-                <option value="">Choose a repository...</option>
-                {pendingAuth.repos.map((repo) => (
-                  <option key={repo.id} value={repo.id}>
-                    {repo.full_name}
+                <option value="">Choose a portal...</option>
+                {pendingAuth.portals.map((portal) => (
+                  <option key={portal.id} value={portal.id}>
+                    {portal.name}
                   </option>
                 ))}
               </select>
             </div>
+
+            {/* Project Selection */}
+            {pendingAuth.selectedPortalId && (
+              <div>
+                <label className="block text-sm font-medium text-gray-100 mb-2">
+                  Project <span className="text-red-400">*</span>
+                </label>
+                <select
+                  value={pendingAuth.selectedProjectId}
+                  onChange={(e) => {
+                    const project = pendingAuth.projects.find(
+                      (p) => p.id_string === e.target.value
+                    );
+                    if (project) {
+                      handleProjectSelect(project.id_string, project.name);
+                    }
+                  }}
+                  className="w-full px-4 py-3 bg-gray-900/60 border border-gray-700/50 text-gray-100 rounded-xl focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 outline-none transition-all duration-200"
+                >
+                  <option value="">Choose a project...</option>
+                  {pendingAuth.projects.map((project) => (
+                    <option key={project.id_string} value={project.id_string}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Connector Name */}
             <div>
@@ -586,8 +649,8 @@ export function GitHubConnectorManager() {
                     prev ? { ...prev, connectorName: e.target.value } : null
                   )
                 }
-                placeholder="My GitHub Repo"
-                className="w-full px-4 py-3 bg-gray-900/60 border border-gray-700/50 text-gray-100 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none transition-all duration-200"
+                placeholder="My Zoho Connector"
+                className="w-full px-4 py-3 bg-gray-900/60 border border-gray-700/50 text-gray-100 rounded-xl focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 outline-none transition-all duration-200"
               />
             </div>
 
@@ -611,7 +674,8 @@ export function GitHubConnectorManager() {
                 variant="primary"
                 disabled={
                   pendingAuth.stage === "saving" ||
-                  !pendingAuth.selectedRepoId
+                  !pendingAuth.selectedPortalId ||
+                  !pendingAuth.selectedProjectId
                 }
                 isLoading={pendingAuth.stage === "saving"}
               >

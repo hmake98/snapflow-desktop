@@ -58,51 +58,12 @@ export default function AnnotatePage() {
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [editingTextValue, setEditingTextValue] = useState("");
 
+  // Run once on mount: load user, load Konva, fetch pending screenshot, set up IPC listener
   useEffect(() => {
     console.log("[Annotate] Component mounted, initializing...");
 
     // Load user first - this is critical for saving screenshots
     loadUser();
-
-    // First, try to get any pending screenshot from main process
-    const checkPendingScreenshot = async () => {
-      console.log("[Annotate] Checking for pending screenshot...");
-      try {
-        const result = await window.api.getPendingScreenshot();
-        if (result.success && result.data) {
-          console.log("[Annotate] Found pending screenshot!", {
-            dataUrlLength: result.data.dataUrl?.length || 0,
-            mode: result.data.mode,
-          });
-          setScreenshot(result.data.dataUrl);
-        } else {
-          console.log("[Annotate] No pending screenshot found");
-          // If no screenshot is available and this is a fresh load,
-          // the user probably navigated here by mistake
-          // Wait a bit to see if screenshot arrives via IPC
-          setTimeout(() => {
-            if (!screenshot) {
-              console.warn(
-                "[Annotate] No screenshot loaded after timeout, user may need to capture first"
-              );
-            }
-          }, 2000);
-        }
-      } catch (error) {
-        console.error("[Annotate] Error getting pending screenshot:", error);
-      }
-    };
-    checkPendingScreenshot();
-
-    // Set up global function for direct injection (backup method)
-    (window as any).__setScreenshot = (data: any) => {
-      console.log("[Annotate] Screenshot set via direct injection!", {
-        hasDataUrl: !!data?.dataUrl,
-        dataUrlLength: data?.dataUrl?.length || 0,
-        mode: data?.mode,
-      });
-      setScreenshot(data.dataUrl);
-    };
 
     // Dynamically load react-konva to avoid SSR issues
     let mounted = true;
@@ -125,7 +86,8 @@ export default function AnnotatePage() {
         toast.error("Failed to load image editor");
       });
 
-    // Listen for screenshot captured event (fallback method for IPC-based captures)
+    // Listen for screenshot captured via IPC event (sent by main process after
+    // navigating to this page — acts as the primary delivery mechanism)
     console.log("[Annotate] Setting up screenshot listener...");
     const cleanup = window.api.onScreenshotCaptured((data: any) => {
       console.log("[Annotate] Screenshot received via IPC event!", {
@@ -136,7 +98,44 @@ export default function AnnotatePage() {
       setScreenshot(data.dataUrl);
     });
 
-    // Keyboard shortcuts (only for actions, not tool selection)
+    // Also poll getPendingScreenshot as a fallback in case the IPC event
+    // was missed (e.g., page loaded before event was sent)
+    const checkPendingScreenshot = async () => {
+      console.log("[Annotate] Checking for pending screenshot...");
+      try {
+        const result = await window.api.getPendingScreenshot();
+        if (result.success && result.data) {
+          console.log("[Annotate] Found pending screenshot!", {
+            dataUrlLength: result.data.dataUrl?.length || 0,
+            mode: result.data.mode,
+          });
+          setScreenshot(result.data.dataUrl);
+        } else {
+          console.log("[Annotate] No pending screenshot found");
+        }
+      } catch (error) {
+        console.error("[Annotate] Error getting pending screenshot:", error);
+      }
+    };
+    checkPendingScreenshot();
+
+    // Set up global function for direct injection (backup method)
+    (window as any).__setScreenshot = (data: any) => {
+      console.log("[Annotate] Screenshot set via direct injection!", {
+        hasDataUrl: !!data?.dataUrl,
+      });
+      setScreenshot(data.dataUrl);
+    };
+
+    return () => {
+      mounted = false;
+      cleanup();
+      delete (window as any).__setScreenshot;
+    };
+  }, []);
+
+  // Separate effect for keyboard shortcuts that depend on current state
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (editingTextId) return;
 
@@ -161,18 +160,10 @@ export default function AnnotatePage() {
           handleUndo();
         }
       }
-      // Removed keyboard shortcuts for tool selection (V, P, A, R, C, T)
-      // Tools should only be selectable via mouse clicks
     };
 
     window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      mounted = false;
-      cleanup();
-      delete (window as any).__setScreenshot;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [editingTextId, selectedId, shapes]);
 
   // Load image when screenshot changes
@@ -503,9 +494,15 @@ export default function AnnotatePage() {
         pixelRatio: 2,
       });
 
-      const response = await fetch(dataUrl);
-      const blob = await response.blob();
-      const arrayBuffer = await blob.arrayBuffer();
+      // Convert base64 data URL to ArrayBuffer without using fetch()
+      // (fetch() on data: URLs is blocked by Electron's CSP)
+      const base64Data = dataUrl.split(",")[1];
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const arrayBuffer = bytes.buffer;
 
       const tempId = `SF-${Date.now()}`;
 

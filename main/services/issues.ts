@@ -3,7 +3,7 @@ import { generateIssueId } from "../utils/id-generator";
 import { storageManager } from "../utils/storage";
 import log from "electron-log";
 
-interface Issue {
+interface Snap {
   id: string;
   title: string;
   description?: string;
@@ -25,29 +25,32 @@ interface Issue {
   [key: string]: unknown;
 }
 
-const store = new Store<{ issues: Issue[] }>({
-  name: "snapflow-issues",
+// Backwards compatibility alias
+type Issue = Snap;
+
+const store = new Store<{ snaps: Snap[] }>({
+  name: "snapflow-snaps",
   defaults: {
-    issues: [],
+    snaps: [],
   },
 });
 
-export class IssueService {
-  async createIssue(
+export class SnapService {
+  async createSnap(
     userId: string,
     title: string,
     type: "screenshot" | "recording",
     filePath: string,
     description?: string,
     thumbnailPath?: string
-  ): Promise<Issue> {
-    log.info("[Issue Service] === CREATE ISSUE START ===");
-    log.info("[Issue Service] User ID:", userId);
-    log.info("[Issue Service] Title:", title);
-    log.info("[Issue Service] Type:", type);
-    log.info("[Issue Service] File path:", filePath);
+  ): Promise<Snap> {
+    log.info("[Snap Service] === CREATE SNAP START ===");
+    log.info("[Snap Service] User ID:", userId);
+    log.info("[Snap Service] Title:", title);
+    log.info("[Snap Service] Type:", type);
+    log.info("[Snap Service] File path:", filePath);
 
-    const issue: Issue = {
+    const snap: Snap = {
       id: generateIssueId(),
       title,
       description,
@@ -60,90 +63,94 @@ export class IssueService {
       userId,
     };
 
-    log.info("[Issue Service] Generated issue ID:", issue.id);
+    log.info("[Snap Service] Generated snap ID:", snap.id);
 
-    const issues = store.get("issues");
-    issues.push(issue);
-    store.set("issues", issues);
-    log.info("[Issue Service] Saved to store, total issues:", issues.length);
+    const snaps = (store as any).get("snaps");
+    snaps.push(snap);
+
+    (store as any).set("snaps", snaps);
+    log.info("[Snap Service] Saved to store, total snaps:", snaps.length);
 
     // Save metadata to file system
-    log.info("[Issue Service] Saving metadata to file system...");
-    await storageManager.saveMetadata(issue.id, issue);
+    log.info("[Snap Service] Saving metadata to file system...");
+    await storageManager.saveMetadata(snap.id, snap);
 
-    log.info("[Issue Service] ✓ Issue created successfully");
-    log.info("[Issue Service] === CREATE ISSUE END ===");
-    return issue;
+    log.info("[Snap Service] ✓ Snap created successfully");
+    log.info("[Snap Service] === CREATE SNAP END ===");
+    return snap;
   }
 
-  getIssues(userId?: string): Issue[] {
-    log.info("[Issue Service] Getting issues for user:", userId || "all");
-    const issues = store.get("issues");
+  getSnaps(userId?: string): Snap[] {
+    log.info("[Snap Service] Getting snaps for user:", userId || "all");
+
+    const snaps = (store as any).get("snaps");
     if (userId) {
-      const filtered = issues.filter((issue) => issue.userId === userId);
-      log.info("[Issue Service] Found", filtered.length, "issues for user");
+      const filtered = snaps.filter((snap) => snap.userId === userId);
+      log.info("[Snap Service] Found", filtered.length, "snaps for user");
       return filtered;
     }
-    log.info("[Issue Service] Found", issues.length, "total issues");
-    return issues;
+    log.info("[Snap Service] Found", snaps.length, "total snaps");
+    return snaps;
   }
 
-  getIssueById(issueId: string): Issue | undefined {
-    const issues = store.get("issues");
-    return issues.find((issue) => issue.id === issueId);
+  getSnapById(snapId: string): Snap | undefined {
+    const snaps = (store as any).get("snaps");
+    return snaps.find((snap) => snap.id === snapId);
   }
 
-  async updateIssue(issueId: string, updates: Partial<Issue>): Promise<Issue> {
-    log.info("[Issue Service] === UPDATE ISSUE START ===");
-    log.info("[Issue Service] Issue ID:", issueId);
-    log.info("[Issue Service] Updates:", JSON.stringify(updates));
+  async updateSnap(snapId: string, updates: Partial<Snap>): Promise<Snap> {
+    log.info("[Snap Service] === UPDATE SNAP START ===");
+    log.info("[Snap Service] Snap ID:", snapId);
+    log.info("[Snap Service] Updates:", JSON.stringify(updates));
 
-    const issues = store.get("issues");
-    const index = issues.findIndex((issue) => issue.id === issueId);
+    const snaps = (store as any).get("snaps");
+    const index = snaps.findIndex((snap) => snap.id === snapId);
 
     if (index === -1) {
-      log.error("[Issue Service] ✗ Issue not found");
-      throw new Error("Issue not found");
+      log.error("[Snap Service] ✗ Snap not found");
+      throw new Error("Snap not found");
     }
 
-    const updatedIssue = {
-      ...issues[index],
+    const updatedSnap = {
+      ...snaps[index],
       ...updates,
-      id: issueId, // Ensure ID doesn't change
+      id: snapId, // Ensure ID doesn't change
     };
 
-    issues[index] = updatedIssue;
-    store.set("issues", issues);
-    log.info("[Issue Service] Saved to store");
+    snaps[index] = updatedSnap;
+
+    (store as any).set("snaps", snaps);
+    log.info("[Snap Service] Saved to store");
 
     // Update metadata in file system
-    log.info("[Issue Service] Updating metadata in file system...");
-    await storageManager.saveMetadata(issueId, updatedIssue);
+    log.info("[Snap Service] Updating metadata in file system...");
+    await storageManager.saveMetadata(snapId, updatedSnap);
 
-    log.info("[Issue Service] ✓ Issue updated successfully");
-    log.info("[Issue Service] === UPDATE ISSUE END ===");
-    return updatedIssue;
+    log.info("[Snap Service] ✓ Snap updated successfully");
+    log.info("[Snap Service] === UPDATE SNAP END ===");
+    return updatedSnap;
   }
 
-  async deleteIssue(issueId: string): Promise<void> {
-    log.info("[Issue Service] === DELETE ISSUE START ===");
-    log.info("[Issue Service] Issue ID:", issueId);
+  async deleteSnap(snapId: string): Promise<void> {
+    log.info("[Snap Service] === DELETE SNAP START ===");
+    log.info("[Snap Service] Snap ID:", snapId);
 
-    const issues = store.get("issues");
-    const filteredIssues = issues.filter((issue) => issue.id !== issueId);
-    store.set("issues", filteredIssues);
-    log.info("[Issue Service] Removed from store");
+    const snaps = (store as any).get("snaps");
+    const filteredSnaps = snaps.filter((snap) => snap.id !== snapId);
+
+    (store as any).set("snaps", filteredSnaps);
+    log.info("[Snap Service] Removed from store");
 
     // Delete from file system
-    log.info("[Issue Service] Deleting from file system...");
-    await storageManager.deleteIssue(issueId);
+    log.info("[Snap Service] Deleting from file system...");
+    await storageManager.deleteIssue(snapId);
 
-    log.info("[Issue Service] ✓ Issue deleted successfully");
-    log.info("[Issue Service] === DELETE ISSUE END ===");
+    log.info("[Snap Service] ✓ Snap deleted successfully");
+    log.info("[Snap Service] === DELETE SNAP END ===");
   }
 
   async updateSyncStatus(
-    issueId: string,
+    snapId: string,
     status: "local" | "synced" | "syncing" | "failed",
     syncInfo?: {
       platform: string;
@@ -151,37 +158,91 @@ export class IssueService {
       url?: string;
       connectorId?: string;
     }
-  ): Promise<Issue> {
-    const issues = store.get("issues");
-    const index = issues.findIndex((issue) => issue.id === issueId);
+  ): Promise<Snap> {
+    const snaps = (store as any).get("snaps");
+    const index = snaps.findIndex((snap) => snap.id === snapId);
 
     if (index === -1) {
-      throw new Error("Issue not found");
+      throw new Error("Snap not found");
     }
 
-    issues[index].syncStatus = status;
+    snaps[index].syncStatus = status;
 
     if (syncInfo) {
-      if (!issues[index].syncedTo) {
-        issues[index].syncedTo = [];
+      if (!snaps[index].syncedTo) {
+        snaps[index].syncedTo = [];
       }
       // Check if platform already exists
-      const existingIndex = issues[index].syncedTo!.findIndex(
+      const existingIndex = snaps[index].syncedTo!.findIndex(
         (sync) => sync.platform === syncInfo.platform
       );
       if (existingIndex !== -1) {
-        issues[index].syncedTo![existingIndex] = syncInfo;
+        snaps[index].syncedTo![existingIndex] = syncInfo;
       } else {
-        issues[index].syncedTo!.push(syncInfo);
+        snaps[index].syncedTo!.push(syncInfo);
       }
     }
 
-    store.set("issues", issues);
+    (store as any).set("snaps", snaps);
 
     // Update metadata in file system
-    await storageManager.saveMetadata(issueId, issues[index]);
+    await storageManager.saveMetadata(snapId, snaps[index]);
 
-    return issues[index];
+    return snaps[index];
+  }
+
+  getSnapsByDateRange(
+    startDate: Date,
+    endDate: Date,
+    userId?: string
+  ): Snap[] {
+    const snaps = this.getSnaps(userId);
+    return snaps.filter((snap) => {
+      const snapDate = new Date(snap.timestamp);
+      return snapDate >= startDate && snapDate <= endDate;
+    });
+  }
+
+  searchSnaps(query: string, userId?: string): Snap[] {
+    const snaps = this.getSnaps(userId);
+    const lowerQuery = query.toLowerCase();
+
+    return snaps.filter(
+      (snap) =>
+        snap.title.toLowerCase().includes(lowerQuery) ||
+        snap.description?.toLowerCase().includes(lowerQuery) ||
+        snap.id.toLowerCase().includes(lowerQuery)
+    );
+  }
+}
+
+// Backwards compatibility: IssueService is an alias for SnapService
+export class IssueService extends SnapService {
+  async createIssue(
+    userId: string,
+    title: string,
+    type: "screenshot" | "recording",
+    filePath: string,
+    description?: string,
+    thumbnailPath?: string
+  ): Promise<Issue> {
+    return this.createSnap(userId, title, type, filePath, description, thumbnailPath);
+  }
+
+  getIssues(userId?: string): Issue[] {
+    return this.getSnaps(userId);
+  }
+
+  getIssueById(issueId: string): Issue | undefined {
+    return this.getSnapById(issueId);
+  }
+
+  async updateIssue(issueId: string, updates: Partial<Issue>): Promise<Issue> {
+    return this.updateSnap(issueId, updates);
+  }
+
+  async deleteIssue(issueId: string): Promise<void> {
+    return this.deleteSnap(issueId);
   }
 
   getIssuesByDateRange(
@@ -189,24 +250,13 @@ export class IssueService {
     endDate: Date,
     userId?: string
   ): Issue[] {
-    const issues = this.getIssues(userId);
-    return issues.filter((issue) => {
-      const issueDate = new Date(issue.timestamp);
-      return issueDate >= startDate && issueDate <= endDate;
-    });
+    return this.getSnapsByDateRange(startDate, endDate, userId);
   }
 
   searchIssues(query: string, userId?: string): Issue[] {
-    const issues = this.getIssues(userId);
-    const lowerQuery = query.toLowerCase();
-
-    return issues.filter(
-      (issue) =>
-        issue.title.toLowerCase().includes(lowerQuery) ||
-        issue.description?.toLowerCase().includes(lowerQuery) ||
-        issue.id.toLowerCase().includes(lowerQuery)
-    );
+    return this.searchSnaps(query, userId);
   }
 }
 
+export const snapService = new SnapService();
 export const issueService = new IssueService();

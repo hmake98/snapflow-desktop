@@ -3,161 +3,247 @@ import fs from "fs/promises";
 import path from "path";
 import { getSupabase } from "../utils/supabase";
 import log from "electron-log";
+import { customAlphabet } from "nanoid";
+import { zohoService } from "./zoho";
+import type {
+  Connector,
+  GitHubConnectorConfig,
+  ZohoConnectorConfig,
+} from "../../renderer/types";
 
-interface Connector {
-  id: string;
-  name: string;
-  type: "github";
-  enabled: boolean;
-  config: {
-    accessToken: string;
-    owner: string;
-    repo: string;
-  };
-}
+const nanoid = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 8);
 
 export class ConnectorService {
-  async getConnectors(userId: string): Promise<Connector[]> {
+  /**
+   * Get all connectors for a workspace (excludes soft-deleted)
+   */
+  async getConnectors(workspaceId: string): Promise<Connector[]> {
+    log.info(
+      "[Connector Service] Fetching connectors for workspace:",
+      workspaceId
+    );
+
     const supabase = getSupabase();
     if (!supabase) {
+      log.error("[Connector Service] ✗ Supabase not configured");
       throw new Error("Supabase not configured");
     }
 
     const { data, error } = await supabase
       .from("connectors")
       .select("*")
-      .eq("user_id", userId)
+      .eq("workspace_id", workspaceId)
+      .is("deleted_at", null)
       .order("created_at", { ascending: false });
 
     if (error) {
-      log.error("Failed to fetch connectors:", error);
+      log.error("[Connector Service] ✗ Failed to fetch connectors:", error);
       throw new Error("Failed to fetch connectors");
     }
 
-    return (data || []) as Connector[];
+    const connectors = (data || []).map((c) => this.mapSupabaseConnector(c));
+    log.info("[Connector Service] ✓ Found", connectors.length, "connectors");
+    return connectors;
   }
 
-  async getConnectorById(
-    userId: string,
-    id: string
-  ): Promise<Connector | null> {
+  /**
+   * Get connector by ID (excludes soft-deleted)
+   */
+  async getConnectorById(id: string): Promise<Connector | null> {
+    log.info("[Connector Service] Fetching connector by ID:", id);
+
     const supabase = getSupabase();
     if (!supabase) {
-      throw new Error("Supabase not configured");
+      log.warn("[Connector Service] Supabase not configured");
+      return null;
     }
 
     const { data, error } = await supabase
       .from("connectors")
       .select("*")
-      .eq("user_id", userId)
       .eq("id", id)
+      .is("deleted_at", null)
       .single();
 
     if (error) {
       if (error.code === "PGRST116") {
-        return null; // Not found
+        log.info("[Connector Service] Connector not found");
+        return null;
       }
-      log.error("Failed to fetch connector:", error);
+      log.error("[Connector Service] ✗ Failed to fetch connector:", error);
       throw new Error("Failed to fetch connector");
     }
 
-    return data as Connector;
+    return this.mapSupabaseConnector(data);
   }
 
-  async getGitHubConnectors(userId: string): Promise<Connector[]> {
+  /**
+   * Get enabled connectors of a specific type for a workspace (excludes soft-deleted)
+   */
+  async getConnectorsByType(
+    workspaceId: string,
+    type: "github" | "zoho"
+  ): Promise<Connector[]> {
+    log.info(
+      "[Connector Service] Fetching",
+      type,
+      "connectors for workspace:",
+      workspaceId
+    );
+
     const supabase = getSupabase();
     if (!supabase) {
+      log.error("[Connector Service] ✗ Supabase not configured");
       throw new Error("Supabase not configured");
     }
 
     const { data, error } = await supabase
       .from("connectors")
       .select("*")
-      .eq("user_id", userId)
-      .eq("type", "github")
+      .eq("workspace_id", workspaceId)
+      .eq("type", type)
       .eq("enabled", true)
+      .is("deleted_at", null)
       .order("created_at", { ascending: false });
 
     if (error) {
-      log.error("Failed to fetch GitHub connectors:", error);
-      throw new Error("Failed to fetch GitHub connectors");
+      log.error("[Connector Service] ✗ Failed to fetch connectors:", error);
+      throw new Error("Failed to fetch connectors");
     }
 
-    return (data || []) as Connector[];
+    const connectors = (data || []).map((c) => this.mapSupabaseConnector(c));
+    log.info(
+      "[Connector Service] ✓ Found",
+      connectors.length,
+      type,
+      "connectors"
+    );
+    return connectors;
   }
 
+  /**
+   * Get GitHub connector by repo (excludes soft-deleted)
+   */
   async getConnectorByRepo(
-    userId: string,
+    workspaceId: string,
     owner: string,
     repo: string
   ): Promise<Connector | null> {
+    log.info(
+      "[Connector Service] Fetching GitHub connector for repo:",
+      owner,
+      "/",
+      repo
+    );
+
     const supabase = getSupabase();
     if (!supabase) {
+      log.error("[Connector Service] ✗ Supabase not configured");
       throw new Error("Supabase not configured");
     }
 
     const { data, error } = await supabase
       .from("connectors")
       .select("*")
-      .eq("user_id", userId)
+      .eq("workspace_id", workspaceId)
       .eq("type", "github")
       .filter("config->>owner", "eq", owner)
       .filter("config->>repo", "eq", repo)
+      .is("deleted_at", null)
       .single();
 
     if (error) {
       if (error.code === "PGRST116") {
-        return null; // Not found
+        log.info("[Connector Service] GitHub connector not found");
+        return null;
       }
-      log.error("Failed to fetch connector by repo:", error);
+      log.error(
+        "[Connector Service] ✗ Failed to fetch connector by repo:",
+        error
+      );
       throw new Error("Failed to fetch connector by repo");
     }
 
-    return data as Connector;
+    return this.mapSupabaseConnector(data);
   }
 
-  async canAddGitHubConnector(userId: string): Promise<boolean> {
-    const githubConnectors = await this.getGitHubConnectors(userId);
-    return githubConnectors.length < 5;
+  /**
+   * Check if we can add a connector of a specific type
+   * Max 1 GitHub + 1 Zoho per workspace
+   */
+  async canAddConnector(
+    workspaceId: string,
+    type: "github" | "zoho"
+  ): Promise<boolean> {
+    const existing = await this.getConnectorsByType(workspaceId, type);
+    return existing.length === 0; // Can add if none exist
   }
 
+  /**
+   * Add a new connector to a workspace
+   */
   async addConnector(
     userId: string,
-    connector: Omit<Connector, "id">
+    workspaceId: string,
+    connector: Omit<
+      Connector,
+      "id" | "workspaceId" | "createdBy" | "createdAt" | "updatedAt"
+    >
   ): Promise<Connector> {
+    log.info("[Connector Service] === ADD CONNECTOR START ===");
+    log.info("[Connector Service] User ID:", userId);
+    log.info("[Connector Service] Workspace ID:", workspaceId);
+    log.info("[Connector Service] Type:", connector.type);
+
     const supabase = getSupabase();
     if (!supabase) {
+      log.error("[Connector Service] ✗ Supabase not configured");
       throw new Error("Supabase not configured");
     }
 
-    // Check if we can add more GitHub connectors
-    if (
-      connector.type === "github" &&
-      !(await this.canAddGitHubConnector(userId))
-    ) {
-      throw new Error("Maximum of 5 GitHub repositories allowed");
+    // Check if we can add this type of connector
+    if (!(await this.canAddConnector(workspaceId, connector.type))) {
+      const msg = `Only 1 ${connector.type} connector allowed per workspace`;
+      log.error("[Connector Service] ✗", msg);
+      throw new Error(msg);
     }
 
-    // Check if this repo already exists
-    if (connector.type === "github") {
+    // For GitHub, check if this repo already exists
+    if (
+      connector.type === "github" &&
+      "config" in connector &&
+      "owner" in connector.config &&
+      "repo" in connector.config
+    ) {
+      const config = connector.config as unknown as {
+        owner: string;
+        repo: string;
+        [key: string]: unknown;
+      };
       const existing = await this.getConnectorByRepo(
-        userId,
-        connector.config.owner,
-        connector.config.repo
+        workspaceId,
+        config.owner,
+        config.repo
       );
       if (existing) {
-        throw new Error(
-          `Repository ${connector.config.owner}/${connector.config.repo} is already connected`
-        );
+        const msg = `Repository ${config.owner}/${config.repo} is already connected`;
+        log.error("[Connector Service] ✗", msg);
+        throw new Error(msg);
       }
     }
 
+    const id = `${connector.type}-${Date.now()}-${nanoid()}`;
     const newConnector = {
-      id: `${connector.type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      user_id: userId,
-      ...connector,
+      id,
+      workspace_id: workspaceId,
+      created_by: userId,
+      name: connector.name,
+      type: connector.type,
+      enabled: connector.enabled !== false,
+      config: connector.config,
     };
 
+    log.info("[Connector Service] Inserting connector:", id);
     const { data, error } = await supabase
       .from("connectors")
       .insert([newConnector])
@@ -165,65 +251,182 @@ export class ConnectorService {
       .single();
 
     if (error) {
-      log.error("Failed to add connector:", error);
+      log.error("[Connector Service] ✗ Failed to add connector:", error);
+
+      // Provide user-friendly error messages for common constraint violations
+      const errorMsg = error.message || "";
+      if (errorMsg.includes("connectors_workspace_id_name_key")) {
+        throw new Error(
+          `A connector named "${connector.name}" already exists in this workspace. Please choose a different name.`
+        );
+      }
+      if (errorMsg.includes("unique constraint")) {
+        throw new Error(
+          "A connector with this name already exists. Please choose a different name."
+        );
+      }
+
       throw new Error("Failed to add connector");
     }
 
-    return data as Connector;
+    if (!data) {
+      log.error("[Connector Service] ✗ No connector data returned");
+      throw new Error("Failed to add connector");
+    }
+
+    const result = this.mapSupabaseConnector(data);
+    log.info("[Connector Service] ✓ Connector added successfully");
+    log.info("[Connector Service] === ADD CONNECTOR END ===");
+    return result;
   }
 
+  /**
+   * Update a connector
+   */
   async updateConnector(
-    userId: string,
     id: string,
-    updates: Partial<Connector>
+    updates: Partial<Pick<Connector, "enabled" | "name" | "config">>
   ): Promise<Connector> {
+    log.info("[Connector Service] Updating connector:", id);
+
     const supabase = getSupabase();
     if (!supabase) {
+      log.error("[Connector Service] ✗ Supabase not configured");
       throw new Error("Supabase not configured");
     }
 
     const { data, error } = await supabase
       .from("connectors")
       .update(updates)
-      .eq("user_id", userId)
       .eq("id", id)
       .select()
       .single();
 
     if (error) {
-      log.error("Failed to update connector:", error);
+      log.error("[Connector Service] ✗ Failed to update connector:", error);
       throw new Error("Failed to update connector");
     }
 
     if (!data) {
+      log.error("[Connector Service] ✗ Connector not found");
       throw new Error("Connector not found");
     }
 
-    return data as Connector;
+    log.info("[Connector Service] ✓ Connector updated successfully");
+    return this.mapSupabaseConnector(data);
   }
 
-  async deleteConnector(userId: string, id: string): Promise<void> {
+  /**
+   * Delete a connector (soft delete - sets deleted_at timestamp)
+   */
+  async deleteConnector(id: string): Promise<void> {
+    log.info("[Connector Service] Deleting connector:", id);
+
     const supabase = getSupabase();
     if (!supabase) {
+      log.error("[Connector Service] ✗ Supabase not configured");
       throw new Error("Supabase not configured");
     }
 
     const { error } = await supabase
       .from("connectors")
-      .delete()
-      .eq("user_id", userId)
+      .update({ deleted_at: new Date().toISOString() })
       .eq("id", id);
 
     if (error) {
-      log.error("Failed to delete connector:", error);
+      log.error("[Connector Service] ✗ Failed to delete connector:", error);
       throw new Error("Failed to delete connector");
+    }
+
+    log.info("[Connector Service] ✓ Connector deleted successfully");
+  }
+
+  /**
+   * Validate GitHub connector (check access and permissions)
+   */
+  async validateGitHubConnector(
+    accessToken: string,
+    owner: string,
+    repo: string
+  ): Promise<boolean> {
+    log.info(
+      "[Connector Service] Validating GitHub connector for:",
+      owner,
+      "/",
+      repo
+    );
+
+    try {
+      const response = await axios.get(
+        `https://api.github.com/repos/${owner}/${repo}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/vnd.github.v3+json",
+          },
+        }
+      );
+
+      // Check if we have push/admin permissions
+      const permissions = response.data.permissions;
+      const canPush = permissions?.push === true || permissions?.admin === true;
+
+      if (canPush) {
+        log.info("[Connector Service] ✓ GitHub connector validation passed");
+      } else {
+        log.warn(
+          "[Connector Service] ✗ Insufficient permissions on repository"
+        );
+      }
+
+      return canPush;
+    } catch (error) {
+      log.error("[Connector Service] ✗ GitHub validation error:", error);
+      return false;
     }
   }
 
   /**
-   * Upload screenshot to GitHub repository and return the URL
-   * Since GitHub doesn't have an API to attach images to issues,
-   * we upload to a .snapflow-screenshots folder in the repo
+   * Validate Zoho connector (stub - placeholder for Zoho API validation)
+   */
+  async validateZohoConnector(
+    accessToken: string,
+    portalId: string
+  ): Promise<boolean> {
+    log.info(
+      "[Connector Service] Validating Zoho connector for portal:",
+      portalId
+    );
+
+    try {
+      // Stub: In a real implementation, this would call Zoho API
+      // For now, just check that the token and portal ID are non-empty
+      if (!accessToken || !portalId) {
+        log.warn("[Connector Service] ✗ Missing Zoho token or portal ID");
+        return false;
+      }
+
+      // TODO: Call actual Zoho API to validate token
+      // const response = await axios.get(
+      //   `https://projectsapi.zoho.com/portal/${portalId}/projects`,
+      //   {
+      //     headers: {
+      //       'Authorization': `Zoho-oauthtoken ${accessToken}`
+      //     }
+      //   }
+      // );
+      // return response.status === 200;
+
+      log.info("[Connector Service] ✓ Zoho connector validation passed (stub)");
+      return true;
+    } catch (error) {
+      log.error("[Connector Service] ✗ Zoho validation error:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Upload screenshot to GitHub repository
    */
   private async uploadScreenshotToGitHub(
     connector: Connector,
@@ -236,7 +439,6 @@ export class ConnectorService {
       const fileName = path.basename(filePath);
       const base64Content = fileBuffer.toString("base64");
 
-      // Create a unique filename with issue number
       const screenshotPath = `.snapflow-screenshots/issue-${issueNumber}-${fileName}`;
 
       log.info("[GitHub] Uploading screenshot to repository:", screenshotPath);
@@ -244,11 +446,16 @@ export class ConnectorService {
       // Check if file already exists
       let sha: string | undefined;
       try {
+        const config = connector.config as {
+          owner: string;
+          repo: string;
+          accessToken: string;
+        };
         const existingFile = await axios.get(
-          `https://api.github.com/repos/${connector.config.owner}/${connector.config.repo}/contents/${screenshotPath}`,
+          `https://api.github.com/repos/${config.owner}/${config.repo}/contents/${screenshotPath}`,
           {
             headers: {
-              Authorization: `Bearer ${connector.config.accessToken}`,
+              Authorization: `Bearer ${config.accessToken}`,
               Accept: "application/vnd.github.v3+json",
             },
           }
@@ -256,11 +463,14 @@ export class ConnectorService {
         sha = existingFile.data.sha;
         log.info("[GitHub] File already exists, will update it");
       } catch {
-        // File doesn't exist, which is fine
         log.info("[GitHub] File does not exist, will create new");
       }
 
-      // Upload or update the file in the repository
+      const config = connector.config as {
+        owner: string;
+        repo: string;
+        accessToken: string;
+      };
       const uploadPayload: Record<string, unknown> = {
         message: `Add screenshot for issue #${issueNumber}`,
         content: base64Content,
@@ -271,11 +481,11 @@ export class ConnectorService {
       }
 
       const uploadResponse = await axios.put(
-        `https://api.github.com/repos/${connector.config.owner}/${connector.config.repo}/contents/${screenshotPath}`,
+        `https://api.github.com/repos/${config.owner}/${config.repo}/contents/${screenshotPath}`,
         uploadPayload,
         {
           headers: {
-            Authorization: `Bearer ${connector.config.accessToken}`,
+            Authorization: `Bearer ${config.accessToken}`,
             Accept: "application/vnd.github.v3+json",
             "Content-Type": "application/json",
           },
@@ -297,7 +507,6 @@ export class ConnectorService {
         const fileName = path.basename(filePath);
 
         if (fileBuffer.length < 500000) {
-          // 500KB limit
           const mimeType = fileName.endsWith(".png")
             ? "image/png"
             : "image/jpeg";
@@ -324,6 +533,9 @@ export class ConnectorService {
     }
   }
 
+  /**
+   * Sync issue to GitHub
+   */
   async syncToGitHub(
     connector: Connector,
     issue: {
@@ -336,11 +548,13 @@ export class ConnectorService {
       type?: "screenshot" | "recording";
     }
   ): Promise<{ issueNumber: number; url: string; isUpdate: boolean }> {
-    if (
-      !connector.config.accessToken ||
-      !connector.config.owner ||
-      !connector.config.repo
-    ) {
+    const config = connector.config as {
+      owner: string;
+      repo: string;
+      accessToken: string;
+    };
+
+    if (!config.accessToken || !config.owner || !config.repo) {
       throw new Error("GitHub connector not properly configured");
     }
 
@@ -349,46 +563,32 @@ export class ConnectorService {
       const existingSync = issue.syncedTo?.find(
         (sync) =>
           sync.platform === "github" &&
-          sync.url?.includes(
-            `${connector.config.owner}/${connector.config.repo}`
-          )
+          sync.url?.includes(`${config.owner}/${config.repo}`)
       );
 
-      // Prepare issue body
       let body = issue.description || "No description provided.";
-
-      // Prepare labels from tags
       const labels = issue.tags || [];
-
       const issueNumber = existingSync?.externalId
         ? parseInt(existingSync.externalId, 10)
         : null;
 
       if (issueNumber) {
-        // Try to update existing issue
         log.info(
           "[GitHub] Issue already exists, updating issue #",
           issueNumber
         );
 
         try {
-          // Try to upload media (screenshot or recording)
           let mediaUrl = issue.cloudFileUrl;
           const isRecording = issue.type === "recording";
 
-          if (!mediaUrl && issue.filePath) {
-            if (isRecording) {
-              log.info("[GitHub] Recording detected - using cloud URL");
-              // For recordings, we prefer cloud URLs since videos can be large
-              // GitHub API has a 100MB limit for files
-            } else {
-              log.info("[GitHub] Attempting to upload screenshot...");
-              mediaUrl = await this.uploadScreenshotToGitHub(
-                connector,
-                issue.filePath,
-                issueNumber
-              );
-            }
+          if (!mediaUrl && issue.filePath && !isRecording) {
+            log.info("[GitHub] Attempting to upload screenshot...");
+            mediaUrl = await this.uploadScreenshotToGitHub(
+              connector,
+              issue.filePath,
+              issueNumber
+            );
           }
 
           if (mediaUrl) {
@@ -400,7 +600,7 @@ export class ConnectorService {
           }
 
           const response = await axios.patch(
-            `https://api.github.com/repos/${connector.config.owner}/${connector.config.repo}/issues/${issueNumber}`,
+            `https://api.github.com/repos/${config.owner}/${config.repo}/issues/${issueNumber}`,
             {
               title: issue.title,
               body,
@@ -408,7 +608,7 @@ export class ConnectorService {
             },
             {
               headers: {
-                Authorization: `Bearer ${connector.config.accessToken}`,
+                Authorization: `Bearer ${config.accessToken}`,
                 Accept: "application/vnd.github.v3+json",
                 "Content-Type": "application/json",
               },
@@ -422,7 +622,6 @@ export class ConnectorService {
             isUpdate: true,
           };
         } catch (updateError) {
-          // If issue was deleted (410), create a new one
           if (updateError.response?.status === 410) {
             log.info(
               "[GitHub] Issue #",
@@ -431,22 +630,20 @@ export class ConnectorService {
             );
             // Fall through to create new issue
           } else {
-            // Re-throw other errors
             throw updateError;
           }
         }
       }
 
-      // Create new issue (either no existing issue or existing issue was deleted)
+      // Create new issue
       {
-        // Create new issue first
         log.info(
           "[GitHub] Creating new issue in",
-          `${connector.config.owner}/${connector.config.repo}`
+          `${config.owner}/${config.repo}`
         );
 
         const response = await axios.post(
-          `https://api.github.com/repos/${connector.config.owner}/${connector.config.repo}/issues`,
+          `https://api.github.com/repos/${config.owner}/${config.repo}/issues`,
           {
             title: issue.title,
             body,
@@ -454,7 +651,7 @@ export class ConnectorService {
           },
           {
             headers: {
-              Authorization: `Bearer ${connector.config.accessToken}`,
+              Authorization: `Bearer ${config.accessToken}`,
               Accept: "application/vnd.github.v3+json",
               "Content-Type": "application/json",
             },
@@ -465,12 +662,10 @@ export class ConnectorService {
         const issueUrl = response.data.html_url;
         log.info("[GitHub] Issue created:", issueUrl);
 
-        // Now try to upload and attach media (screenshot or recording)
         const isRecording = issue.type === "recording";
         let mediaUrl = issue.cloudFileUrl;
 
         if (!mediaUrl && issue.filePath && !isRecording) {
-          // Only upload screenshots to GitHub; recordings use cloud URLs
           log.info("[GitHub] Attempting to upload screenshot...");
           mediaUrl = await this.uploadScreenshotToGitHub(
             connector,
@@ -480,18 +675,17 @@ export class ConnectorService {
         }
 
         if (mediaUrl) {
-          // Update the issue with media
           const mediaSection = isRecording
             ? `\n\n## Recording\n\n[View Recording](${mediaUrl})`
             : `\n\n## Screenshot\n\n![Screenshot](${mediaUrl})`;
           const updatedBody = body + mediaSection;
 
           await axios.patch(
-            `https://api.github.com/repos/${connector.config.owner}/${connector.config.repo}/issues/${newIssueNumber}`,
+            `https://api.github.com/repos/${config.owner}/${config.repo}/issues/${newIssueNumber}`,
             { body: updatedBody },
             {
               headers: {
-                Authorization: `Bearer ${connector.config.accessToken}`,
+                Authorization: `Bearer ${config.accessToken}`,
                 Accept: "application/vnd.github.v3+json",
                 "Content-Type": "application/json",
               },
@@ -511,50 +705,500 @@ export class ConnectorService {
     } catch (error) {
       log.error("GitHub sync error:", error);
       if (error.response?.status === 401) {
-        throw new Error("GitHub access token is invalid or expired");
+        throw new Error("GitHub access token is invalid or expired", {
+          cause: error,
+        });
       } else if (error.response?.status === 404) {
-        throw new Error("Repository not found or access denied");
+        throw new Error("Repository not found or access denied", {
+          cause: error,
+        });
       } else if (error.response?.status === 403) {
         throw new Error(
-          "GitHub API rate limit exceeded or insufficient permissions"
+          "GitHub API rate limit exceeded or insufficient permissions",
+          {
+            cause: error,
+          }
         );
       } else if (error.response?.status === 410) {
-        throw new Error("GitHub issue was deleted and could not be recreated");
+        throw new Error("GitHub issue was deleted and could not be recreated", {
+          cause: error,
+        });
       } else if (error.response?.status === 422) {
         const message = error.response?.data?.message || "Validation failed";
         const errors = error.response?.data?.errors || [];
         log.error("[GitHub] Validation error:", message, errors);
-        throw new Error(`GitHub validation error: ${message}`);
+        throw new Error(`GitHub validation error: ${message}`, {
+          cause: error,
+        });
       }
       throw new Error(
-        `Failed to sync to GitHub: ${error.response?.data?.message || error.message}`
+        `Failed to sync to GitHub: ${error.response?.data?.message || error.message}`,
+        {
+          cause: error,
+        }
       );
     }
   }
 
-  async validateGitHubConnector(
-    accessToken: string,
-    owner: string,
-    repo: string
-  ): Promise<boolean> {
+  /**
+   * Sync issue to Zoho Projects as a bug
+   */
+  async syncToZoho(
+    connector: Connector,
+    issue: {
+      title: string;
+      description?: string;
+      filePath: string;
+      cloudFileUrl?: string;
+      syncedTo?: Array<{
+        platform: string;
+        externalId: string;
+        url?: string;
+        connectorId?: string;
+      }>;
+      tags?: string[];
+      type?: "screenshot" | "recording";
+    }
+  ): Promise<{ bugId: string; url: string; isUpdate: boolean }> {
+    const config = connector.config as ZohoConnectorConfig;
+
+    if (!config.accessToken || !config.portalId || !config.projectId) {
+      throw new Error("Zoho connector not properly configured");
+    }
+
     try {
-      const response = await axios.get(
-        `https://api.github.com/repos/${owner}/${repo}`,
+      // Check if already synced to this Zoho project
+      const existingSync = issue.syncedTo?.find(
+        (sync) => sync.platform === "zoho" && sync.connectorId === connector.id
+      );
+
+      if (existingSync) {
+        log.info(
+          "[Zoho] Issue already synced to this project, skipping duplicate creation"
+        );
+        return {
+          bugId: existingSync.externalId,
+          url: existingSync.url || "",
+          isUpdate: true,
+        };
+      }
+
+      // Set accounts server if present (for region-specific API calls)
+      if (config.accountsServer || config.apiDomain) {
+        let accountsServerUrl = config.accountsServer;
+        let apiDomain = config.apiDomain;
+
+        // If apiDomain is a full URL, extract just the hostname
+        if (apiDomain && apiDomain.includes("://")) {
+          try {
+            const url = new URL(apiDomain);
+            apiDomain = url.hostname;
+          } catch (_e) {
+            log.warn("[Zoho] Failed to parse apiDomain as URL:", apiDomain);
+          }
+        }
+
+        // If we don't have accountsServer but have apiDomain, construct it
+        if (!accountsServerUrl && apiDomain) {
+          accountsServerUrl = `https://accounts.${apiDomain}`;
+        }
+
+        // Set the service with proper values
+        if (accountsServerUrl) {
+          zohoService.setAccountsServer(accountsServerUrl, apiDomain);
+        }
+      }
+
+      // Try to create bug with current access token
+      let accessToken = config.accessToken;
+
+      try {
+        const result = await zohoService.createBug(
+          accessToken,
+          config.portalId,
+          config.projectId,
+          {
+            title: issue.title,
+            description:
+              issue.description || "Screenshot captured from SnapFlow",
+            imageUrl: issue.cloudFileUrl,
+          }
+        );
+
+        log.info("[Zoho] Bug created successfully:", result.bugId);
+        return {
+          bugId: result.bugId,
+          url: result.url,
+          isUpdate: false,
+        };
+      } catch (error) {
+        // If we get a 401, try to refresh the token
+        if (error.response?.status === 401 && config.refreshToken) {
+          log.info("[Zoho] Access token expired, attempting to refresh...");
+
+          try {
+            const newAccessToken = await zohoService.refreshAccessToken(
+              config.refreshToken
+            );
+
+            // Update the connector with the new token
+            await this.updateConnector(connector.id, {
+              config: {
+                ...config,
+                accessToken: newAccessToken,
+              },
+            });
+
+            accessToken = newAccessToken;
+
+            // Retry bug creation with new token
+            const result = await zohoService.createBug(
+              accessToken,
+              config.portalId,
+              config.projectId,
+              {
+                title: issue.title,
+                description:
+                  issue.description || "Screenshot captured from SnapFlow",
+                imageUrl: issue.cloudFileUrl,
+              }
+            );
+
+            log.info(
+              "[Zoho] Bug created successfully after token refresh:",
+              result.bugId
+            );
+            return {
+              bugId: result.bugId,
+              url: result.url,
+              isUpdate: false,
+            };
+          } catch (refreshError) {
+            log.error("[Zoho] Failed to refresh access token:", refreshError);
+            throw new Error(
+              "Zoho access token expired and could not be refreshed. Please reconnect in Settings.",
+              { cause: refreshError }
+            );
+          }
+        }
+
+        throw error;
+      }
+    } catch (error) {
+      log.error("[Zoho] Sync error:", error);
+      if (error.response?.status === 401) {
+        throw new Error("Zoho access token is invalid or expired", {
+          cause: error,
+        });
+      } else if (error.response?.status === 404) {
+        throw new Error("Zoho portal or project not found", {
+          cause: error,
+        });
+      } else if (error.response?.status === 403) {
+        throw new Error("Zoho API access denied or insufficient permissions", {
+          cause: error,
+        });
+      }
+      throw new Error(
+        `Failed to sync to Zoho: ${error.response?.data?.message || error.response?.data?.errorMessage || error.message}`,
+        {
+          cause: error,
+        }
+      );
+    }
+  }
+
+  /**
+   * Close (delete equivalent) a GitHub issue
+   * Note: GitHub API doesn't support deleting issues, only closing them
+   */
+  async closeGitHubIssue(
+    connector: Connector,
+    issueNumber: number
+  ): Promise<void> {
+    const config = connector.config as {
+      owner: string;
+      repo: string;
+      accessToken: string;
+    };
+
+    if (!config.accessToken || !config.owner || !config.repo) {
+      throw new Error("GitHub connector not properly configured");
+    }
+
+    try {
+      log.info(
+        "[GitHub] Closing issue #",
+        issueNumber,
+        "in",
+        `${config.owner}/${config.repo}`
+      );
+
+      await axios.patch(
+        `https://api.github.com/repos/${config.owner}/${config.repo}/issues/${issueNumber}`,
+        { state: "closed" },
         {
           headers: {
-            Authorization: `Bearer ${accessToken}`,
+            Authorization: `Bearer ${config.accessToken}`,
             Accept: "application/vnd.github.v3+json",
+            "Content-Type": "application/json",
           },
         }
       );
 
-      // Check if we have issues permission
-      const permissions = response.data.permissions;
-      return permissions?.push === true || permissions?.admin === true;
+      log.info("[GitHub] ✓ Issue #", issueNumber, "closed successfully");
     } catch (error) {
-      log.error("GitHub validation error:", error);
-      return false;
+      log.error(
+        "[GitHub] ✗ Failed to close issue:",
+        error.response?.data || error.message
+      );
+      throw new Error(
+        `Failed to close GitHub issue: ${error.response?.data?.message || error.message}`,
+        { cause: error }
+      );
     }
+  }
+
+  /**
+   * Update a Zoho bug with new title/description
+   */
+  async updateZohoBug(
+    connector: Connector,
+    bugId: string,
+    updates: { title?: string; description?: string; tags?: string[] }
+  ): Promise<void> {
+    const config = connector.config as ZohoConnectorConfig;
+
+    if (!config.accessToken || !config.portalId || !config.projectId) {
+      throw new Error("Zoho connector not properly configured");
+    }
+
+    try {
+      // Set accounts server if present (for region-specific API calls)
+      if (config.accountsServer || config.apiDomain) {
+        let accountsServerUrl = config.accountsServer;
+        let apiDomain = config.apiDomain;
+
+        // If apiDomain is a full URL, extract just the hostname
+        if (apiDomain && apiDomain.includes("://")) {
+          try {
+            const url = new URL(apiDomain);
+            apiDomain = url.hostname;
+          } catch (_e) {
+            log.warn("[Zoho] Failed to parse apiDomain as URL:", apiDomain);
+          }
+        }
+
+        // If we don't have accountsServer but have apiDomain, construct it
+        if (!accountsServerUrl && apiDomain) {
+          accountsServerUrl = `https://accounts.${apiDomain}`;
+        }
+
+        // Set the service with proper values
+        if (accountsServerUrl) {
+          zohoService.setAccountsServer(accountsServerUrl, apiDomain);
+        }
+      }
+
+      let accessToken = config.accessToken;
+
+      try {
+        // Note: Zoho API doesn't support tags, only title and description
+        const updateData: { title?: string; description?: string } = {};
+        if (updates.title) updateData.title = updates.title;
+        if (updates.description) updateData.description = updates.description;
+
+        await zohoService.updateBug(
+          accessToken,
+          config.portalId,
+          config.projectId,
+          bugId,
+          updateData
+        );
+
+        log.info("[Zoho] ✓ Bug updated successfully");
+      } catch (error) {
+        // If we get a 401, try to refresh the token
+        if (error.response?.status === 401 && config.refreshToken) {
+          log.info("[Zoho] Access token expired, attempting to refresh...");
+
+          try {
+            const newAccessToken = await zohoService.refreshAccessToken(
+              config.refreshToken
+            );
+
+            // Update the connector with the new token
+            await this.updateConnector(connector.id, {
+              config: {
+                ...config,
+                accessToken: newAccessToken,
+              },
+            });
+
+            accessToken = newAccessToken;
+
+            // Retry update with new token
+            const updateData: { title?: string; description?: string } = {};
+            if (updates.title) updateData.title = updates.title;
+            if (updates.description)
+              updateData.description = updates.description;
+
+            await zohoService.updateBug(
+              accessToken,
+              config.portalId,
+              config.projectId,
+              bugId,
+              updateData
+            );
+
+            log.info("[Zoho] ✓ Bug updated successfully after token refresh");
+          } catch (refreshError) {
+            log.error("[Zoho] Failed to refresh access token:", refreshError);
+            throw new Error(
+              "Zoho access token expired and could not be refreshed. Please reconnect in Settings.",
+              { cause: refreshError }
+            );
+          }
+        } else {
+          throw error;
+        }
+      }
+    } catch (error) {
+      log.error("[Zoho] Update error:", error);
+      if (error.response?.status === 401) {
+        throw new Error("Zoho access token is invalid or expired", {
+          cause: error,
+        });
+      } else if (error.response?.status === 404) {
+        throw new Error("Zoho bug not found", {
+          cause: error,
+        });
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a Zoho bug
+   */
+  async deleteZohoBug(connector: Connector, bugId: string): Promise<void> {
+    const config = connector.config as ZohoConnectorConfig;
+
+    if (!config.accessToken || !config.portalId || !config.projectId) {
+      throw new Error("Zoho connector not properly configured");
+    }
+
+    try {
+      // Set accounts server if present (for region-specific API calls)
+      if (config.accountsServer || config.apiDomain) {
+        let accountsServerUrl = config.accountsServer;
+        let apiDomain = config.apiDomain;
+
+        // If apiDomain is a full URL, extract just the hostname
+        if (apiDomain && apiDomain.includes("://")) {
+          try {
+            const url = new URL(apiDomain);
+            apiDomain = url.hostname;
+          } catch (_e) {
+            log.warn("[Zoho] Failed to parse apiDomain as URL:", apiDomain);
+          }
+        }
+
+        // If we don't have accountsServer but have apiDomain, construct it
+        if (!accountsServerUrl && apiDomain) {
+          accountsServerUrl = `https://accounts.${apiDomain}`;
+        }
+
+        // Set the service with proper values
+        if (accountsServerUrl) {
+          zohoService.setAccountsServer(accountsServerUrl, apiDomain);
+        }
+      }
+
+      let accessToken = config.accessToken;
+
+      try {
+        await zohoService.deleteBug(
+          accessToken,
+          config.portalId,
+          config.projectId,
+          bugId
+        );
+
+        log.info("[Zoho] ✓ Bug deleted successfully");
+      } catch (error) {
+        // If we get a 401, try to refresh the token
+        if (error.response?.status === 401 && config.refreshToken) {
+          log.info("[Zoho] Access token expired, attempting to refresh...");
+
+          try {
+            const newAccessToken = await zohoService.refreshAccessToken(
+              config.refreshToken
+            );
+
+            // Update the connector with the new token
+            await this.updateConnector(connector.id, {
+              config: {
+                ...config,
+                accessToken: newAccessToken,
+              },
+            });
+
+            accessToken = newAccessToken;
+
+            // Retry delete with new token
+            await zohoService.deleteBug(
+              accessToken,
+              config.portalId,
+              config.projectId,
+              bugId
+            );
+
+            log.info("[Zoho] ✓ Bug deleted successfully after token refresh");
+          } catch (refreshError) {
+            log.error("[Zoho] Failed to refresh access token:", refreshError);
+            throw new Error(
+              "Zoho access token expired and could not be refreshed. Please reconnect in Settings.",
+              { cause: refreshError }
+            );
+          }
+        } else {
+          throw error;
+        }
+      }
+    } catch (error) {
+      log.error("[Zoho] Delete error:", error);
+      if (error.response?.status === 401) {
+        throw new Error("Zoho access token is invalid or expired", {
+          cause: error,
+        });
+      } else if (error.response?.status === 404) {
+        throw new Error("Zoho bug not found", {
+          cause: error,
+        });
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Helper: Map Supabase connector row to Connector interface
+   */
+  private mapSupabaseConnector(data: Record<string, unknown>): Connector {
+    return {
+      id: data.id as string,
+      workspaceId: data.workspace_id as string,
+      createdBy: data.created_by as string,
+      name: data.name as string,
+      type: data.type as "github" | "zoho",
+      enabled: data.enabled as boolean,
+      config: data.config as unknown as
+        | GitHubConnectorConfig
+        | ZohoConnectorConfig,
+      lastSyncAt: (data.last_sync_at as string) || undefined,
+      createdAt: (data.created_at as string) || undefined,
+      updatedAt: (data.updated_at as string) || undefined,
+    };
   }
 }
 
