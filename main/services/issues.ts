@@ -191,11 +191,7 @@ export class SnapService {
     return snaps[index];
   }
 
-  getSnapsByDateRange(
-    startDate: Date,
-    endDate: Date,
-    userId?: string
-  ): Snap[] {
+  getSnapsByDateRange(startDate: Date, endDate: Date, userId?: string): Snap[] {
     const snaps = this.getSnaps(userId);
     return snaps.filter((snap) => {
       const snapDate = new Date(snap.timestamp);
@@ -226,7 +222,14 @@ export class IssueService extends SnapService {
     description?: string,
     thumbnailPath?: string
   ): Promise<Issue> {
-    return this.createSnap(userId, title, type, filePath, description, thumbnailPath);
+    return this.createSnap(
+      userId,
+      title,
+      type,
+      filePath,
+      description,
+      thumbnailPath
+    );
   }
 
   getIssues(userId?: string): Issue[] {

@@ -659,9 +659,18 @@ export class SyncService {
             localUpdateData.cloudThumbnailUrl = cloudThumbnailUrl;
           }
 
-          log.info(`[Sync] Updating local snap ${issue.id} with:`, localUpdateData);
-          const updatedSnap = await issueService.updateIssue(issue.id, localUpdateData);
-          log.info(`[Sync] ✓ Snap updated successfully. New syncStatus:`, updatedSnap.syncStatus);
+          log.info(
+            `[Sync] Updating local snap ${issue.id} with:`,
+            localUpdateData
+          );
+          const updatedSnap = await issueService.updateIssue(
+            issue.id,
+            localUpdateData
+          );
+          log.info(
+            `[Sync] ✓ Snap updated successfully. New syncStatus:`,
+            updatedSnap.syncStatus
+          );
           result.syncedCount++;
         } catch (error) {
           result.failedCount++;
@@ -985,10 +994,7 @@ export class SyncService {
         .eq("created_by", userId);
 
       if (error) {
-        log.error(
-          `[Sync] Failed to update snap metadata in database:`,
-          error
-        );
+        log.error(`[Sync] Failed to update snap metadata in database:`, error);
         return false;
       }
 

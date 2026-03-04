@@ -26,7 +26,9 @@ export class OnboardingService {
     if (error) {
       // PGRST116 = "not found" - user hasn't started onboarding yet
       if (error.code === "PGRST116") {
-        log.info("[Onboarding Service] No onboarding progress found, initializing");
+        log.info(
+          "[Onboarding Service] No onboarding progress found, initializing"
+        );
         return null;
       }
       log.error("[Onboarding Service] Error fetching progress:", error.message);
@@ -51,13 +53,11 @@ export class OnboardingService {
       throw new Error("Supabase is not configured");
     }
 
-    const { error } = await supabase
-      .from("onboarding_progress")
-      .insert({
-        user_id: userId,
-        current_step: 1,
-        is_complete: false,
-      });
+    const { error } = await supabase.from("onboarding_progress").insert({
+      user_id: userId,
+      current_step: 1,
+      is_complete: false,
+    });
 
     if (error) {
       // Ignore duplicate key error (user already initialized)
@@ -65,7 +65,10 @@ export class OnboardingService {
         log.info("[Onboarding Service] Progress already initialized");
         return;
       }
-      log.error("[Onboarding Service] ✗ Error initializing progress:", error.message);
+      log.error(
+        "[Onboarding Service] ✗ Error initializing progress:",
+        error.message
+      );
       throw new Error(error.message);
     }
 
@@ -76,7 +79,12 @@ export class OnboardingService {
    * Update the user's current onboarding step
    */
   async setStep(userId: string, step: number): Promise<void> {
-    log.info("[Onboarding Service] Setting step for user:", userId, "Step:", step);
+    log.info(
+      "[Onboarding Service] Setting step for user:",
+      userId,
+      "Step:",
+      step
+    );
 
     const supabase = getSupabase();
     if (!supabase) {

@@ -177,7 +177,11 @@ class SessionManager {
           if (session?.expires_at) {
             const expiresAt = session.expires_at * 1000; // Convert to milliseconds
             (sessionStore as any).set("expiresAt", expiresAt);
-            log.info("[Session] Token refreshed ✓ (expires at", new Date(expiresAt).toISOString(), ")");
+            log.info(
+              "[Session] Token refreshed ✓ (expires at",
+              new Date(expiresAt).toISOString(),
+              ")"
+            );
           } else {
             log.info("[Session] Token refreshed ✓");
           }
@@ -214,7 +218,10 @@ class SessionManager {
                 if (session.expires_at) {
                   const expiresAt = session.expires_at * 1000; // Convert to milliseconds
                   (sessionStore as any).set("expiresAt", expiresAt);
-                  log.info("[Session] SIGNED_IN: Session expires at", new Date(expiresAt).toISOString());
+                  log.info(
+                    "[Session] SIGNED_IN: Session expires at",
+                    new Date(expiresAt).toISOString()
+                  );
                 }
                 log.info("[Session] SIGNED_IN: User applied successfully");
               } else {
@@ -315,9 +322,8 @@ class SessionManager {
    * Returns true if expired or expiry time is unknown.
    */
   private isTokenExpired(): boolean {
-    const expiresAt = ((sessionStore as any).get("expiresAt") as
-      | number
-      | undefined) ?? null;
+    const expiresAt =
+      ((sessionStore as any).get("expiresAt") as number | undefined) ?? null;
     if (!expiresAt) return false; // No expiry info, assume valid
 
     const now = Date.now();
@@ -370,7 +376,9 @@ class SessionManager {
    * Used by the renderer to show expiry warnings.
    */
   getSessionExpiryTime(): number | null {
-    return ((sessionStore as any).get("expiresAt") as number | undefined) ?? null;
+    return (
+      ((sessionStore as any).get("expiresAt") as number | undefined) ?? null
+    );
   }
 
   /**

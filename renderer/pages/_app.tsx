@@ -61,14 +61,23 @@ function MyApp({ Component, pageProps }: AppProps) {
         const userResult = await window.api.getUser();
         const isAuthenticated = userResult.success && userResult.data;
 
-        console.log("[App] Auth check - isAuthenticated:", isAuthenticated, "pathname:", router.pathname);
+        console.log(
+          "[App] Auth check - isAuthenticated:",
+          isAuthenticated,
+          "pathname:",
+          router.pathname
+        );
 
         // If user IS authenticated but on auth page, redirect to home/onboarding
         if (isAuthenticated && router.pathname === "/auth") {
-          console.log("[App] User authenticated on /auth, checking onboarding status");
+          console.log(
+            "[App] User authenticated on /auth, checking onboarding status"
+          );
           const onboardingResult = await window.api.getOnboardingStatus();
           if (onboardingResult.success && !onboardingResult.data?.isComplete) {
-            console.log("[App] Onboarding incomplete, redirecting to /onboarding");
+            console.log(
+              "[App] Onboarding incomplete, redirecting to /onboarding"
+            );
             await router.push("/onboarding");
           } else {
             console.log("[App] Onboarding complete, redirecting to /home");
@@ -86,7 +95,9 @@ function MyApp({ Component, pageProps }: AppProps) {
 
         // User is NOT authenticated on protected route, redirect to auth
         if (!isAuthenticated) {
-          console.log("[App] Not authenticated on protected route, redirecting to /auth");
+          console.log(
+            "[App] Not authenticated on protected route, redirecting to /auth"
+          );
           await router.push("/auth");
           return;
         }
@@ -98,7 +109,9 @@ function MyApp({ Component, pageProps }: AppProps) {
 
           if (onboardingResult.success && !onboardingResult.data?.isComplete) {
             // Onboarding incomplete, redirect to onboarding
-            console.log("[App] Onboarding incomplete, redirecting to /onboarding");
+            console.log(
+              "[App] Onboarding incomplete, redirecting to /onboarding"
+            );
             await router.push("/onboarding");
             return;
           }

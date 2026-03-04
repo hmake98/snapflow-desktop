@@ -137,7 +137,13 @@ export function ZohoConnectorManager() {
       const result = await window.api.zohoSignIn();
       if (!result.success) {
         setPendingAuth((prev) =>
-          prev ? { ...prev, error: result.error || "Failed to start auth", stage: "idle" } : null
+          prev
+            ? {
+                ...prev,
+                error: result.error || "Failed to start auth",
+                stage: "idle",
+              }
+            : null
         );
       }
     } catch (error) {
@@ -183,7 +189,13 @@ export function ZohoConnectorManager() {
         );
       } else {
         setPendingAuth((prev) =>
-          prev ? { ...prev, error: result.error || "Failed to fetch portals", stage: "idle" } : null
+          prev
+            ? {
+                ...prev,
+                error: result.error || "Failed to fetch portals",
+                stage: "idle",
+              }
+            : null
         );
       }
     } catch (error) {
@@ -219,20 +231,18 @@ export function ZohoConnectorManager() {
           name: p.name || p.project_name,
         }));
         log("Projects fetched:", projects);
-        setPendingAuth((prev) =>
-          prev ? { ...prev, projects } : null
-        );
+        setPendingAuth((prev) => (prev ? { ...prev, projects } : null));
       } else {
         setPendingAuth((prev) =>
-          prev ? { ...prev, error: result.error || "Failed to fetch projects" } : null
+          prev
+            ? { ...prev, error: result.error || "Failed to fetch projects" }
+            : null
         );
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Unknown error";
       log("Failed to fetch projects:", error);
-      setPendingAuth((prev) =>
-        prev ? { ...prev, error: msg } : null
-      );
+      setPendingAuth((prev) => (prev ? { ...prev, error: msg } : null));
     }
   };
 
@@ -240,20 +250,26 @@ export function ZohoConnectorManager() {
     log("Project selected:", { projectId, projectName });
     setPendingAuth((prev) =>
       prev
-        ? { ...prev, selectedProjectId: projectId, selectedProjectName: projectName }
+        ? {
+            ...prev,
+            selectedProjectId: projectId,
+            selectedProjectName: projectName,
+          }
         : null
     );
   };
 
   const handleSaveConnector = async () => {
-    if (!pendingAuth || !pendingAuth.selectedPortalId || !pendingAuth.selectedProjectId) {
+    if (
+      !pendingAuth ||
+      !pendingAuth.selectedPortalId ||
+      !pendingAuth.selectedProjectId
+    ) {
       return;
     }
 
     log("Saving connector");
-    setPendingAuth((prev) =>
-      prev ? { ...prev, stage: "saving" } : null
-    );
+    setPendingAuth((prev) => (prev ? { ...prev, stage: "saving" } : null));
 
     try {
       // Get the Zoho tokens from the main process (fallback to empty if not available)
@@ -268,7 +284,9 @@ export function ZohoConnectorManager() {
           apiDomain = tokenResult.apiDomain || "";
           log("Zoho tokens retrieved successfully");
         } else {
-          log("Warning: Zoho tokens not available, will be applied from pending tokens");
+          log(
+            "Warning: Zoho tokens not available, will be applied from pending tokens"
+          );
         }
       } catch (tokenError) {
         log("Warning: Failed to get Zoho tokens", tokenError);
@@ -302,7 +320,13 @@ export function ZohoConnectorManager() {
         await loadConnectors();
       } else {
         setPendingAuth((prev) =>
-          prev ? { ...prev, error: result.error || "Failed to save connector", stage: "selecting" } : null
+          prev
+            ? {
+                ...prev,
+                error: result.error || "Failed to save connector",
+                stage: "selecting",
+              }
+            : null
         );
       }
     } catch (error) {
@@ -394,10 +418,14 @@ export function ZohoConnectorManager() {
                 </h3>
                 <p className="text-sm text-gray-400 group-hover:text-gray-300 transition-colors truncate mt-1">
                   <span className="inline-block mr-3">
-                    📁 {(connector.config as any).portalName || (connector.config as any).portalId}
+                    📁{" "}
+                    {(connector.config as any).portalName ||
+                      (connector.config as any).portalId}
                   </span>
                   <span className="inline-block">
-                    📌 {(connector.config as any).projectName || (connector.config as any).projectId}
+                    📌{" "}
+                    {(connector.config as any).projectName ||
+                      (connector.config as any).projectId}
                   </span>
                 </p>
               </div>
@@ -480,7 +508,8 @@ export function ZohoConnectorManager() {
           </div>
 
           <p className="text-sm text-gray-400 mb-6">
-            Click below to sign in with your Zoho account and authorize SnapFlow to access your projects.
+            Click below to sign in with your Zoho account and authorize SnapFlow
+            to access your projects.
           </p>
 
           <div className="flex justify-end">
@@ -516,13 +545,26 @@ export function ZohoConnectorManager() {
         <div className="bg-orange-900/20 border border-orange-700/50 rounded-2xl p-6 backdrop-blur-sm max-w-4xl">
           <div className="flex items-center space-x-3">
             <div className="flex-shrink-0">
-              <svg className="w-6 h-6 text-orange-400" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              <svg
+                className="w-6 h-6 text-orange-400"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                  clipRule="evenodd"
+                />
               </svg>
             </div>
             <div>
-              <h3 className="text-sm font-medium text-orange-400">Zoho connector already added</h3>
-              <p className="text-xs text-orange-300 mt-1">Only one Zoho connector per workspace is allowed. Delete the existing one to add a different project.</p>
+              <h3 className="text-sm font-medium text-orange-400">
+                Zoho connector already added
+              </h3>
+              <p className="text-xs text-orange-300 mt-1">
+                Only one Zoho connector per workspace is allowed. Delete the
+                existing one to add a different project.
+              </p>
             </div>
           </div>
         </div>
@@ -550,11 +592,7 @@ export function ZohoConnectorManager() {
                 Complete the authorization in your browser window
               </p>
             </div>
-            <Button
-              onClick={handleCancel}
-              variant="outline"
-              size="sm"
-            >
+            <Button onClick={handleCancel} variant="outline" size="sm">
               Cancel
             </Button>
           </div>
@@ -562,129 +600,131 @@ export function ZohoConnectorManager() {
       )}
 
       {/* OAuth Flow - Stage 3: Selecting Portal & Project or Saving */}
-      {pendingAuth && (pendingAuth.stage === "selecting" || pendingAuth.stage === "saving") && (
-        <div className="bg-gradient-to-br from-gray-800/60 to-gray-900/60 border border-gray-700/50 rounded-2xl p-6 backdrop-blur-sm max-w-4xl">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-orange-600/20 border border-orange-500/30 rounded-xl flex items-center justify-center">
-                <svg
-                  className="w-5 h-5 text-orange-400"
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z" />
-                </svg>
+      {pendingAuth &&
+        (pendingAuth.stage === "selecting" ||
+          pendingAuth.stage === "saving") && (
+          <div className="bg-gradient-to-br from-gray-800/60 to-gray-900/60 border border-gray-700/50 rounded-2xl p-6 backdrop-blur-sm max-w-4xl">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-orange-600/20 border border-orange-500/30 rounded-xl flex items-center justify-center">
+                  <svg
+                    className="w-5 h-5 text-orange-400"
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-100">
+                  Select Portal & Project
+                </h3>
               </div>
-              <h3 className="text-lg font-semibold text-gray-100">
-                Select Portal & Project
-              </h3>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            {/* Portal Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-100 mb-2">
-                Zoho Portal <span className="text-red-400">*</span>
-              </label>
-              <select
-                value={pendingAuth.selectedPortalId}
-                onChange={(e) => {
-                  const portal = pendingAuth.portals.find(
-                    (p) => p.id === e.target.value
-                  );
-                  if (portal) {
-                    handlePortalSelect(portal.id, portal.name);
-                  }
-                }}
-                className="w-full px-4 py-3 bg-gray-900/60 border border-gray-700/50 text-gray-100 rounded-xl focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 outline-none transition-all duration-200"
-              >
-                <option value="">Choose a portal...</option>
-                {pendingAuth.portals.map((portal) => (
-                  <option key={portal.id} value={portal.id}>
-                    {portal.name}
-                  </option>
-                ))}
-              </select>
             </div>
 
-            {/* Project Selection */}
-            {pendingAuth.selectedPortalId && (
+            <div className="space-y-6">
+              {/* Portal Selection */}
               <div>
                 <label className="block text-sm font-medium text-gray-100 mb-2">
-                  Project <span className="text-red-400">*</span>
+                  Zoho Portal <span className="text-red-400">*</span>
                 </label>
                 <select
-                  value={pendingAuth.selectedProjectId}
+                  value={pendingAuth.selectedPortalId}
                   onChange={(e) => {
-                    const project = pendingAuth.projects.find(
-                      (p) => p.id_string === e.target.value
+                    const portal = pendingAuth.portals.find(
+                      (p) => p.id === e.target.value
                     );
-                    if (project) {
-                      handleProjectSelect(project.id_string, project.name);
+                    if (portal) {
+                      handlePortalSelect(portal.id, portal.name);
                     }
                   }}
                   className="w-full px-4 py-3 bg-gray-900/60 border border-gray-700/50 text-gray-100 rounded-xl focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 outline-none transition-all duration-200"
                 >
-                  <option value="">Choose a project...</option>
-                  {pendingAuth.projects.map((project) => (
-                    <option key={project.id_string} value={project.id_string}>
-                      {project.name}
+                  <option value="">Choose a portal...</option>
+                  {pendingAuth.portals.map((portal) => (
+                    <option key={portal.id} value={portal.id}>
+                      {portal.name}
                     </option>
                   ))}
                 </select>
               </div>
-            )}
 
-            {/* Connector Name */}
-            <div>
-              <label className="block text-sm font-medium text-gray-100 mb-2">
-                Display Name <span className="text-gray-400 font-normal">(Optional)</span>
-              </label>
-              <input
-                type="text"
-                value={pendingAuth.connectorName}
-                onChange={(e) =>
-                  setPendingAuth((prev) =>
-                    prev ? { ...prev, connectorName: e.target.value } : null
-                  )
-                }
-                placeholder="My Zoho Connector"
-                className="w-full px-4 py-3 bg-gray-900/60 border border-gray-700/50 text-gray-100 rounded-xl focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 outline-none transition-all duration-200"
-              />
-            </div>
+              {/* Project Selection */}
+              {pendingAuth.selectedPortalId && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-100 mb-2">
+                    Project <span className="text-red-400">*</span>
+                  </label>
+                  <select
+                    value={pendingAuth.selectedProjectId}
+                    onChange={(e) => {
+                      const project = pendingAuth.projects.find(
+                        (p) => p.id_string === e.target.value
+                      );
+                      if (project) {
+                        handleProjectSelect(project.id_string, project.name);
+                      }
+                    }}
+                    className="w-full px-4 py-3 bg-gray-900/60 border border-gray-700/50 text-gray-100 rounded-xl focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 outline-none transition-all duration-200"
+                  >
+                    <option value="">Choose a project...</option>
+                    {pendingAuth.projects.map((project) => (
+                      <option key={project.id_string} value={project.id_string}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
-            {/* Error Message */}
-            {pendingAuth.error && (
-              <div className="p-4 bg-red-900/20 border border-red-800/30 rounded-lg">
-                <p className="text-sm text-red-300">{pendingAuth.error}</p>
+              {/* Connector Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-100 mb-2">
+                  Display Name{" "}
+                  <span className="text-gray-400 font-normal">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={pendingAuth.connectorName}
+                  onChange={(e) =>
+                    setPendingAuth((prev) =>
+                      prev ? { ...prev, connectorName: e.target.value } : null
+                    )
+                  }
+                  placeholder="My Zoho Connector"
+                  className="w-full px-4 py-3 bg-gray-900/60 border border-gray-700/50 text-gray-100 rounded-xl focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 outline-none transition-all duration-200"
+                />
               </div>
-            )}
 
-            {/* Action Buttons */}
-            <div className="flex justify-end gap-3">
-              <Button
-                onClick={handleCancel}
-                variant="outline"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSaveConnector}
-                variant="primary"
-                disabled={
-                  pendingAuth.stage === "saving" ||
-                  !pendingAuth.selectedPortalId ||
-                  !pendingAuth.selectedProjectId
-                }
-                isLoading={pendingAuth.stage === "saving"}
-              >
-                {pendingAuth.stage === "saving" ? "Saving..." : "Save Connector"}
-              </Button>
+              {/* Error Message */}
+              {pendingAuth.error && (
+                <div className="p-4 bg-red-900/20 border border-red-800/30 rounded-lg">
+                  <p className="text-sm text-red-300">{pendingAuth.error}</p>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-3">
+                <Button onClick={handleCancel} variant="outline">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveConnector}
+                  variant="primary"
+                  disabled={
+                    pendingAuth.stage === "saving" ||
+                    !pendingAuth.selectedPortalId ||
+                    !pendingAuth.selectedProjectId
+                  }
+                  isLoading={pendingAuth.stage === "saving"}
+                >
+                  {pendingAuth.stage === "saving"
+                    ? "Saving..."
+                    : "Save Connector"}
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
     </div>
   );
 }
