@@ -106,7 +106,7 @@
 - 📍 **Onboarding Flow** - Step-by-step guided setup for new users
 - 👥 **User Management** - Invite team members with role-based access (admin/dev)
 
-### Screen Recording (🚧 In Development)
+### Screen Recording (📋 Planned)
 
 - 🎥 **Screen Recording** - Record screen activity with audio
 - 🎬 **Recording Controls** - Start, stop, pause recording from floating UI
@@ -167,7 +167,7 @@
 
 ## 📦 Prerequisites
 
-- **Node.js**: 18.0.0 or higher
+- **Node.js**: 20.0.0 or higher
 - **npm/yarn/pnpm**: Latest version
 - **Supabase Account**: Free tier available at [supabase.com](https://supabase.com)
 - **macOS**: 10.15+ (for Screen Recording permission)
@@ -200,7 +200,7 @@ This will install all npm dependencies and prepare the app for development.
 
 3. Run the SQL schema to create database tables:
    - Go to **SQL Editor** in your Supabase Dashboard
-   - Open [supabase-schema.sql](supabase-schema.sql) and copy the entire contents
+   - Open `main/migrations/supabase-mvp-migration.sql` and copy the entire contents
    - Paste and run the SQL in the editor
    - This creates the `issues` and `sync_history` tables with RLS policies
 
@@ -232,7 +232,7 @@ This will install all npm dependencies and prepare the app for development.
    - Go to **Authentication** → **Providers** → **Email**
    - Toggle "Enable Email Confirmations" to **OFF**
 
-📖 **Detailed setup guide**: See [SUPABASE_SETUP.md](SUPABASE_SETUP.md)
+📖 **Migration files**: See `main/migrations/` for all SQL migration scripts
 
 ### 4. Run the Application
 
@@ -280,9 +280,9 @@ SnapFlow uses Supabase for:
 
 **Required Setup:**
 
-1. Create tables by running [supabase-schema.sql](supabase-schema.sql) in SQL Editor
+1. Create tables by running `main/migrations/supabase-mvp-migration.sql` in SQL Editor
 2. Create storage bucket `snapflow-public-bucket` (see setup instructions above)
-3. Storage RLS policies are included in the schema file
+3. Storage RLS policies are included in the migration file
 
 ### Platform Connectors
 
@@ -475,7 +475,7 @@ snapflow-desktop/
 │   │   ├── recording-control.tsx  # Floating recording controls window
 │   │   ├── window-capture.tsx     # Window capture with preview
 │   │   ├── onboarding.tsx         # Multi-step onboarding flow
-│   │   ├── settings.tsx           # Settings with tabs (Account, Connectors, Display, Users, Workspaces, Updates)
+│   │   ├── settings.tsx           # Settings with tabs (Account, Connectors, Sync, General)
 │   │   └── 500.tsx                # Error page
 │   ├── components/
 │   │   ├── ui/                    # Reusable UI components
@@ -521,8 +521,12 @@ snapflow-desktop/
 │   ├── icon.png                   # App icon (macOS dock/taskbar)
 │   ├── icon.icns                  # macOS app icon
 │   ├── icon.ico                   # Windows app icon
-│   ├── tray-icon.png              # System tray icon (dark theme)
-│   ├── tray-icon-white.png        # System tray icon (light theme)
+│   ├── tray-icon.png              # System tray icon (normal, dark theme)
+│   ├── tray-icon-white.png        # System tray icon (normal, light theme)
+│   ├── tray-icon-record.png       # System tray icon (recording, dark theme)
+│   ├── tray-icon-record-white.png # System tray icon (recording, light theme)
+│   ├── tray-icon-stop.png         # System tray icon (stop, dark theme)
+│   ├── tray-icon-stop-white.png   # System tray icon (stop, light theme)
 │   └── entitlements.mac.plist     # macOS app entitlements
 │
 ├── .github/                       # GitHub configuration
@@ -535,7 +539,6 @@ snapflow-desktop/
 ├── app/                           # Build output (generated)
 ├── dist/                          # Distribution packages (generated)
 │
-├── supabase-schema.sql            # Database schema & RLS policies
 ├── CHANGELOG.md                   # Version history and release notes
 ├── package.json                   # Project dependencies & scripts
 ├── package-lock.json              # Dependency lock file
@@ -602,7 +605,6 @@ The project includes two GitHub Actions workflows in `.github/workflows/`:
 - **Purpose**: Validate code quality and ensure builds work
 - **Actions**:
   - Runs linter (`npm run lint`)
-  - Runs type checking (`npm run type-check`)
   - Runs format checking (`npm run format:check`)
   - Builds application on all platforms (macOS, Windows, Linux)
 - **Note**: Builds succeed but does NOT publish artifacts
@@ -882,7 +884,7 @@ cp .env.example .env
 
 2. **Verify RLS policies are applied**:
    - Go to Supabase Dashboard → **SQL Editor**
-   - Run the storage policies section from [supabase-schema.sql](supabase-schema.sql#L113-L157)
+   - Run the storage policies section from `main/migrations/supabase-mvp-migration.sql`
    - This ensures users can upload/read their own files
 
 3. **Restart the application** and try syncing again
@@ -1010,7 +1012,7 @@ The project enforces code quality through automated tools:
 
 - **README.md** (this file) - Complete setup, features, and troubleshooting guide
 - **CHANGELOG.md** - Version history with detailed release notes
-- **supabase-schema.sql** - Database schema, tables, indexes, and RLS policies
+- **main/migrations/** - SQL migration files for database schema and RLS policies
 - **.env.example** - Environment variables template
 - **package.json** - Dependencies, scripts, and project metadata
 
@@ -1038,8 +1040,7 @@ This is a private project. All rights reserved.
 If you encounter any issues or have questions:
 
 1. Check the [Troubleshooting](#-troubleshooting) section
-2. Review the [Code Quality Guide](.github/CODE_QUALITY.md)
-3. Contact the development team for assistance
+2. Contact the development team for assistance
 
 ---
 
