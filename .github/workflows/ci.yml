@@ -60,7 +60,7 @@ jobs:
         run: npm ci
 
       - name: Build application (no packaging)
-        run: npm run build:no-pack
+        run: npm run build
         env:
           # Skip code signing and notarization
           CSC_IDENTITY_AUTO_DISCOVERY: false

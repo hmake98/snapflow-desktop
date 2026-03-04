@@ -573,8 +573,8 @@ npm run type-check       # Run TypeScript type checking (without emitting files)
 ### Build
 
 ```bash
-npm run build            # Build production app for all platforms (macOS/Windows/Linux)
-npm run build:no-pack    # Build without packaging (for CI validation)
+npm run build:pack            # Build production app for all platforms (macOS/Windows/Linux)
+npm run build    # Build without packaging (for CI validation)
 ```
 
 ### Git Hooks & Setup
