@@ -299,8 +299,8 @@ export default function AnnotateRecording() {
                     className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                     maxLength={100}
                   />
-                  <p className="text-xs text-gray-400 mt-1">
-                    {title.length}/100 characters
+                  <p className="text-xs text-gray-400 mt-1 text-right">
+                    {title.length}/100
                   </p>
                 </div>
 
@@ -317,12 +317,12 @@ export default function AnnotateRecording() {
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Add notes about this recording..."
-                    rows={8}
+                    rows={4}
                     className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
                     maxLength={500}
                   />
-                  <p className="text-xs text-gray-400 mt-1">
-                    {description.length}/500 characters
+                  <p className="text-xs text-gray-400 mt-1 text-right">
+                    {description.length}/500
                   </p>
                 </div>
 
