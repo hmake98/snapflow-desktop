@@ -101,23 +101,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Create .env file from secrets
-      - name: Create .env file
-        run: |
-          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
-          echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
-          echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
-          echo "GITHUB_CLIENT_ID=${{ secrets.CLIENT_ID }}" >> .env
-          echo "GITHUB_CLIENT_SECRET=${{ secrets.CLIENT_SECRET }}" >> .env
-          echo "ZOHO_CLIENT_ID=${{ secrets.ZOHO_CLIENT_ID }}" >> .env
-          echo "ZOHO_CLIENT_SECRET=${{ secrets.ZOHO_CLIENT_SECRET }}" >> .env
-          echo "NODE_ENV=production" >> .env
-        shell: bash
-
       # Run build (same script for all platforms)
       - name: Build App
         run: npm run build:pack
         env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GITHUB_CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+          ZOHO_CLIENT_ID: ${{ secrets.ZOHO_CLIENT_ID }}
+          ZOHO_CLIENT_SECRET: ${{ secrets.ZOHO_CLIENT_SECRET }}
+          NODE_ENV: production
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Upload platform-specific build outputs
