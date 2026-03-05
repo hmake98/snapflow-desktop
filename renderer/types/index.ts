@@ -1,4 +1,4 @@
-export type UserRole = "admin" | "pm" | "qa" | "dev" | "client";
+export type UserRole = "owner" | "admin" | "pm" | "qa" | "dev" | "client";
 
 export interface User {
   id: string;
@@ -155,6 +155,7 @@ export interface OnboardingStatus {
   hasConnector: boolean;
   isComplete: boolean;
   currentStep: number; // 1=tenant, 2=invite, 3=workspace, 4=connectors
+  userType?: "owner" | "member"; // owner = owns tenant, member = invited to workspace
   tenant?: Tenant;
   workspace?: Workspace;
 }
@@ -174,6 +175,8 @@ export type IPCChannel =
   | "workspace:create"
   | "workspace:list"
   | "workspace:get"
+  | "workspace:get-info"
+  | "workspace:join"
   | "workspace:update"
   | "workspace:delete"
   | "workspace:get-user-workspaces"
@@ -184,6 +187,7 @@ export type IPCChannel =
   | "workspace-member:update-role"
   | "workspace-member:invite"
   | "onboarding:get-status"
+  | "onboarding:set-step"
   | "snap:create"
   | "snap:list"
   | "snap:update"

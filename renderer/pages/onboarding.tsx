@@ -21,6 +21,7 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [isMemberMode, setIsMemberMode] = useState(false);
 
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -32,11 +33,13 @@ export default function OnboardingPage() {
 
   // Step 2: Invite form
   const [invites, setInvites] = useState<
-    Array<{ id: string; email: string; role: UserRole }>
+    Array<{ id: string; email: string; role: Exclude<UserRole, "owner"> }>
   >([]);
-  const [_newInviteEmail, _setNewInviteEmail] = useState("");
-  const [_newInviteRole, _setNewInviteRole] = useState<UserRole>("dev");
-  const [_invitesSending, _setInvitesSending] = useState(false);
+  const [newInviteEmail, setNewInviteEmail] = useState("");
+  const [newInviteRole, setNewInviteRole] =
+    useState<Exclude<UserRole, "owner">>("dev");
+  const [invitesSending, setInvitesSending] = useState(false);
+  const [showInviteForm, setShowInviteForm] = useState(false);
 
   // Step 3: Workspace form
   const [workspaceName, setWorkspaceName] = useState("");
@@ -103,6 +106,8 @@ export default function OnboardingPage() {
   useEffect(() => {
     async function loadStatus() {
       try {
+        // Check for member mode from query param or status
+        const queryMode = router.query.mode as string;
         const result = await window.api.getOnboardingStatus();
         if (!result.success) {
           setError("Failed to load onboarding status");
@@ -118,7 +123,13 @@ export default function OnboardingPage() {
           return;
         }
 
-        setStep(status.currentStep);
+        // Detect member mode from query param or status.userType
+        const isMember = queryMode === "member" || status.userType === "member";
+        setIsMemberMode(isMember);
+
+        // For member mode, start at step 4 (connectors)
+        const initialStep = isMember ? 4 : status.currentStep;
+        setStep(initialStep);
         setTenant(status.tenant || null);
         setWorkspace(status.workspace || null);
         setLoading(false);
@@ -129,8 +140,10 @@ export default function OnboardingPage() {
       }
     }
 
-    loadStatus();
-  }, [router]);
+    if (router.isReady) {
+      loadStatus();
+    }
+  }, [router.isReady, router.query.mode]);
 
   // Listen for Zoho OAuth success
   useEffect(() => {
@@ -226,8 +239,8 @@ export default function OnboardingPage() {
       const newTenant = result.data as Tenant;
       setTenant(newTenant);
       toast.success("Organization created successfully!");
-      // Step 2 (invite team) is temporarily disabled — skip directly to workspace creation
-      await updateStep(3);
+      // Proceed to step 2 (invite team)
+      await updateStep(2);
     } catch (err) {
       console.error("Error creating tenant:", err);
       setError("Failed to create organization");
@@ -237,7 +250,7 @@ export default function OnboardingPage() {
   }
 
   // Handle adding invite row
-  function _handleAddInvite() {
+  function handleAddInvite() {
     setInvites([
       ...invites,
       { id: Date.now().toString(), email: "", role: "dev" },
@@ -245,26 +258,27 @@ export default function OnboardingPage() {
   }
 
   // Handle removing invite row
-  function _handleRemoveInvite(id: string) {
+  function handleRemoveInvite(id: string) {
     setInvites(invites.filter((inv) => inv.id !== id));
   }
 
-  // Handle sending invites
-  async function _handleSendInvites() {
+  // Handle proceeding to next step (invites will be sent after workspace creation)
+  async function handleProceedFromInvites() {
+    await updateStep(3);
+  }
+
+  // Handle sending invites (called from handleCreateWorkspace after workspace is created)
+  async function sendQueuedInvites(workspaceId: string) {
     if (invites.length === 0) {
-      await updateStep(3);
-      return;
+      return; // Nothing to send
     }
 
     const validInvites = invites.filter((inv) => inv.email.trim());
     if (validInvites.length === 0) {
-      toast.info("No valid emails to invite");
-      await updateStep(3);
-      return;
+      return; // No valid emails
     }
 
-    _setInvitesSending(true);
-    setError("");
+    setInvitesSending(true);
 
     let successCount = 0;
     let failureCount = 0;
@@ -272,7 +286,7 @@ export default function OnboardingPage() {
     for (const invite of validInvites) {
       try {
         const result = await window.api.inviteTeamMember(
-          workspace?.id || "",
+          workspaceId,
           invite.email,
           invite.role
         );
@@ -288,15 +302,15 @@ export default function OnboardingPage() {
       }
     }
 
-    _setInvitesSending(false);
+    setInvitesSending(false);
 
     if (failureCount > 0) {
-      toast.warning(`Sent ${successCount} invites, ${failureCount} failed`);
-    } else {
-      toast.success(`Sent ${successCount} invites successfully!`);
+      toast.warning(
+        `Sent ${successCount} invite(s), ${failureCount} failed. You can retry from Settings.`
+      );
+    } else if (successCount > 0) {
+      toast.success(`Sent ${successCount} invite(s) successfully!`);
     }
-
-    await updateStep(3);
   }
 
   // Handle workspace creation
@@ -330,6 +344,12 @@ export default function OnboardingPage() {
       const newWorkspace = result.data as Workspace;
       setWorkspace(newWorkspace);
       toast.success("Workspace created successfully!");
+
+      // Send any queued invites for this workspace
+      if (invites.length > 0) {
+        await sendQueuedInvites(newWorkspace.id);
+      }
+
       await updateStep(4);
     } catch (err) {
       console.error("Error creating workspace:", err);
@@ -614,29 +634,36 @@ export default function OnboardingPage() {
             {/* Header */}
             <div className="text-center mb-12">
               <h1 className="text-4xl font-bold text-gray-100 mb-2">
-                Welcome to SnapFlow
+                {isMemberMode ? "Almost Ready" : "Welcome to SnapFlow"}
               </h1>
               <p className="text-gray-400">
-                Let's set up your workspace in a few steps
+                {isMemberMode
+                  ? "Let's connect your tools"
+                  : "Let's set up your workspace in a few steps"}
               </p>
             </div>
 
-            {/* Step Indicator — step 2 (invite) is hidden, visible steps are 1,3,4,5 */}
+            {/* Step Indicator */}
             <div className="flex justify-between mb-8">
-              {[1, 3, 4, 5].map((s, idx) => {
+              {(isMemberMode ? [4, 5] : [1, 2, 3, 4, 5]).map((s, idx) => {
                 // Map visible index (1-based) to display number
                 const displayNum = idx + 1;
                 // A visible step is "done" if the actual step has passed it
                 const isDone = step > s;
-                const isActive = step === s || (s === 3 && step === 2);
-                const label =
-                  s === 1
+                const isActive = step === s;
+                const label = isMemberMode
+                  ? s === 4
+                    ? "Connectors"
+                    : "Done"
+                  : s === 1
                     ? "Org"
-                    : s === 3
-                      ? "Workspace"
-                      : s === 4
-                        ? "Connectors"
-                        : "Done";
+                    : s === 2
+                      ? "Team"
+                      : s === 3
+                        ? "Workspace"
+                        : s === 4
+                          ? "Connectors"
+                          : "Done";
                 return (
                   <div key={s} className="flex flex-col items-center flex-1">
                     <div
@@ -660,32 +687,35 @@ export default function OnboardingPage() {
               })}
             </div>
 
-            {/* Navigation Header — step 2 is skipped */}
+            {/* Navigation Header */}
             {step !== 5 && (
               <div className="flex justify-between items-center mb-8">
-                <Button
-                  onClick={() => {
-                    const prev = step - 1 === 2 ? 1 : Math.max(1, step - 1);
-                    updateStep(prev);
-                  }}
-                  variant="outline"
-                  size="sm"
-                  disabled={step === 1}
-                >
-                  ← Back
-                </Button>
-                <span className="text-sm text-gray-400">
-                  Step {step === 1 ? 1 : step === 3 ? 2 : step === 4 ? 3 : step}{" "}
-                  of 4
+                {!isMemberMode && (
+                  <Button
+                    onClick={() => {
+                      const prev = Math.max(1, step - 1);
+                      updateStep(prev);
+                    }}
+                    variant="outline"
+                    size="sm"
+                    disabled={step === 1}
+                  >
+                    ← Back
+                  </Button>
+                )}
+                <span className="text-sm text-gray-400 flex-1 text-center">
+                  {isMemberMode
+                    ? `Step ${step === 4 ? 1 : 2} of 2`
+                    : `Step ${step === 1 ? 1 : step === 2 ? 2 : step === 3 ? 3 : 4} of 5`}
                 </span>
                 <Button
                   onClick={() => {
-                    const next = step + 1 === 2 ? 3 : Math.min(4, step + 1);
+                    const next = Math.min(isMemberMode ? 5 : 5, step + 1);
                     updateStep(next);
                   }}
                   variant="outline"
                   size="sm"
-                  disabled={step === 4}
+                  disabled={isMemberMode ? step === 5 : step === 4}
                 >
                   Next →
                 </Button>
@@ -699,8 +729,8 @@ export default function OnboardingPage() {
               </div>
             )}
 
-            {/* Step 1: Create Organization */}
-            {step === 1 && (
+            {/* Step 1: Create Organization (owner mode only) */}
+            {step === 1 && !isMemberMode && (
               <div className="bg-gray-900 rounded-xl p-8 border border-gray-800">
                 <h2 className="text-2xl font-bold text-gray-100 mb-6">
                   Create Your Organization
@@ -740,10 +770,133 @@ export default function OnboardingPage() {
               </div>
             )}
 
-            {/* Step 2: Invite Team — temporarily disabled */}
+            {/* Step 2: Invite Team (owner mode only) */}
+            {step === 2 && !isMemberMode && (
+              <div className="bg-gray-900 rounded-xl p-8 border border-gray-800">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold text-gray-100">
+                    Invite Your Team
+                  </h2>
+                  <span className="text-xs font-medium text-gray-500 bg-gray-800 px-2 py-1 rounded">
+                    Optional
+                  </span>
+                </div>
+                <p className="text-gray-400 mb-6">
+                  Add team members now, or do it later from Settings
+                </p>
 
-            {/* Step 3: Create Workspace */}
-            {step === 3 && (
+                {/* Invite list */}
+                {invites.length > 0 && (
+                  <div className="mb-6 space-y-2">
+                    {invites.map((invite) => (
+                      <div
+                        key={invite.id}
+                        className="flex items-center gap-3 p-3 bg-gray-800/50 rounded-lg border border-gray-700"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-300 truncate">
+                            {invite.email || "(empty)"}
+                          </p>
+                          <p className="text-xs text-gray-500 capitalize">
+                            {invite.role}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveInvite(invite.id)}
+                          className="text-gray-500 hover:text-gray-300 text-sm font-medium"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add invite form */}
+                {showInviteForm && (
+                  <div className="space-y-3 mb-6 p-4 bg-gray-800/30 rounded-lg border border-gray-700">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Email Address
+                      </label>
+                      <input
+                        type="email"
+                        placeholder="team@example.com"
+                        value={newInviteEmail}
+                        onChange={(e) => setNewInviteEmail(e.target.value)}
+                        className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Role
+                      </label>
+                      <select
+                        value={newInviteRole}
+                        onChange={(e) =>
+                          setNewInviteRole(
+                            e.target.value as Exclude<UserRole, "owner">
+                          )
+                        }
+                        className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-gray-100 focus:outline-none focus:border-blue-500"
+                      >
+                        <option value="dev">Developer</option>
+                        <option value="qa">QA</option>
+                        <option value="pm">Product Manager</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => {
+                          if (newInviteEmail.trim()) {
+                            handleAddInvite();
+                            setNewInviteEmail("");
+                            setNewInviteRole(
+                              "dev" as Exclude<UserRole, "owner">
+                            );
+                          }
+                        }}
+                        className="flex-1 bg-blue-600 hover:bg-blue-500 text-white"
+                        disabled={!newInviteEmail.trim()}
+                      >
+                        Add Invite
+                      </Button>
+                      <Button
+                        onClick={() => setShowInviteForm(false)}
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        Done
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex gap-3">
+                  {!showInviteForm && (
+                    <Button
+                      onClick={() => setShowInviteForm(true)}
+                      variant="outline"
+                      className="flex-1"
+                    >
+                      + Add Member
+                    </Button>
+                  )}
+                  <Button
+                    onClick={handleProceedFromInvites}
+                    className="flex-1 bg-blue-600 hover:bg-blue-500 text-white"
+                    disabled={invitesSending}
+                  >
+                    {invites.length === 0 ? "Skip for Now" : "Continue"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3: Create Workspace (owner mode only) */}
+            {step === 3 && !isMemberMode && (
               <div className="bg-gray-900 rounded-xl p-8 border border-gray-800">
                 <h2 className="text-2xl font-bold text-gray-100 mb-2">
                   Create a Workspace

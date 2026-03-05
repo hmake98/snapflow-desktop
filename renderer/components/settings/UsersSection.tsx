@@ -4,6 +4,7 @@ import { Button } from "../ui/Button";
 import type { WorkspaceMemberWithUser, UserRole, Workspace } from "../../types";
 
 const ROLE_LABELS: Record<UserRole, string> = {
+  owner: "Owner",
   admin: "Admin",
   pm: "Project Manager",
   qa: "QA",
@@ -12,6 +13,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 const ROLE_COLORS: Record<UserRole, string> = {
+  owner: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
   admin: "bg-purple-500/20 text-purple-300 border-purple-500/30",
   pm: "bg-blue-500/20 text-blue-300 border-blue-500/30",
   dev: "bg-green-500/20 text-green-300 border-green-500/30",
@@ -19,11 +21,13 @@ const ROLE_COLORS: Record<UserRole, string> = {
   client: "bg-gray-500/20 text-gray-300 border-gray-500/30",
 };
 
-const ALL_ROLES: UserRole[] = ["admin", "pm", "dev", "qa", "client"];
+const ALL_ROLES: UserRole[] = ["owner", "admin", "pm", "dev", "qa", "client"];
+// Workspace-assignable roles (exclude "owner" which is tenant-level)
+const WORKSPACE_ROLES: UserRole[] = ["admin", "pm", "dev", "qa", "client"];
 
 interface InviteFormState {
   email: string;
-  role: UserRole;
+  role: Exclude<UserRole, "owner">;
 }
 
 type ConfirmRemoveState = {
@@ -36,26 +40,30 @@ interface UsersSectionProps {
   workspace: Workspace;
   currentUserId: string;
   currentUserRole: UserRole;
+  isTenantOwner?: boolean;
 }
 
 export const UsersSection: React.FC<UsersSectionProps> = ({
   workspace,
   currentUserId,
   currentUserRole,
+  isTenantOwner = false,
 }) => {
   const [members, setMembers] = useState<WorkspaceMemberWithUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [_showInviteForm, _setShowInviteForm] = useState(false);
+  const [showInviteForm, setShowInviteForm] = useState(false);
   const [inviteForm, setInviteForm] = useState<InviteFormState>({
     email: "",
-    role: "dev",
+    role: "dev" as Exclude<UserRole, "owner">,
   });
-  const [_inviting, _setInviting] = useState(false);
+  const [inviting, setInviting] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<ConfirmRemoveState>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [updatingRoleId, setUpdatingRoleId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all");
 
-  const isAdmin = currentUserRole === "admin";
+  const isAdmin = currentUserRole === "admin" || isTenantOwner;
 
   const loadMembers = useCallback(async () => {
     try {
@@ -80,11 +88,11 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
     loadMembers();
   }, [loadMembers]);
 
-  const _handleInvite = async (e: React.FormEvent) => {
+  const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteForm.email.trim()) return;
 
-    _setInviting(true);
+    setInviting(true);
     try {
       const result = await window.api.inviteTeamMember(
         workspace.id,
@@ -94,10 +102,10 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
 
       if (result.success) {
         toast.success(
-          `Invite sent to ${inviteForm.email} — they'll receive a magic link to join.`
+          `Invite sent to ${inviteForm.email} — they'll receive an email to join.`
         );
         setInviteForm({ email: "", role: "dev" });
-        _setShowInviteForm(false);
+        setShowInviteForm(false);
       } else {
         toast.error(result.error ?? "Failed to send invite");
       }
@@ -105,7 +113,7 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
       console.error("Invite error:", error);
       toast.error("Failed to send invite");
     } finally {
-      _setInviting(false);
+      setInviting(false);
     }
   };
 
@@ -138,7 +146,7 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
 
   const handleRoleChange = async (
     member: WorkspaceMemberWithUser,
-    newRole: UserRole
+    newRole: Exclude<UserRole, "owner">
   ) => {
     if (member.role === newRole) return;
 
@@ -190,6 +198,15 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
       .toUpperCase()
       .slice(0, 2);
   };
+
+  // Filter members by search query and role
+  const filteredMembers = members.filter((member) => {
+    const matchesSearch =
+      member.user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      member.user.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesRole = roleFilter === "all" || member.role === roleFilter;
+    return matchesSearch && matchesRole;
+  });
 
   // ─── Non-admin view ─────────────────────────────────────────────────────────
   if (!isAdmin) {
@@ -250,18 +267,126 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
   return (
     <div className="max-w-4xl space-y-6">
       {/* Header row */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-gray-400">
-            {members.length} member{members.length !== 1 ? "s" : ""} in{" "}
-            <span className="text-gray-200 font-medium">{workspace.name}</span>
-          </p>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-gray-400">
+              {filteredMembers.length === members.length
+                ? `${members.length} member${members.length !== 1 ? "s" : ""}`
+                : `${filteredMembers.length} of ${members.length} member${members.length !== 1 ? "s" : ""}`}{" "}
+              in{" "}
+              <span className="text-gray-200 font-medium">
+                {workspace.name}
+              </span>
+            </p>
+          </div>
+          <Button
+            onClick={() => setShowInviteForm(true)}
+            className="bg-blue-600 hover:bg-blue-500 text-white text-sm"
+            disabled={showInviteForm}
+          >
+            + Invite Member
+          </Button>
         </div>
-        {/* Invite Users — temporarily disabled */}
+
+        {/* Search and filter row */}
+        {members.length > 0 && (
+          <div className="flex gap-3">
+            <input
+              type="text"
+              placeholder="Search by name or email..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500"
+            />
+            <select
+              value={roleFilter}
+              onChange={(e) =>
+                setRoleFilter(e.target.value as UserRole | "all")
+              }
+              className="px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-100 focus:outline-none focus:border-blue-500"
+            >
+              <option value="all">All Roles</option>
+              {ALL_ROLES.map((role) => (
+                <option key={role} value={role}>
+                  {ROLE_LABELS[role]}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Invite form */}
+        {showInviteForm && (
+          <form
+            onSubmit={handleInvite}
+            className="p-4 bg-gray-800/30 border border-gray-700 rounded-lg"
+          >
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  placeholder="team@example.com"
+                  value={inviteForm.email}
+                  onChange={(e) =>
+                    setInviteForm({ ...inviteForm, email: e.target.value })
+                  }
+                  className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                  disabled={inviting}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Role
+                </label>
+                <select
+                  value={inviteForm.role}
+                  onChange={(e) =>
+                    setInviteForm({
+                      ...inviteForm,
+                      role: e.target.value as Exclude<UserRole, "owner">,
+                    })
+                  }
+                  className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-100 focus:outline-none focus:border-blue-500"
+                  disabled={inviting}
+                >
+                  {WORKSPACE_ROLES.map((role) => (
+                    <option key={role} value={role}>
+                      {ROLE_LABELS[role]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={!inviteForm.email.trim() || inviting}
+                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  {inviting ? "Sending..." : "Send Invite"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowInviteForm(false);
+                    setInviteForm({ email: "", role: "dev" });
+                  }}
+                  disabled={inviting}
+                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-gray-100 text-sm font-medium rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
       </div>
 
       {/* Members list */}
-      {members.length === 0 ? (
+      {filteredMembers.length === 0 ? (
         <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 border border-gray-700/50 rounded-2xl p-10 text-center">
           <div className="w-14 h-14 bg-gray-700/50 rounded-xl flex items-center justify-center mx-auto mb-4">
             <svg
@@ -278,9 +403,15 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
               />
             </svg>
           </div>
-          <p className="text-gray-400 font-medium mb-1">No members yet</p>
+          <p className="text-gray-400 font-medium mb-1">
+            {members.length === 0
+              ? "No members yet"
+              : "No members match your search"}
+          </p>
           <p className="text-sm text-gray-500">
-            Invite your team to get started.
+            {members.length === 0
+              ? "Invite your team to get started."
+              : "Try adjusting your search or filters."}
           </p>
         </div>
       ) : (
@@ -301,7 +432,7 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
 
           {/* Member rows */}
           <div className="divide-y divide-gray-700/30">
-            {members.map((member) => {
+            {filteredMembers.map((member) => {
               const isSelf = member.userId === currentUserId;
               const isUpdatingRole = updatingRoleId === member.userId;
               const isRemoving = removingId === member.userId;
@@ -341,11 +472,14 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
                           value={member.role}
                           disabled={isUpdatingRole}
                           onChange={(e) =>
-                            handleRoleChange(member, e.target.value as UserRole)
+                            handleRoleChange(
+                              member,
+                              e.target.value as Exclude<UserRole, "owner">
+                            )
                           }
                           className={`w-full h-8 pl-3 pr-7 text-xs font-medium rounded-full border appearance-none cursor-pointer transition-all focus:outline-none focus:ring-1 focus:ring-blue-500/40 disabled:opacity-60 disabled:cursor-not-allowed ${ROLE_COLORS[member.role]} bg-transparent`}
                         >
-                          {ALL_ROLES.map((r) => (
+                          {WORKSPACE_ROLES.map((r) => (
                             <option
                               key={r}
                               value={r}

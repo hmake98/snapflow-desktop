@@ -23,6 +23,7 @@ import { sessionManager } from "./utils/session";
 import { TrayIconManager } from "./utils/tray-icon-manager";
 import { getSupabase } from "./utils/supabase";
 import fs from "fs";
+import type { Workspace } from "../renderer/types";
 
 const {
   app,
@@ -1331,8 +1332,30 @@ const handleOAuthCallback = async (url: string) => {
 
     // User is now set via setSession (implicit flow) or auth listener (PKCE flow)
 
+    // Check for pending workspace invite in user metadata (from Supabase admin invite)
+    // Admin API uses app_metadata, OTP uses user_metadata
+    const session = authService.getSession();
+    let invitedWorkspaceId: string | undefined;
+    let invitedRole: string | undefined;
+    if (session?.user) {
+      invitedWorkspaceId =
+        (session.user as any).user_metadata?.invited_to_workspace ||
+        (session.user as any).app_metadata?.invited_to_workspace;
+      invitedRole =
+        (session.user as any).user_metadata?.invited_role ||
+        (session.user as any).app_metadata?.invited_role ||
+        "dev";
+      if (invitedWorkspaceId) {
+        log.info(
+          "[OAuth] User has pending invite to workspace:",
+          invitedWorkspaceId
+        );
+      }
+    }
+
     // Determine where to navigate: invited users (already workspace members) go to /home,
-    // new users who need to set up their org go to /onboarding.
+    // new users who need to set up their org go to /onboarding,
+    // users with pending invites go to /join-workspace.
     let navigateTo = "/onboarding";
     try {
       const currentUserId = sessionManager.getUserId();
@@ -1344,20 +1367,48 @@ const handleOAuthCallback = async (url: string) => {
           log.info("[OAuth] User owns a tenant, navigating to /home");
           navigateTo = "/home";
         } else {
-          // Check if user is a member of any workspace (invited user)
-          const supabase = getSupabase();
-          if (supabase) {
-            const { data: memberData } = await supabase
-              .from("workspace_members")
-              .select("workspace_id")
-              .eq("user_id", currentUserId)
-              .limit(1)
-              .single();
-            if (memberData?.workspace_id) {
-              log.info(
-                "[OAuth] Invited user has workspace membership, navigating to /home"
-              );
-              navigateTo = "/home";
+          // Check if user has a pending invite (metadata present, not yet a member)
+          if (invitedWorkspaceId) {
+            const supabase = getSupabase();
+            if (supabase) {
+              const { data: existingMember } = await supabase
+                .from("workspace_members")
+                .select("id")
+                .eq("user_id", currentUserId)
+                .eq("workspace_id", invitedWorkspaceId)
+                .limit(1)
+                .maybeSingle();
+
+              if (!existingMember) {
+                // Pending invite — user not yet added to workspace
+                log.info(
+                  "[OAuth] User has pending invite, navigating to /join-workspace"
+                );
+                navigateTo = `/join-workspace?workspaceId=${invitedWorkspaceId}&role=${invitedRole}`;
+              } else {
+                // Already a member (invite was previously accepted)
+                log.info(
+                  "[OAuth] Invited user already accepted, navigating to /home"
+                );
+                navigateTo = "/home";
+              }
+            }
+          } else {
+            // No pending invite, check if user is a member of any workspace (invited user from before)
+            const supabase = getSupabase();
+            if (supabase) {
+              const { data: memberData } = await supabase
+                .from("workspace_members")
+                .select("workspace_id")
+                .eq("user_id", currentUserId)
+                .limit(1)
+                .maybeSingle();
+              if (memberData?.workspace_id) {
+                log.info(
+                  "[OAuth] User has workspace membership, navigating to /home"
+                );
+                navigateTo = "/home";
+              }
             }
           }
         }
@@ -2372,6 +2423,74 @@ function setupIPCHandlers() {
     }
   });
 
+  ipcMain.handle("workspace:get-info", async (_event, { workspaceId }) => {
+    try {
+      const workspace = await workspaceService.getWorkspaceById(workspaceId);
+      if (!workspace) {
+        return { success: false, error: "Workspace not found" };
+      }
+      const tenant = await tenantService.getTenantById(workspace.tenantId);
+      if (!tenant) {
+        return { success: false, error: "Tenant not found" };
+      }
+      return { success: true, data: { workspace, tenantName: tenant.name } };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("Get workspace info error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  ipcMain.handle("workspace:join", async (_event, { workspaceId, role }) => {
+    try {
+      const userId = sessionManager.getUserId();
+      if (!userId) {
+        throw new Error("User not authenticated");
+      }
+
+      // Check if user is already a member
+      const supabase = getSupabase();
+      if (!supabase) {
+        throw new Error("Supabase client not initialized");
+      }
+      const { data: existingMember } = await supabase
+        .from("workspace_members")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("workspace_id", workspaceId)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingMember) {
+        log.warn("[workspace:join] User already a member of workspace");
+        return { success: true, message: "User already a member" };
+      }
+
+      // Add user to workspace as member
+      await workspaceService.addMember(workspaceId, userId, role);
+
+      // Initialize onboarding progress if not exists
+      let progress = await onboardingService.getProgress(userId);
+      if (!progress) {
+        await onboardingService.initializeProgress(userId);
+      }
+
+      // Set to connector step (step 4) for member onboarding
+      await onboardingService.setStep(userId, 4);
+
+      log.info(
+        `[workspace:join] User ${userId} joined workspace ${workspaceId}`
+      );
+      return { success: true };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("Join workspace error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
   // Workspace member handlers
   ipcMain.handle(
     "workspace-member:invite",
@@ -2477,6 +2596,7 @@ function setupIPCHandlers() {
 
       // Check if user is an invited member of a workspace (non-owner)
       let isInvitedMember = false;
+      let invitedWorkspace: Workspace | null = null;
       if (!tenant) {
         const supabase = getSupabase();
         if (supabase) {
@@ -2485,34 +2605,38 @@ function setupIPCHandlers() {
             .select("workspace_id")
             .eq("user_id", userId)
             .limit(1)
-            .single();
+            .maybeSingle();
           if (memberData?.workspace_id) {
             isInvitedMember = true;
+            // Load workspace info for invited members
+            invitedWorkspace = await workspaceService.getWorkspaceById(
+              memberData.workspace_id
+            );
             log.info(
-              "[Onboarding] User is an invited workspace member, skipping onboarding"
+              "[Onboarding] User is an invited workspace member, returning member mode status"
             );
           }
         }
       }
 
-      // Invited members bypass onboarding entirely
+      // Invited members have their own onboarding flow (simplified - just connectors)
       if (isInvitedMember) {
-        // Auto-complete onboarding for invited users so they go straight to /home
         let progress = await onboardingService.getProgress(userId);
         if (!progress) {
           await onboardingService.initializeProgress(userId);
+          progress = { currentStep: 4, isComplete: false };
         }
-        if (!progress?.isComplete) {
-          await onboardingService.complete(userId);
-        }
+
         return {
           success: true,
           data: {
             hasTenant: false,
             hasWorkspace: true,
             hasConnector: false,
-            isComplete: true,
-            currentStep: 5,
+            isComplete: progress.isComplete,
+            currentStep: progress.isComplete ? 5 : progress.currentStep,
+            userType: "member", // Indicate this is member mode
+            workspace: invitedWorkspace ?? undefined,
           },
         };
       }
@@ -2561,6 +2685,7 @@ function setupIPCHandlers() {
           hasConnector,
           isComplete,
           currentStep,
+          userType: "owner", // Indicate this is owner mode
           tenant: tenant ?? undefined,
           workspace: workspace ?? undefined,
         },

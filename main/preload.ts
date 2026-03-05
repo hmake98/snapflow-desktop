@@ -52,6 +52,10 @@ const api = {
   deleteWorkspace: (workspaceId: string) =>
     ipcRenderer.invoke("workspace:delete", { workspaceId }),
   getUserWorkspaces: () => ipcRenderer.invoke("workspace:get-user-workspaces"),
+  getWorkspaceInfo: (workspaceId: string) =>
+    ipcRenderer.invoke("workspace:get-info", { workspaceId }),
+  joinWorkspace: (workspaceId: string, role: string) =>
+    ipcRenderer.invoke("workspace:join", { workspaceId, role }),
   inviteTeamMember: (
     workspaceId: string,
     email: string,

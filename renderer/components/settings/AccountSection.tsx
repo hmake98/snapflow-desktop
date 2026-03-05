@@ -115,6 +115,8 @@ export const AccountSection: React.FC = () => {
   const [formData, setFormData] = useState({ name: "", email: "" });
   const [saving, setSaving] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [currentUserRole, setCurrentUserRole] = useState<string>("dev");
+  const [isTenantOwner, setIsTenantOwner] = useState(false);
 
   useEffect(() => {
     loadUser();
@@ -136,22 +138,61 @@ export const AccountSection: React.FC = () => {
 
   const loadWorkspaceAndTenant = async () => {
     try {
+      // Get current user first
+      const userResult = await window.api.getUser();
+      const currentUser = userResult.success ? userResult.data : null;
+
+      // Get tenant
       const tenantResult = await window.api.getUserTenant();
+      let currentTenant = null;
+      let currentWorkspace = null;
+
       if (tenantResult.success && tenantResult.data) {
-        setTenant(tenantResult.data);
+        currentTenant = tenantResult.data;
+        setTenant(currentTenant);
+
+        // Check if user is tenant owner
+        if (currentUser && currentTenant.ownerId === currentUser.id) {
+          setIsTenantOwner(true);
+        }
+
+        // Get first workspace for this tenant
         const workspacesResult = await window.api.listWorkspaces(
-          tenantResult.data.id
+          currentTenant.id
         );
         if (workspacesResult.success && workspacesResult.data?.length > 0) {
-          setWorkspace(workspacesResult.data[0]);
+          currentWorkspace = workspacesResult.data[0];
+          setWorkspace(currentWorkspace);
         }
       }
+
+      // Get user's workspaces with roles
       const userWsResult = await window.api.getUserWorkspaces();
       if (userWsResult.success && userWsResult.data?.length > 0) {
+        // Check if user is admin in any workspace
         const adminWs = userWsResult.data.find(
           (w: { role: string }) => w.role === "admin"
         );
         if (adminWs) setIsAdmin(true);
+
+        // Find user's role in the current workspace (if workspace exists)
+        if (currentWorkspace) {
+          const userWsInWorkspace = userWsResult.data.find(
+            (w: { id: string; role: string }) => w.id === currentWorkspace.id
+          );
+          if (userWsInWorkspace) {
+            setCurrentUserRole(userWsInWorkspace.role);
+          }
+        }
+      }
+
+      // Update isAdmin to include tenant owner
+      if (
+        currentUser &&
+        currentTenant &&
+        currentTenant.ownerId === currentUser.id
+      ) {
+        setIsAdmin(true);
       }
     } catch (error) {
       console.error("Failed to load workspace and tenant:", error);
@@ -306,7 +347,12 @@ export const AccountSection: React.FC = () => {
           <p className="text-xs text-gray-500 truncate w-full mt-0.5">
             {user.email}
           </p>
-          {isAdmin && (
+          {isTenantOwner && (
+            <span className="mt-2 text-[10px] px-2 py-0.5 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-full">
+              Owner
+            </span>
+          )}
+          {!isTenantOwner && isAdmin && (
             <span className="mt-2 text-[10px] px-2 py-0.5 bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded-full">
               Admin
             </span>
@@ -477,11 +523,12 @@ export const AccountSection: React.FC = () => {
         {/* ── Team Members ─────────────────────────────────────────────────── */}
         {activeSection === "team" && isAdmin && (
           <>
-            {workspace ? (
+            {workspace && user ? (
               <UsersSection
                 workspace={workspace}
                 currentUserId={user.id}
-                currentUserRole="admin"
+                currentUserRole={currentUserRole as any}
+                isTenantOwner={isTenantOwner}
               />
             ) : (
               <div className="bg-gray-900/50 border border-gray-800/50 rounded-xl p-10 text-center">

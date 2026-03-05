@@ -25,6 +25,7 @@ interface WorkspaceFormState {
 type ConfirmDeleteState = { id: string; name: string } | null;
 
 const ROLE_LABELS: Record<UserRole, string> = {
+  owner: "Owner",
   admin: "Admin",
   pm: "Project Manager",
   dev: "Developer",
@@ -33,6 +34,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 const ROLE_COLORS: Record<UserRole, string> = {
+  owner: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
   admin: "bg-purple-500/20 text-purple-300 border-purple-500/30",
   pm: "bg-blue-500/20 text-blue-300 border-blue-500/30",
   dev: "bg-green-500/20 text-green-300 border-green-500/30",
@@ -40,7 +42,8 @@ const ROLE_COLORS: Record<UserRole, string> = {
   client: "bg-gray-500/20 text-gray-300 border-gray-500/30",
 };
 
-const ALL_ROLES: UserRole[] = ["admin", "pm", "dev", "qa", "client"];
+// Workspace-assignable roles (exclude "owner" which is tenant-level)
+const WORKSPACE_ROLES: UserRole[] = ["admin", "pm", "dev", "qa", "client"];
 
 // ─── WorkspaceMembersPanel ─────────────────────────────────────────────────────
 
@@ -74,7 +77,7 @@ function WorkspaceMembersPanel({
 
   const handleRoleChange = async (
     member: WorkspaceMemberWithUser,
-    role: UserRole
+    role: Exclude<UserRole, "owner">
   ) => {
     setUpdatingId(member.userId);
     try {
@@ -204,11 +207,14 @@ function WorkspaceMembersPanel({
                       value={member.role}
                       disabled={isSelf || updatingId === member.userId}
                       onChange={(e) =>
-                        handleRoleChange(member, e.target.value as UserRole)
+                        handleRoleChange(
+                          member,
+                          e.target.value as Exclude<UserRole, "owner">
+                        )
                       }
                       className={`w-full h-8 pl-3 pr-7 text-xs font-medium rounded-full border appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500/40 disabled:opacity-60 disabled:cursor-not-allowed transition-all ${ROLE_COLORS[member.role]} bg-transparent`}
                     >
-                      {ALL_ROLES.map((r) => (
+                      {WORKSPACE_ROLES.map((r) => (
                         <option
                           key={r}
                           value={r}

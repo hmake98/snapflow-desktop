@@ -14,3 +14,5 @@ export * from "./Skeleton";
 export * from "./Tooltip";
 export * from "./LocalImage";
 export * from "./WindowControls";
+export * from "./UpdateBanner";
+export * from "./SplashScreen";
