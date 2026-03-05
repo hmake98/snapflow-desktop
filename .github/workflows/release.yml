@@ -6,25 +6,91 @@ on:
       - "v*.*.*"
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version to release (e.g., v1.0.0)"
+      bump_type:
+        description: "Version bump type"
         required: true
-        type: string
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 permissions:
   contents: write
 
 jobs:
+  prepare:
+    name: Bump Version & Tag
+    runs-on: ubuntu-latest
+    # Only run version bump for manual triggers; tag pushes skip straight to build
+    if: github.event_name == 'workflow_dispatch'
+    outputs:
+      tag: ${{ steps.bump.outputs.tag }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Need a token that can push commits back to the repo
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version in package.json
+        id: bump
+        run: |
+          BUMP="${{ github.event.inputs.bump_type }}"
+          NEW_VERSION=$(npm version $BUMP --no-git-tag-version | sed 's/^v//')
+          TAG="v${NEW_VERSION}"
+          echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "Bumped to ${NEW_VERSION} (tag: ${TAG})"
+
+      - name: Commit and push version bump
+        run: |
+          git add package.json
+          git commit -m "chore: release ${{ steps.bump.outputs.tag }}"
+          git tag ${{ steps.bump.outputs.tag }}
+          git push origin HEAD:${{ github.ref_name }}
+          git push origin ${{ steps.bump.outputs.tag }}
+
   build:
     name: Build Electron App
+    # For tag pushes: run directly. For workflow_dispatch: wait for prepare job.
+    needs: [prepare]
+    if: |
+      always() &&
+      (startsWith(github.ref, 'refs/tags/') || needs.prepare.result == 'success')
     strategy:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Checkout code
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ needs.prepare.outputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+
+      - name: Checkout code at tag
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -71,13 +137,23 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: build
+    needs: [prepare, build]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    if: |
+      always() &&
+      needs.build.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/') || needs.prepare.result == 'success')
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ needs.prepare.outputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -87,29 +163,7 @@ jobs:
       - name: Display downloaded artifacts (debug)
         run: ls -R ./artifacts
 
-      - name: Determine tag version
-        id: tag
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Delete existing release assets (if workflow_dispatch)
-        if: github.event_name == 'workflow_dispatch'
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ steps.tag.outputs.tag }}"
-          echo "Checking for existing assets on release $TAG..."
-          gh release view "$TAG" --json assets --jq '.assets[].name' | while read asset; do
-            echo "Deleting asset $asset..."
-            gh release delete-asset "$TAG" "$asset" -y || true
-          done
-
-      - name: Create or Update GitHub Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}

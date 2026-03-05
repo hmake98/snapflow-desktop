@@ -2,7 +2,7 @@
   "private": true,
   "name": "snapflow-desktop",
   "description": "SnapFlow - Screenshot & Screen Recording Tool with Issue Tracking",
-  "version": "1.0.4",
+  "version": "1.0.6",
   "author": "SnapFlow Team",
   "main": "app/background.js",
   "scripts": {
@@ -10,6 +10,9 @@
     "build": "nextron build --no-pack",
     "build:pack": "nextron build",
     "postinstall": "electron-builder install-app-deps",
+    "version:patch": "npm version patch --no-git-tag-version",
+    "version:minor": "npm version minor --no-git-tag-version",
+    "version:major": "npm version major --no-git-tag-version",
     "format": "prettier --write .",
     "update:packages": "npx npm-check-updates -u",
     "format:check": "prettier --check .",
