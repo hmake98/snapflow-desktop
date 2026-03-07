@@ -16,7 +16,7 @@ export class TrayIconManager {
 
   /**
    * Set the tray icon state
-   * Changes the tray icon based on recording state
+   * Note: Only updates icon if it exists. Recording state is shown in menu instead.
    */
   setState(state: TrayState): void {
     if (this.currentState === state) {
@@ -27,21 +27,25 @@ export class TrayIconManager {
     log.info(`[TrayIcon] Changing state from ${this.currentState} to ${state}`);
     this.currentState = state;
 
-    const iconPath = this.getIconPath(state);
-    const image = nativeImage.createFromPath(iconPath);
+    // Only update icon for "normal" state to avoid missing icon files
+    // Recording state is shown in the tray menu text instead
+    if (state === "normal") {
+      const iconPath = this.getIconPath(state);
+      const image = nativeImage.createFromPath(iconPath);
 
-    if (image.isEmpty()) {
-      log.error(`[TrayIcon] Failed to load icon from ${iconPath}`);
-      return;
-    }
+      if (image.isEmpty()) {
+        log.warn(`[TrayIcon] Failed to load icon from ${iconPath}`);
+        return;
+      }
 
-    // Resize for tray
-    const resized = image.resize({ width: 16, height: 16 });
-    resized.setTemplateImage(true);
+      // Resize for tray
+      const resized = image.resize({ width: 16, height: 16 });
+      resized.setTemplateImage(true);
 
-    if (this.tray) {
-      this.tray.setImage(resized);
-      log.info(`[TrayIcon] Icon updated to ${state}`);
+      if (this.tray) {
+        this.tray.setImage(resized);
+        log.info(`[TrayIcon] Icon updated to normal state`);
+      }
     }
   }
 

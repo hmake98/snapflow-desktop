@@ -18,6 +18,11 @@ import { workspaceService } from "./services/workspace";
 import { onboardingService } from "./services/onboarding";
 import { zohoService } from "./services/zoho";
 import { githubService } from "./services/github";
+import { recorderService } from "./services/recorder";
+import { overlayService } from "./services/overlay";
+import { windowPickerService } from "./services/window-picker";
+import { clipboardService } from "./services/clipboard";
+import { recordingSettingsService } from "./services/settings";
 import { storageManager } from "./utils/storage";
 import { sessionManager } from "./utils/session";
 import { TrayIconManager } from "./utils/tray-icon-manager";
@@ -282,6 +287,17 @@ function createSystemTray() {
   updateTrayMenu();
 
   tray.setToolTip("SnapFlow");
+
+  // Add double-click handler for recording toggle (Windows/Linux)
+  tray.on("double-click", async () => {
+    log.info("[Tray] Double-click detected");
+    const state = recorderService.getState();
+    if (state === "recording") {
+      await handleStopRecording();
+    } else if (state === "idle") {
+      await handleStartRecordingFlow();
+    }
+  });
 }
 
 function registerGlobalShortcuts() {
@@ -325,11 +341,36 @@ function registerGlobalShortcuts() {
     log.error(`[Shortcuts] Failed to register ${captureFullScreenShortcut}`);
   }
 
+  // Register Ctrl+Shift+R for Recording
+  const recordingShortcut = "Control+Shift+R";
+
+  const recordingRegistered = globalShortcut.register(
+    recordingShortcut,
+    async () => {
+      log.info(`[Shortcuts] ${recordingShortcut} pressed - Recording toggle`);
+      const state = recorderService.getState();
+      if (state === "recording") {
+        await handleStopRecording();
+      } else if (state === "idle") {
+        await handleStartRecordingFlow();
+      }
+    }
+  );
+
+  if (recordingRegistered) {
+    log.info(
+      `[Shortcuts] Successfully registered ${recordingShortcut} for Recording`
+    );
+  } else {
+    log.error(`[Shortcuts] Failed to register ${recordingShortcut}`);
+  }
+
   // Log registered shortcuts
   log.info(
     "[Shortcuts] All registered shortcuts:",
     globalShortcut.isRegistered(captureAreaShortcut),
-    globalShortcut.isRegistered(captureFullScreenShortcut)
+    globalShortcut.isRegistered(captureFullScreenShortcut),
+    globalShortcut.isRegistered(recordingShortcut)
   );
 }
 
@@ -382,37 +423,34 @@ function updateTrayMenu() {
     });
   }
 
-  // Recording menu item - disabled for now, code preserved for future re-enablement
-  // let recordingMenuItem: electron.MenuItemConstructorOptions;
-  //
-  // if (recordingState === "recording") {
-  //   recordingMenuItem = {
-  //     label: "■ Stop Recording",
-  //     click: async () => {
-  //       await handleStopRecording();
-  //     },
-  //   };
-  // } else {
-  //   // idle or selecting state
-  //   recordingMenuItem = {
-  //     label: "Record Screen",
-  //     click: async () => {
-  //       await handleStartRecordingFlow();
-  //     },
-  //   };
-  // }
+  // Recording menu item
+  const isRecording = recorderService.getState() === "recording";
+  const recordingMenuItem: electron.MenuItemConstructorOptions = isRecording
+    ? {
+        label: "■ Stop Recording",
+        accelerator: "Control+Shift+R",
+        click: async () => {
+          await handleStopRecording();
+        },
+      }
+    : {
+        label: "● Record Screen (Ctrl+Shift+R)",
+        accelerator: "Control+Shift+R",
+        click: async () => {
+          await handleStartRecordingFlow();
+        },
+      };
 
   const menuItems: electron.MenuItemConstructorOptions[] = [];
 
   // Add capture menu items
   menuItems.push(...captureMenuItems);
   menuItems.push({ type: "separator" });
-
-  // Recording feature disabled for now - code preserved for future re-enablement
-  // if (recordingState === "recording") { ... }
+  menuItems.push(recordingMenuItem);
 
   const contextMenu = Menu.buildFromTemplate([
     ...menuItems,
+    { type: "separator" },
     {
       label: "View My Snaps",
       click: async () => {
@@ -731,18 +769,11 @@ async function handleScreenshotCapture(
     pendingScreenshot = { dataUrl, mode };
     log.info("[Tray] Screenshot stored in pendingScreenshot");
 
-    // Navigate to annotate page first (while hidden)
+    // Navigate to annotate page using client-side navigation (preserves app state)
     log.info("[Tray] Navigating to annotate page...");
-    try {
-      if (isProd) {
-        await mainWindow?.loadURL("app://./annotate");
-      } else {
-        const port = process.argv[2];
-        await mainWindow?.loadURL(`http://localhost:${port}/annotate`);
-      }
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send("navigate", "/annotate");
       log.info("[Tray] Navigation complete");
-    } catch (err) {
-      log.error("[Tray] Navigation failed:", err);
     }
 
     // Then show and focus the window
@@ -818,28 +849,56 @@ async function _createRecordingControlWindow(bounds: {
 }
 
 // Recording workflow functions
-async function _handleStartRecordingFlow() {
+async function handleStartRecordingFlow() {
   try {
     log.info("[Recording] Starting recording flow");
-    recordingState = "selecting";
 
-    // Keep app in dock
-    if (process.platform === "darwin") {
-      app.dock?.show();
+    const defaultSource = recordingSettingsService.getDefaultSource();
+
+    if (defaultSource) {
+      // Use default source, start immediately
+      log.info(
+        "[Recording] Using default source:",
+        defaultSource.name,
+        defaultSource.id
+      );
+      await handleStartRecordingWithSource(
+        defaultSource.id,
+        defaultSource.displayBounds ?? null
+      );
+    } else {
+      // No default, show picker modal in main window
+      log.info("[Recording] No default source, showing picker in main window");
+      recorderService.setState("selecting");
+      updateTrayMenu();
+
+      // Keep app in dock
+      if (process.platform === "darwin") {
+        app.dock?.show();
+      }
+
+      // Show main window with picker modal
+      mainWindow?.show();
+      mainWindow?.focus();
+
+      // Show window picker modal in the main window
+      try {
+        await windowPickerService.showPickerInMainWindow(mainWindow);
+      } catch (error) {
+        log.error("[Recording] Failed to show picker:", error);
+        recorderService.setState("idle");
+        recordingState = "idle";
+        updateTrayMenu();
+        dialog.showErrorBox(
+          "Recording Error",
+          "Failed to show recording source picker. Please try again."
+        );
+      }
     }
-
-    // Hide main window
-    mainWindow?.hide();
-
-    // Wait for window to hide
-    await new Promise((resolve) => setTimeout(resolve, 300));
-
-    // Create recording area selector
-    await createRecordingAreaSelector();
   } catch (error) {
     log.error("[Recording] Failed to start recording flow:", error);
+    recorderService.setState("idle");
     recordingState = "idle";
-    trayIconManager?.setState("normal");
     updateTrayMenu();
   }
 }
@@ -887,11 +946,65 @@ async function createRecordingAreaSelector() {
   recordingAreaSelector.on("closed", () => {
     if (recordingState === "selecting") {
       recordingState = "idle";
+      recorderService.setState("idle");
       trayIconManager?.setState("normal");
       updateTrayMenu();
     }
     recordingAreaSelector = null;
   });
+}
+
+/**
+ * Start recording with a specific source (from window picker or default)
+ */
+async function handleStartRecordingWithSource(
+  sourceId: string,
+  bounds: { x: number; y: number; width: number; height: number } | null
+) {
+  try {
+    log.info(
+      "[Recording] Starting recording with source:",
+      sourceId,
+      "bounds:",
+      bounds
+    );
+
+    recorderService.setState("recording");
+    recordingState = "recording";
+    recordingBounds = bounds;
+    trayIconManager?.setState("recording");
+    updateTrayMenu();
+
+    // Get primary display bounds as fallback if no bounds provided
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const recordingBounds_ = bounds ?? primaryDisplay.bounds;
+
+    // Start recording
+    await captureService.startRecording(recordingBounds_);
+
+    // Show overlay only for screen sources (have bounds)
+    if (bounds) {
+      await overlayService.show(bounds, process.argv[2]);
+    }
+
+    log.info("[Recording] Recording started successfully");
+  } catch (error) {
+    log.error("[Recording] Failed to start recording with source:", error);
+
+    recorderService.setState("idle");
+    recordingState = "idle";
+    recordingBounds = null;
+    trayIconManager?.setState("normal");
+    updateTrayMenu();
+
+    // Close window picker if it's open
+    windowPickerService.closePicker();
+
+    dialog.showErrorBox(
+      "Recording Error",
+      "Failed to start recording. Please try again."
+    );
+  }
 }
 
 async function handleRecordingAreaSelected(bounds: {
@@ -912,6 +1025,7 @@ async function handleRecordingAreaSelected(bounds: {
 
     // Start recording immediately after area selection
     log.info("[Recording] Starting recording with selected bounds");
+    recorderService.setState("recording");
     recordingState = "recording";
 
     // Change tray icon to recording state
@@ -921,9 +1035,14 @@ async function handleRecordingAreaSelected(bounds: {
     // Start recording
     await captureService.startRecording(recordingBounds);
 
+    // Show red border overlay
+    await overlayService.show(recordingBounds, process.argv[2]);
+
     log.info("[Recording] Recording started. Click tray icon to stop.");
   } catch (error) {
     log.error("[Recording] Failed to start recording:", error);
+    overlayService.hide();
+    recorderService.setState("idle");
     recordingState = "idle";
     recordingBounds = null;
     trayIconManager?.setState("normal");
@@ -939,11 +1058,15 @@ async function handleRecordingAreaSelected(bounds: {
 // Note: handleBeginRecording is no longer needed as recording starts immediately
 // after area selection in handleRecordingAreaSelected()
 
-async function _handleStopRecording() {
+async function handleStopRecording() {
   try {
     log.info("[Recording] Stopping recording");
 
+    // Hide overlay
+    overlayService.hide();
+
     // Reset state immediately
+    recorderService.setState("idle");
     recordingState = "idle";
     recordingBounds = null;
     trayIconManager?.setState("normal");
@@ -975,7 +1098,11 @@ async function _handleStopRecording() {
   } catch (error) {
     log.error("[Recording] Failed to stop recording:", error);
 
+    // Hide overlay on error
+    overlayService.hide();
+
     // Reset state on error
+    recorderService.setState("idle");
     recordingState = "idle";
     recordingBounds = null;
     trayIconManager?.setState("normal");
@@ -2703,16 +2830,14 @@ function setupIPCHandlers() {
         pendingScreenshot = { dataUrl: result.dataUrl, mode };
         log.info("[IPC Capture] Screenshot stored in pendingScreenshot");
 
-        // Navigate to annotate page
+        // Navigate to annotate page using client-side navigation (preserves app state)
         mainWindow?.show();
-        if (isProd) {
-          await mainWindow?.loadURL("app://./annotate");
-        } else {
-          const port = process.argv[2];
-          await mainWindow?.loadURL(`http://localhost:${port}/annotate`);
+        mainWindow?.focus();
+        if (mainWindow && mainWindow.webContents) {
+          mainWindow.webContents.send("navigate", "/annotate");
         }
 
-        // After page has loaded, also send the screenshot via IPC event as a
+        // Also send the screenshot via IPC event as a
         // reliable backup in case the renderer's getPendingScreenshot fires
         // before pendingScreenshot was set (race condition safeguard)
         mainWindow?.webContents.send("screenshot-captured", {
@@ -2729,6 +2854,7 @@ function setupIPCHandlers() {
           windowCaptureOverlay = null;
         }
         mainWindow?.show();
+        mainWindow?.focus();
         const errorMessage =
           error instanceof Error
             ? error.message
@@ -2838,16 +2964,14 @@ function setupIPCHandlers() {
       pendingScreenshot = { dataUrl: result.dataUrl, mode: "window" };
       log.info("[Window Capture] Stored pending screenshot");
 
-      // Navigate to annotate page
+      // Navigate to annotate page using client-side navigation (preserves app state)
       log.info(
         "[Window Capture] Showing main window and navigating to annotate page..."
       );
       mainWindow?.show();
-      if (isProd) {
-        await mainWindow?.loadURL("app://./annotate");
-      } else {
-        const port = process.argv[2];
-        await mainWindow?.loadURL(`http://localhost:${port}/annotate`);
+      mainWindow?.focus();
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send("navigate", "/annotate");
       }
       log.info("[Window Capture] Navigation complete");
 
@@ -2856,6 +2980,7 @@ function setupIPCHandlers() {
       log.error("[Window Capture] Error:", error);
       // Show main window even on error
       mainWindow?.show();
+      mainWindow?.focus();
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
       log.error("IPC Handler error:", error);
@@ -2870,6 +2995,7 @@ function setupIPCHandlers() {
       windowCaptureOverlay = null;
     }
     mainWindow?.show();
+    mainWindow?.focus();
     return { success: true };
   });
 
@@ -2950,6 +3076,108 @@ function setupIPCHandlers() {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
       log.error("[Recording] Cancel error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // Get available recording sources (screens + windows)
+  ipcMain.handle("recording:get-sources", async () => {
+    log.info("[IPC] Getting recording sources");
+    try {
+      const sources = await windowPickerService.getSources();
+      return { success: true, data: sources };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("[Recording] Get sources error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // Start recording with selected source
+  ipcMain.handle(
+    "recording:start-with-source",
+    async (_event, { sourceId, sourceName, displayBounds, setAsDefault }) => {
+      log.info("[IPC] Starting recording with source:", sourceId);
+      try {
+        windowPickerService.closePicker();
+        if (setAsDefault) {
+          recordingSettingsService.setDefaultSource({
+            id: sourceId,
+            name: sourceName,
+            type: sourceId.startsWith("screen") ? "screen" : "window",
+            displayBounds,
+          });
+        }
+        await handleStartRecordingWithSource(sourceId, displayBounds ?? null);
+        return { success: true };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred";
+        log.error("[Recording] Start with source error:", error);
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
+
+  // Get default recording source
+  ipcMain.handle("recording:get-default-source", async () => {
+    log.info("[IPC] Getting default recording source");
+    try {
+      const source = recordingSettingsService.getDefaultSource();
+      return { success: true, data: source };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("[Recording] Get default source error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // Set default recording source
+  ipcMain.handle("recording:set-default-source", async (_event, source) => {
+    log.info("[IPC] Setting default recording source");
+    try {
+      recordingSettingsService.setDefaultSource(source);
+      return { success: true };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("[Recording] Set default source error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // Clear default recording source
+  ipcMain.handle("recording:clear-default-source", async () => {
+    log.info("[IPC] Clearing default recording source");
+    try {
+      recordingSettingsService.clearDefaultSource();
+      return { success: true };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("[Recording] Clear default source error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // Copy bug report to clipboard
+  ipcMain.handle("clipboard:paste-bug", async (_event, { snapId }) => {
+    log.info("[IPC] Copying bug report to clipboard for snap:", snapId);
+    try {
+      const snap = await issueService.getSnapById(snapId);
+      if (!snap) {
+        return { success: false, error: "Snap not found" };
+      }
+      clipboardService.copyBugReport(snap);
+      return { success: true };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("[Clipboard] Paste bug error:", error);
       return { success: false, error: errorMessage };
     }
   });

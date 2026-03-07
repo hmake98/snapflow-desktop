@@ -29,7 +29,16 @@ import { WindowControls } from "../components/ui/WindowControls";
 import { WorkspaceSwitcher } from "../components/ui/WorkspaceSwitcher";
 import { useStore } from "../store/useStore";
 import { LocalImage } from "../components/ui/LocalImage";
+import { WindowPickerModal } from "../components/WindowPickerModal";
 import type { Issue } from "../types";
+
+interface RecordingSource {
+  id: string;
+  name: string;
+  type: "screen" | "window";
+  thumbnail: string;
+  displayBounds?: { x: number; y: number; width: number; height: number };
+}
 
 // ─── Profile Dropdown ─────────────────────────────────────────────────────────
 
@@ -192,8 +201,27 @@ export default function HomePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(12);
 
+  // Window picker modal state
+  const [showWindowPicker, setShowWindowPicker] = useState(false);
+  const [recordingSources, setRecordingSources] = useState<RecordingSource[]>(
+    []
+  );
+
   useEffect(() => {
     loadData();
+
+    // Listen for window picker show request from main process
+    const unsubscribe = window.ipc.on(
+      "recording:show-picker",
+      (_event, sources: unknown) => {
+        setRecordingSources(sources as RecordingSource[]);
+        setShowWindowPicker(true);
+      }
+    );
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   // Listen for auto-sync completion and refresh issues
@@ -2231,6 +2259,36 @@ export default function HomePage() {
                         />
                       </div>
                       <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          const result = await window.api.pasteBug(
+                            previewIssue.id
+                          );
+                          if (result.success) {
+                            toast.success("Bug report copied to clipboard");
+                          } else {
+                            toast.error("Failed to copy bug report");
+                          }
+                        }}
+                        className="w-full text-xs h-9"
+                      >
+                        <svg
+                          className="w-3.5 h-3.5 mr-1.5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                          />
+                        </svg>
+                        Paste Bug
+                      </Button>
+                      <Button
                         variant="danger"
                         size="sm"
                         onClick={() => {
@@ -2261,6 +2319,30 @@ export default function HomePage() {
             )}
           </DialogContent>
         </Dialog>
+
+        {/* Window Picker Modal for Recording */}
+        <WindowPickerModal
+          isOpen={showWindowPicker}
+          sources={recordingSources}
+          onSelect={async (source, setAsDefault) => {
+            const result = await window.api.startRecordingWithSource({
+              sourceId: source.id,
+              sourceName: source.name,
+              displayBounds: source.displayBounds || null,
+              setAsDefault,
+            });
+
+            if (result.success) {
+              setShowWindowPicker(false);
+              toast.success("Recording started");
+            } else {
+              toast.error(`Failed to start recording: ${result.error}`);
+            }
+          }}
+          onCancel={() => {
+            setShowWindowPicker(false);
+          }}
+        />
       </div>
     </>
   );

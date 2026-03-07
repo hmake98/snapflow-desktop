@@ -33,7 +33,15 @@ function MyApp({ Component, pageProps }: AppProps) {
     }
 
     const checkAuth = async () => {
-      const publicRoutes = ["/auth", "/500"];
+      // Pages that don't require auth checks (includes overlay windows for capture)
+      const publicRoutes = [
+        "/auth",
+        "/500",
+        "/area-capture",
+        "/window-capture",
+        "/recording-area-selector",
+        "/recording-control",
+      ];
       const semiProtectedRoutes = ["/join-workspace"]; // Auth required, but skip onboarding check
 
       try {

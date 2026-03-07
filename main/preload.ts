@@ -152,6 +152,35 @@ const api = {
   stopRecording: () => ipcRenderer.invoke("recording:stop"),
   cancelRecording: () => ipcRenderer.invoke("recording:cancel"),
   getPendingRecording: () => ipcRenderer.invoke("recording:get-pending"),
+  getRecordingSources: () => ipcRenderer.invoke("recording:get-sources"),
+  startRecordingWithSource: (args: {
+    sourceId: string;
+    sourceName: string;
+    displayBounds?: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    } | null;
+    setAsDefault?: boolean;
+  }) => ipcRenderer.invoke("recording:start-with-source", args),
+  getDefaultRecordingSource: () =>
+    ipcRenderer.invoke("recording:get-default-source"),
+  setDefaultRecordingSource: (source: Record<string, unknown>) =>
+    ipcRenderer.invoke("recording:set-default-source", source),
+  clearDefaultRecordingSource: () =>
+    ipcRenderer.invoke("recording:clear-default-source"),
+
+  // Clipboard methods
+  pasteBug: (snapId: string) =>
+    ipcRenderer.invoke("clipboard:paste-bug", { snapId }),
+
+  // Listeners
+  onRecordingSources: (callback: (sources: unknown[]) => void) => {
+    return ipcRenderer.on("recording:sources", (_event, sources) =>
+      callback(sources)
+    );
+  },
 
   // Connector methods
   listConnectors: (workspaceId: string) =>

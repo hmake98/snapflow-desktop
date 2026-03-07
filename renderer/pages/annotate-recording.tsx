@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
+import { toast } from "sonner";
 import { WindowControls } from "../components/ui/WindowControls";
 
 export default function AnnotateRecording() {
@@ -12,6 +13,7 @@ export default function AnnotateRecording() {
   const [videoPath, setVideoPath] = useState("");
   const [duration, setDuration] = useState(0);
   const [thumbnailPath, setThumbnailPath] = useState<string | undefined>();
+  const [issueId, setIssueId] = useState<string | undefined>();
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -24,6 +26,7 @@ export default function AnnotateRecording() {
           setVideoPath(result.data.dataUrl); // This is the file path
           setDuration(result.data.duration || 0);
           setThumbnailPath(result.data.thumbnailPath); // Thumbnail path from backend
+          setIssueId(result.data.issueId); // Issue ID for clipboard copy
 
           // Set default title with timestamp
           const now = new Date();
@@ -196,6 +199,37 @@ export default function AnnotateRecording() {
                   className="h-10 px-4 text-sm inline-flex items-center justify-center rounded-lg font-medium transition-all duration-200 bg-transparent text-gray-300 hover:bg-gray-800/50 hover:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!issueId) {
+                      toast.error("Recording ID not available");
+                      return;
+                    }
+                    const result = await window.api.pasteBug(issueId);
+                    if (result.success) {
+                      toast.success("Bug report copied to clipboard");
+                    } else {
+                      toast.error("Failed to copy bug report");
+                    }
+                  }}
+                  disabled={isSaving || !issueId}
+                  className="h-10 px-4 text-sm inline-flex items-center justify-center rounded-lg font-medium transition-all duration-200 bg-transparent text-gray-300 hover:bg-gray-800/50 hover:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <svg
+                    className="w-4 h-4 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                    />
+                  </svg>
+                  Copy Bug
                 </button>
                 <button
                   onClick={handleSave}

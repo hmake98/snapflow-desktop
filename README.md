@@ -62,6 +62,7 @@
 - 📊 **Sort Options** - Sort by date or name in ascending/descending order
 - 🖼️ **Preview Mode** - Full-resolution image preview with details sidebar
 - 💾 **Local Storage** - Organized file structure: `~/SnapFlow/Users/{userId}/Captures/YYYY/MM/DD/{issueId}/`
+- 📋 **Paste Bug Reports** - Copy formatted bug reports to clipboard with title, description, recording link, and platform links
 
 ### Platform Integrations (✅)
 
@@ -106,12 +107,15 @@
 - 📍 **Onboarding Flow** - Step-by-step guided setup for new users
 - 👥 **User Management** - Invite team members with role-based access (admin/dev)
 
-### Screen Recording (📋 Planned)
+### Screen Recording (✅)
 
-- 🎥 **Screen Recording** - Record screen activity with audio
-- 🎬 **Recording Controls** - Start, stop, pause recording from floating UI
-- ✂️ **Area Recording** - Record a selected region of the screen
-- 🖊️ **Recording Annotation** - Annotate recorded videos
+- 🎥 **Screen Recording** - Record full screen or individual windows with visual overlay
+- 🖥️ **Screen/Window Selection** - Choose from available displays and application windows
+- 📍 **Red Border Overlay** - Transparent, click-through red border showing recording area
+- ⚡ **Quick Start** - Ctrl+Shift+R shortcut, tray menu, or tray icon double-click to start/stop
+- 📌 **Default Source** - Save preferred recording source to skip selection next time
+- 🖊️ **Recording Annotation** - Annotate recorded videos after capture
+- 📋 **Permission Management** - Guides macOS users to grant Screen Recording permission
 
 ### Planned Features (📋)
 
