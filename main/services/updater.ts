@@ -1,5 +1,5 @@
 import { autoUpdater } from "electron-updater";
-import { BrowserWindow, dialog } from "electron";
+import { BrowserWindow, dialog, shell } from "electron";
 import log from "electron-log";
 import fs from "fs";
 import path from "path";
@@ -205,10 +205,17 @@ export class UpdaterService {
         err.message.includes("code failed to satisfy")
       ) {
         isSignatureError = true;
-        errorMessage =
-          "This is a development build without code signing. The update has been downloaded but cannot be verified. You can try installing it anyway or download the signed release from GitHub.";
         downloadUrl =
           "https://github.com/harsh-simform/snapflow-desktop/releases/latest";
+
+        // For macOS: show download dialog instead of failing
+        if (process.platform === "darwin" && this.updateInfo) {
+          this.showUpdateDownloadDialog(this.updateInfo, downloadUrl);
+          return;
+        }
+
+        errorMessage =
+          "This is a development build without code signing. The update has been downloaded but cannot be verified. You can try installing it anyway or download the signed release from GitHub.";
       }
 
       this.sendStatusToWindow("update-error", {
@@ -314,6 +321,40 @@ export class UpdaterService {
       log.info(
         "[Updater] User chose to install later - will install on next quit"
       );
+    }
+  }
+
+  /**
+   * macOS fallback: Show dialog with manual download link when auto-update fails
+   * This is needed because unsigned builds can't use auto-update on macOS
+   */
+  private async showUpdateDownloadDialog(
+    info: { version: string; releaseDate?: string },
+    downloadUrl: string
+  ) {
+    if (!this.mainWindow) return;
+
+    const currentVersion = autoUpdater.currentVersion.version;
+    const releaseInfo = info.releaseDate
+      ? `\n\nRelease Date: ${new Date(info.releaseDate).toLocaleDateString()}`
+      : "";
+
+    const { response } = await dialog.showMessageBox(this.mainWindow, {
+      type: "info",
+      title: "Update Available",
+      message: `SnapFlow ${info.version} is available`,
+      detail: `Current version: ${currentVersion}\nNew version: ${info.version}${releaseInfo}\n\nAuto-update is not available for this build. Please download the latest version manually.`,
+      buttons: ["Download Now", "Remind Later"],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    });
+
+    if (response === 0) {
+      log.info("[Updater] Opening download URL:", downloadUrl);
+      await shell.openExternal(downloadUrl);
+    } else {
+      log.info("[Updater] User chose to skip update");
     }
   }
 
