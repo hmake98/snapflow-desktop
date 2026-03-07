@@ -224,29 +224,48 @@ export function UpdateBanner() {
 
   return (
     <div
-      className={`fixed top-0 left-0 right-0 z-50 border-b transition-all duration-300 animate-in slide-in-from-top-2 ${getStatusColor()}`}
+      className={`fixed top-14 left-0 right-0 z-40 border-b transition-all duration-300 animate-in slide-in-from-top-2 ${getStatusColor()}`}
     >
-      <div className="max-w-full mx-auto px-4 py-3">
+      <div className="max-w-full mx-auto px-4 py-4">
         <div className="flex items-center justify-between gap-4">
+          {/* Icon and content section */}
           <div className="flex items-center gap-3 flex-1 min-w-0">
-            {getStatusIcon()}
+            <div className="flex-shrink-0">{getStatusIcon()}</div>
+
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium leading-none">
+              {/* Main message */}
+              <div className="text-sm font-semibold leading-tight">
                 {status.message}
               </div>
+
+              {/* Version info for available/downloaded states */}
+              {(status.type === "available" || status.type === "downloaded") &&
+                status.version && (
+                  <div className="text-xs opacity-75 mt-0.5">
+                    Version {status.version}
+                  </div>
+                )}
 
               {/* Progress bar for downloading state */}
               {status.type === "downloading" &&
                 status.percent !== undefined && (
-                  <div className="mt-2 space-y-1">
-                    <div className="w-full bg-gray-700/50 rounded-full h-1.5 overflow-hidden">
+                  <div className="mt-3 space-y-2">
+                    <div className="w-full bg-black/30 rounded-full h-2 overflow-hidden backdrop-blur-sm">
                       <div
-                        className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                        className={`h-2 rounded-full transition-all duration-500 ${
+                          status.percent === 100
+                            ? "bg-gradient-to-r from-green-400 to-green-500"
+                            : "bg-gradient-to-r from-blue-400 to-blue-500"
+                        }`}
                         style={{ width: `${Math.min(status.percent, 100)}%` }}
                       ></div>
                     </div>
-                    <div className="flex justify-between text-xs text-gray-400">
-                      <span>{Math.round(status.percent)}%</span>
+
+                    {/* Progress details */}
+                    <div className="flex justify-between text-xs opacity-75 font-medium">
+                      <span className="tabular-nums font-semibold">
+                        {Math.round(status.percent)}%
+                      </span>
                       <span>
                         {status.downloaded} / {status.totalSize}
                       </span>
@@ -254,15 +273,20 @@ export function UpdateBanner() {
                     </div>
                   </div>
                 )}
+
+              {/* Error message details */}
+              {status.type === "error" && status.message && (
+                <div className="text-xs opacity-75 mt-1">{status.message}</div>
+              )}
             </div>
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-3 flex-shrink-0">
             {status.type === "downloaded" && (
               <button
                 onClick={handleRestartNow}
-                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded transition-colors"
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-sm font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 whitespace-nowrap"
               >
                 Restart Now
               </button>
@@ -271,11 +295,12 @@ export function UpdateBanner() {
             {status.type !== "downloaded" && (
               <button
                 onClick={handleDismiss}
-                className="text-gray-400 hover:text-gray-200 transition-colors p-1"
+                className="text-gray-300 hover:text-white active:text-gray-200 transition-colors p-1.5 hover:bg-white/10 rounded-lg"
                 title="Dismiss"
+                aria-label="Dismiss update notification"
               >
                 <svg
-                  className="w-4 h-4"
+                  className="w-5 h-5"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -283,7 +308,7 @@ export function UpdateBanner() {
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    strokeWidth={2}
+                    strokeWidth={2.5}
                     d="M6 18L18 6M6 6l12 12"
                   />
                 </svg>

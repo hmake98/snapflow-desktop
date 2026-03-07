@@ -101,9 +101,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Run build (same script for all platforms)
-      - name: Build App
-        run: npm run build:pack
+      - name: Create app bootstrap file
+        run: |
+          mkdir -p resources
+          node -e "
+            const data = {
+              SUPABASE_URL: process.env.SUPABASE_URL,
+              SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
+              SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+              GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,
+              GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
+              ZOHO_CLIENT_ID: process.env.ZOHO_CLIENT_ID,
+              ZOHO_CLIENT_SECRET: process.env.ZOHO_CLIENT_SECRET,
+              NODE_ENV: 'production'
+            };
+            require('fs').writeFileSync('resources/app-bootstrap.json', JSON.stringify(data));
+          "
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -112,7 +125,11 @@ jobs:
           GITHUB_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
           ZOHO_CLIENT_ID: ${{ secrets.ZOHO_CLIENT_ID }}
           ZOHO_CLIENT_SECRET: ${{ secrets.ZOHO_CLIENT_SECRET }}
-          NODE_ENV: production
+
+      # Run build (same script for all platforms)
+      - name: Build App
+        run: npm run build:pack
+        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Upload platform-specific build outputs

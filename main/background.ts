@@ -22,6 +22,7 @@ import { storageManager } from "./utils/storage";
 import { sessionManager } from "./utils/session";
 import { TrayIconManager } from "./utils/tray-icon-manager";
 import { getSupabase } from "./utils/supabase";
+import { secureConfig } from "./utils/secure-config";
 import fs from "fs";
 import type { Workspace } from "../renderer/types";
 
@@ -48,33 +49,9 @@ process.on("unhandledRejection", (reason: unknown) => {
 const isProd = process.env.NODE_ENV === "production";
 
 // Load environment variables
-// In production, .env is in the app.asar or app directory
-// In development, .env is in the project root
-if (isProd) {
-  // In production, try multiple possible locations
-  const possibleEnvPaths = [
-    path.join(process.resourcesPath, "..", ".env"), // app directory
-    path.join(process.resourcesPath, ".env"), // resources directory
-    path.join(__dirname, "..", ".env"), // app directory
-  ];
-
-  let envLoaded = false;
-  for (const envPath of possibleEnvPaths) {
-    if (fs.existsSync(envPath)) {
-      log.info("[ENV] Loading .env from:", envPath);
-      dotenv.config({ path: envPath });
-      envLoaded = true;
-      break;
-    }
-  }
-
-  if (!envLoaded) {
-    log.warn(
-      "[ENV] No .env file found in production, using existing environment variables"
-    );
-  }
-} else {
-  // In development, load from project root
+// Production: secrets are loaded by secureConfig.initialize() after app.whenReady()
+// Development: load from .env in project root as before
+if (!isProd) {
   dotenv.config();
 }
 
@@ -1741,6 +1718,13 @@ if (app && app.requestSingleInstanceLock) {
       if (process.platform === "darwin") {
         // Force the app to always show in dock, even with no windows
         app.dock?.show();
+      }
+
+      // Initialize secure config (must run after app.whenReady() — electron.safeStorage requires app ready)
+      // Production: loads encrypted secrets from store (or bootstraps from JSON on first launch)
+      // Development: no-op (env vars loaded via dotenv from project root)
+      if (isProd) {
+        await secureConfig.initialize();
       }
 
       // Register custom protocol for local file access.

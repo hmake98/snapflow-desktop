@@ -15,6 +15,7 @@ next-env.d.ts
 /app
 dist
 .env
+resources/app-bootstrap.json
 /app/generated/prisma
 
 # macOS

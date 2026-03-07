@@ -1,6 +1,6 @@
 appId: com.snapflow.desktop
 productName: SnapFlow
-copyright: Copyright © 2025 SnapFlow Team
+copyright: Copyright © 2026 SnapFlow Team
 directories:
   output: dist
   buildResources: resources
@@ -19,6 +19,8 @@ extraResources:
     to: tray-icon-white.png
   - from: resources/icon.png
     to: icon.png
+  - from: resources/app-bootstrap.json
+    to: app-bootstrap.json
 
 protocols:
   - name: SnapFlow
