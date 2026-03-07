@@ -21,6 +21,8 @@ extraResources:
     to: icon.png
   - from: resources/app-bootstrap.json
     to: app-bootstrap.json
+  - from: .env
+    to: .env
 
 protocols:
   - name: SnapFlow

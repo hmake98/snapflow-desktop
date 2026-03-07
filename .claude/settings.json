@@ -8,7 +8,10 @@
       "Bash(npm run lint -- --fix)",
       "WebFetch(domain:www.zoho.com)",
       "WebFetch(domain:projects.zoho.com)",
-      "Bash(grep -n \"issue:update\\\\|window.api.updateIssue\" /Users/hmake98/Documents/snapflow-desktop/renderer/pages/*.tsx)"
+      "Bash(grep -n \"issue:update\\\\|window.api.updateIssue\" /Users/hmake98/Documents/snapflow-desktop/renderer/pages/*.tsx)",
+      "Bash(npm run build:pack)",
+      "Bash(grep -E \"\\(Packaging|packaging|See \\\\`dist\\)\")",
+      "Bash(SKIP_CODE_SIGNATURE_VERIFICATION=true npm run build:pack)"
     ]
   }
 }

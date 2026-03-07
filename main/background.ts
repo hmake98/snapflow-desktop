@@ -49,10 +49,19 @@ process.on("unhandledRejection", (reason: unknown) => {
 const isProd = process.env.NODE_ENV === "production";
 
 // Load environment variables
-// Production: secrets are loaded by secureConfig.initialize() after app.whenReady()
-// Development: load from .env in project root as before
+// Development: load from .env in project root
+// Production (CI): secrets are loaded by secureConfig.initialize() after app.whenReady()
+// Production (local build): also try to load from .env as fallback
 if (!isProd) {
   dotenv.config();
+} else {
+  // Local production builds might still have .env available (for testing)
+  // Try to load it as a fallback before secureConfig initialization
+  const devEnvPath = path.join(__dirname, "../.env");
+  if (fs.existsSync(devEnvPath)) {
+    log.info("[Startup] Loading .env for local production build");
+    dotenv.config({ path: devEnvPath });
+  }
 }
 
 // Register custom protocol scheme before app is ready (if available)
@@ -1885,6 +1894,7 @@ if (app && app.requestSingleInstanceLock) {
         updaterService.init();
         updaterService.setMainWindow(mainWindow);
         // Check for updates 5 seconds after app starts
+        // For unsigned builds, set SKIP_CODE_SIGNATURE_VERIFICATION=true to allow updates
         setTimeout(() => {
           updaterService.checkForUpdates();
         }, 5000);
@@ -4055,6 +4065,22 @@ function setupIPCHandlers() {
 
   ipcMain.handle("update:install", () => {
     try {
+      updaterService.quitAndInstall();
+      return { success: true };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("IPC Handler error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // Force install update even if signature verification fails (for development builds)
+  ipcMain.handle("update:force-install", () => {
+    try {
+      log.warn(
+        "[IPC] Force installing update (bypassing signature verification)"
+      );
       updaterService.quitAndInstall();
       return { success: true };
     } catch (error) {

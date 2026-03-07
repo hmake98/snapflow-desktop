@@ -20,6 +20,7 @@ import crypto from "crypto";
 import { safeStorage, app } from "electron";
 import Store from "electron-store";
 import log from "electron-log";
+import dotenv from "dotenv";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -246,13 +247,98 @@ class SecureConfig {
     try {
       bootstrapSecrets = readBootstrapFile();
     } catch (err) {
-      log.error("[SecureConfig] Bootstrap failed:", err);
-      log.error(
-        "[SecureConfig] Supabase and OAuth features will be unavailable"
+      log.warn(
+        "[SecureConfig] Bootstrap file failed, trying .env fallback:",
+        err
       );
-      // Do not rethrow — app can still start, auth will fail gracefully
-      // because getSupabase() returns null when env vars are missing.
-      return;
+
+      // Fallback: try loading from .env file (for local development/testing)
+      try {
+        // Try multiple possible .env locations
+        const possiblePaths = [
+          path.join(process.cwd(), ".env"),
+          path.join(__dirname, "../../.env"), // relative to this file in dev
+          path.join(app.getAppPath(), ".env"), // if bundled in app folder
+          path.join(app.getAppPath(), "../.env"), // parent of app
+          path.join(process.resourcesPath, ".env"), // electron extraResources
+          path.join(process.resourcesPath, "../.env"), // parent of resources
+        ];
+
+        log.info(`[SecureConfig] Current working directory: ${process.cwd()}`);
+        log.info(`[SecureConfig] __dirname: ${__dirname}`);
+        log.info(`[SecureConfig] app.getAppPath(): ${app.getAppPath()}`);
+
+        let loaded = false;
+        for (const envPath of possiblePaths) {
+          log.info(`[SecureConfig] Checking for .env at: ${envPath}`);
+          if (fs.existsSync(envPath)) {
+            log.info(`[SecureConfig] ✓ Found .env at: ${envPath}`);
+            const result = dotenv.config({ path: envPath });
+            if (!result.error) {
+              log.info(
+                `[SecureConfig] ✓ Successfully loaded .env from: ${envPath}`
+              );
+              loaded = true;
+              break;
+            } else {
+              log.warn(
+                `[SecureConfig] Failed to parse .env at ${envPath}:`,
+                result.error
+              );
+            }
+          }
+        }
+
+        if (!loaded) {
+          log.warn("[SecureConfig] Could not find .env file in any location");
+          log.info("[SecureConfig] Checked paths:", possiblePaths.join(", "));
+          return;
+        }
+
+        // Create record from env vars for fallback
+        bootstrapSecrets = {
+          SUPABASE_URL: process.env.SUPABASE_URL || "",
+          SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || "",
+          SUPABASE_SERVICE_ROLE_KEY:
+            process.env.SUPABASE_SERVICE_ROLE_KEY || "",
+          GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID || "",
+          GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET || "",
+          ZOHO_CLIENT_ID: process.env.ZOHO_CLIENT_ID || "",
+          ZOHO_CLIENT_SECRET: process.env.ZOHO_CLIENT_SECRET || "",
+          NODE_ENV: process.env.NODE_ENV || "production",
+        };
+
+        log.info(
+          `[SecureConfig] Loaded secrets - SUPABASE_URL: ${bootstrapSecrets.SUPABASE_URL ? "✓" : "✗"}, SUPABASE_ANON_KEY: ${bootstrapSecrets.SUPABASE_ANON_KEY ? "✓" : "✗"}`
+        );
+
+        // Validate that we actually got the required secrets
+        if (
+          !bootstrapSecrets.SUPABASE_URL ||
+          !bootstrapSecrets.SUPABASE_ANON_KEY
+        ) {
+          log.error(
+            "[SecureConfig] .env file missing required SUPABASE variables"
+          );
+          log.error(
+            `[SecureConfig] SUPABASE_URL: ${bootstrapSecrets.SUPABASE_URL}`
+          );
+          log.error(
+            `[SecureConfig] SUPABASE_ANON_KEY: ${bootstrapSecrets.SUPABASE_ANON_KEY}`
+          );
+          return;
+        }
+
+        log.info(
+          "[SecureConfig] Loaded secrets from .env fallback (local development)"
+        );
+      } catch (fallbackErr) {
+        log.error("[SecureConfig] .env fallback also failed:", fallbackErr);
+        log.error(
+          "[SecureConfig] Supabase and OAuth features will be unavailable"
+        );
+        return;
+      }
     }
 
     encryptAndStore(bootstrapSecrets);

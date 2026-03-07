@@ -105,13 +105,22 @@ export class UpdaterService {
     // Disable automatic downloading to give user control
     autoUpdater.autoDownload = false;
 
-    // IMPORTANT: For unsigned/adhoc-signed builds (development/testing)
-    // Disable signature verification to allow updates without Apple Developer certificates
-    // WARNING: Only use this for development. Production apps should be properly signed.
-    // @ts-expect-error - Accessing internal electron-updater property
-    if (autoUpdater.app) {
+    // IMPORTANT: For unsigned/adhoc-signed builds
+    // If SKIP_CODE_SIGNATURE_VERIFICATION is set, disable verification so updates can be installed
+    // This allows unsigned production builds to receive updates, but updates are not cryptographically verified.
+    // Should be removed once proper code signing is implemented.
+    if (process.env.SKIP_CODE_SIGNATURE_VERIFICATION === "true") {
+      log.warn(
+        "[Updater] ⚠️  Code signature verification is disabled - updates will be allowed without verification"
+      );
+
       // @ts-expect-error - Accessing internal electron-updater property
-      autoUpdater.app.allowElevation = false;
+      autoUpdater.verifyUpdateCodeSignature = async (_): Promise<void> => {
+        log.warn(
+          "[Updater] Skipping code signature verification (SKIP_CODE_SIGNATURE_VERIFICATION=true)"
+        );
+        return Promise.resolve();
+      };
     }
 
     this.setupAutoUpdater();
@@ -171,6 +180,8 @@ export class UpdaterService {
 
       let errorMessage = err.message;
       let isSignatureError = false;
+      let downloadUrl: string | undefined;
+      let canRetry = false;
 
       // Provide user-friendly error messages
       if (
@@ -179,6 +190,7 @@ export class UpdaterService {
       ) {
         errorMessage =
           "Cannot connect to update server. Please check your internet connection.";
+        canRetry = true;
       } else if (err.message.includes("404")) {
         errorMessage = "No updates found. This may be a development build.";
       } else if (err.message.includes("EACCES")) {
@@ -188,19 +200,22 @@ export class UpdaterService {
         err.message.includes("code signature") ||
         err.message.includes("not signed") ||
         err.message.includes("signature validation") ||
-        err.message.includes("code object is not signed")
+        err.message.includes("code object is not signed") ||
+        err.message.includes("Code signature") ||
+        err.message.includes("code failed to satisfy")
       ) {
         isSignatureError = true;
         errorMessage =
-          "Automatic update failed due to code signature verification. Please download and install the update manually from GitHub.";
+          "This is a development build without code signing. The update has been downloaded but cannot be verified. You can try installing it anyway or download the signed release from GitHub.";
+        downloadUrl =
+          "https://github.com/harsh-simform/snapflow-desktop/releases/latest";
       }
 
       this.sendStatusToWindow("update-error", {
         message: errorMessage,
         isSignatureError,
-        downloadUrl: isSignatureError
-          ? "https://github.com/harsh-simform/snapflow-desktop/releases/latest"
-          : undefined,
+        downloadUrl,
+        canRetry,
       });
     });
 

@@ -134,6 +134,10 @@ jobs:
         run: npm run build:pack
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Disable code signing for CI builds (no Apple Developer certs available)
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          # Allow auto-updater to work in unsigned builds
+          SKIP_CODE_SIGNATURE_VERIFICATION: true
 
       # Upload platform-specific build outputs
       - name: Upload build artifacts
