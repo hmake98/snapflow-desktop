@@ -134,8 +134,13 @@ export class UpdaterService {
   }
 
   private setupAutoUpdater() {
+    // For macOS: disable auto-download, use notification instead
+    // For Linux/Windows: enable auto-download
+    const isMac = process.platform === "darwin";
+    const autoDownloadEnabled = !isMac;
+
     // Configure auto-updater
-    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.autoInstallOnAppQuit = !isMac; // Don't auto-install on macOS
 
     // Check for updates on startup (only in production)
     autoUpdater.on("checking-for-update", () => {
@@ -152,20 +157,40 @@ export class UpdaterService {
         releaseDate: info.releaseDate,
       };
 
+      // For macOS: show notification with download link instead of auto-downloading
+      if (isMac) {
+        log.info(
+          "[Updater] macOS detected - showing download notification instead of auto-downloading"
+        );
+        const downloadUrl =
+          "https://github.com/harsh-simform/snapflow-desktop/releases/latest";
+        this.sendStatusToWindow("update-available", {
+          version: info.version,
+          releaseDate: info.releaseDate,
+          currentVersion: autoUpdater.currentVersion.version,
+          isMacOS: true,
+          downloadUrl,
+        });
+        return;
+      }
+
+      // For Linux/Windows: show banner and auto-download
       this.sendStatusToWindow("update-available", {
         version: info.version,
         releaseDate: info.releaseDate,
         currentVersion: autoUpdater.currentVersion.version,
       });
 
-      // Automatically download the update
-      log.info("[Updater] Starting automatic download...");
-      autoUpdater.downloadUpdate().catch((error) => {
-        log.error("[Updater] Download failed:", error);
-        this.sendStatusToWindow("update-error", {
-          message: `Download failed: ${error.message}`,
+      // Automatically download the update (Linux/Windows only)
+      if (autoDownloadEnabled) {
+        log.info("[Updater] Starting automatic download...");
+        autoUpdater.downloadUpdate().catch((error) => {
+          log.error("[Updater] Download failed:", error);
+          this.sendStatusToWindow("update-error", {
+            message: `Download failed: ${error.message}`,
+          });
         });
-      });
+      }
     });
 
     autoUpdater.on("update-not-available", (info) => {

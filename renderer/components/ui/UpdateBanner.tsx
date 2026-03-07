@@ -12,6 +12,7 @@ interface UpdateStatus {
     message?: string;
     isSignatureError?: boolean;
     downloadUrl?: string;
+    isMacOS?: boolean;
   };
 }
 
@@ -31,6 +32,8 @@ export function UpdateBanner() {
     speed?: string;
     downloaded?: string;
     totalSize?: string;
+    downloadUrl?: string;
+    isMacOS?: boolean;
   }>({ type: "idle" });
 
   const [dismissed, setDismissed] = useState(false);
@@ -56,8 +59,12 @@ export function UpdateBanner() {
           case "update-available":
             newStatus = {
               type: "available",
-              message: `Update ${data?.version} available — downloading...`,
+              message: data?.isMacOS
+                ? `Update ${data?.version} available`
+                : `Update ${data?.version} available — downloading...`,
               version: data?.version,
+              downloadUrl: data?.downloadUrl,
+              isMacOS: data?.isMacOS,
             };
             setDismissed(false); // Re-show banner if dismissed
             break;
@@ -211,6 +218,12 @@ export function UpdateBanner() {
     await window.api.installUpdate();
   };
 
+  const handleDownloadMacOS = () => {
+    if (status.downloadUrl) {
+      window.api.openExternalUrl(status.downloadUrl);
+    }
+  };
+
   const handleDismiss = () => {
     if (status.type !== "downloaded") {
       setDismissed(true);
@@ -224,7 +237,8 @@ export function UpdateBanner() {
 
   return (
     <div
-      className={`fixed top-14 left-0 right-0 z-40 border-b transition-all duration-300 animate-in slide-in-from-top-2 ${getStatusColor()}`}
+      className={`fixed left-0 right-0 z-40 border-b transition-all duration-300 animate-in slide-in-from-top-2 ${getStatusColor()}`}
+      style={{ top: "68px" }}
     >
       <div className="max-w-full mx-auto px-4 py-4">
         <div className="flex items-center justify-between gap-4">
@@ -283,6 +297,15 @@ export function UpdateBanner() {
 
           {/* Action buttons */}
           <div className="flex items-center gap-3 flex-shrink-0">
+            {status.type === "available" && status.isMacOS && (
+              <button
+                onClick={handleDownloadMacOS}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 whitespace-nowrap"
+              >
+                Download Now
+              </button>
+            )}
+
             {status.type === "downloaded" && (
               <button
                 onClick={handleRestartNow}
@@ -292,7 +315,30 @@ export function UpdateBanner() {
               </button>
             )}
 
-            {status.type !== "downloaded" && (
+            {status.type !== "downloaded" && !status.isMacOS && (
+              <button
+                onClick={handleDismiss}
+                className="text-gray-300 hover:text-white active:text-gray-200 transition-colors p-1.5 hover:bg-white/10 rounded-lg"
+                title="Dismiss"
+                aria-label="Dismiss update notification"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            )}
+
+            {status.type !== "downloaded" && status.isMacOS && (
               <button
                 onClick={handleDismiss}
                 className="text-gray-300 hover:text-white active:text-gray-200 transition-colors p-1.5 hover:bg-white/10 rounded-lg"
