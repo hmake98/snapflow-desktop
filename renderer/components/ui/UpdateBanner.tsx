@@ -238,7 +238,7 @@ export function UpdateBanner() {
   return (
     <div
       className={`fixed left-0 right-0 z-40 border-b transition-all duration-300 animate-in slide-in-from-top-2 ${getStatusColor()}`}
-      style={{ top: "68px" }}
+      style={{ top: "80px" }}
     >
       <div className="max-w-full mx-auto px-4 py-4">
         <div className="flex items-center justify-between gap-4">

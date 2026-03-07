@@ -22,14 +22,6 @@ interface CaptureOptions {
 }
 
 export class CaptureService {
-  // Cache permission status for the app session to avoid repeated permission dialogs
-  // Note: macOS requires app restart after granting screen recording permission
-  private permissionCache: {
-    hasPermission: boolean;
-    timestamp: number;
-  } | null = null;
-  private readonly PERMISSION_CACHE_DURATION = 60000; // 60 seconds (1 minute)
-
   // Recording state
   private recordingWindow: BrowserWindow | null = null;
   private recordingBounds: {
@@ -41,66 +33,20 @@ export class CaptureService {
   private recordingStartTime: number | null = null;
 
   /**
-   * Clear the permission cache to force a fresh check
-   * Useful when user grants permission and we want to detect it immediately
+   * Clear the permission cache (no-op, kept for compatibility)
+   * Windows and Linux don't require screen recording permission
    */
   clearPermissionCache(): void {
-    this.permissionCache = null;
+    // No-op - Windows and Linux don't have permission model
   }
 
   /**
-   * Check if the app has screen recording permission (macOS)
-   * Uses a cache to avoid triggering permission dialog repeatedly
-   *
-   * IMPORTANT: On macOS, after granting screen recording permission in System Settings,
-   * the app MUST be completely quit and restarted for the permission to take effect.
-   * Simply hiding and showing the window will not work.
+   * Check if the app can capture screen (always true for Windows/Linux)
+   * Windows and Linux don't require explicit screen recording permission
    */
   async checkScreenRecordingPermission(): Promise<boolean> {
-    if (process.platform !== "darwin") {
-      return true;
-    }
-
-    // Check cache first
-    const now = Date.now();
-    if (
-      this.permissionCache &&
-      now - this.permissionCache.timestamp < this.PERMISSION_CACHE_DURATION
-    ) {
-      log.info(
-        "[Capture] Using cached permission status:",
-        this.permissionCache.hasPermission
-      );
-      return this.permissionCache.hasPermission;
-    }
-
-    try {
-      // Try to get screen sources with a minimal thumbnail size
-      // If permission is not granted, this will return empty array on macOS
-      const sources = await desktopCapturer.getSources({
-        types: ["screen"],
-        thumbnailSize: { width: 1, height: 1 },
-      });
-
-      // Check if we got any screen sources
-      const hasPermission = sources.length > 0;
-      log.info(
-        "[Capture] Screen recording permission check:",
-        hasPermission,
-        "sources:",
-        sources.length
-      );
-
-      // Cache the result immediately to prevent repeated checks
-      this.permissionCache = { hasPermission, timestamp: now };
-
-      return hasPermission;
-    } catch (error) {
-      log.error("[Capture] Screen recording permission check failed:", error);
-      // Cache the failure result as well
-      this.permissionCache = { hasPermission: false, timestamp: now };
-      return false;
-    }
+    // Windows and Linux always allow screen capture without permission
+    return true;
   }
 
   /**

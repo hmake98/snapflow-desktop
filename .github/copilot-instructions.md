@@ -61,14 +61,29 @@ npm run type-check       # TypeScript type checking
 
 All business logic lives in `main/services/`:
 
-- `auth.ts` - Supabase Auth (signup, login, logout, session management)
+- `auth.ts` - Supabase Auth (signup, login, logout, session management, JWT tokens)
 - `capture.ts` - Screenshot/recording using `desktopCapturer` + Electron `nativeImage`
-- `connectors.ts` - GitHub integration (issue creation with embedded images)
-- `issues.ts` - Issue CRUD with local + Supabase storage
+- `issues.ts` - Issue/Snap CRUD (workspace-scoped) with local + Supabase storage
+- `connectors.ts` - Connector CRUD and sync status management
+- `github.ts` - Dedicated GitHub OAuth integration, token management, repo listing, and user data syncing
+- `zoho.ts` - Zoho issue integration (create, update, attachment syncing)
 - `sync.ts` - Cloud sync service (Supabase Storage uploads/downloads)
 - `updater.ts` - Auto-update via `electron-updater` (GitHub releases)
+- `tenant.ts` - Multi-organization support with unique slugs, ownership, and admin management
+- `workspace.ts` - Workspace CRUD within tenants, member management, and role-based access control
+- `onboarding.ts` - Step-based onboarding progress tracking (stored in Supabase)
 
 Each service uses Supabase Client for database/storage or `electron-store` for local app settings.
+
+### Multi-Tenant & Workspace Architecture
+
+**Hierarchy**: Tenant (org) → Workspace (team) → Captures/Issues (workspace-scoped)
+
+- **Tenants**: Top-level organizations with unique slug and owner
+- **Workspaces**: Teams within a tenant with their own members and role assignments
+- **Roles** (6 types): `owner` (tenant level), `admin`, `pm`, `qa`, `dev`, `client` (workspace level)
+- **Data Scoping**: All captures/issues belong to a workspace, RLS policies enforce workspace access
+- **Member Invitation**: Add members to workspaces via email with role specification
 
 ### State Management
 
@@ -104,9 +119,22 @@ Each service uses Supabase Client for database/storage or `electron-store` for l
 ### Adding New IPC Channels
 
 1. Define in `renderer/types/index.ts` as `IPCChannel` union member
-2. Add handler in `main/background.ts` with `ipcMain.handle('namespace:action')`
-3. Expose in `main/preload.ts` via `window.api` object
+2. Add handler in `main/background.ts` with `ipcMain.handle('namespace:action', async (_event, args) => {})`
+3. Expose in `main/preload.ts` via `contextBridge` to `window.api` object
 4. TypeScript types auto-exported from preload
+5. Use namespace pattern: `tenant:*`, `workspace:*`, `capture:*`, `sync:*`, etc.
+
+**Major Channel Groups** (80+ total):
+
+- `user:*` - Login, logout, profile, session management
+- `tenant:*` - Create, fetch, list, update tenant operations
+- `workspace:*` - Create, fetch, list, update, member management
+- `workspace-member:*` - Invite, remove, role assignment
+- `capture:*` - Screenshot/recording operations (with multi-display variants)
+- `sync:*` - Cloud sync and connector operations
+- `connector:*` - GitHub/Zoho OAuth, config, repo/project listing
+- `onboarding:*` - Progress tracking and step management
+- `issue:*` - Snap/issue CRUD operations
 
 ### Adding New Pages
 
@@ -143,6 +171,14 @@ Each service uses Supabase Client for database/storage or `electron-store` for l
 2. Process with `sharp` for thumbnails/cropping
 3. Send base64 dataURL to renderer for annotation
 4. Save processed buffer to disk after user confirms
+5. Snap is stored in workspace-specific directory: `~/SnapFlow/Users/{userId}/{workspaceId}/{year}/{month}/{day}/`
+
+### Screen Recording Status
+
+**Status**: Feature partially implemented and preserved but disabled in UI/IPC channels  
+**Location**: Code with `_` prefix functions (e.g., `_startRecording`, `_stopRecording`)  
+**Implementation**: Area selector overlay, recording control window, thumbnail generation  
+**Reactivation**: Remove `_` prefix from function names and uncomment recording-related IPC handlers in `main/background.ts`
 
 ### Connector Sync
 
@@ -193,10 +229,13 @@ Each service uses Supabase Client for database/storage or `electron-store` for l
 ### Adding External Platform Connector
 
 1. Add type to `Connector['type']` union in `renderer/types/index.ts`
-2. Create sync method in `main/services/connectors.ts` (follow `syncToGitHub` pattern)
-3. Add UI in `renderer/pages/settings.tsx` for OAuth/config
-4. Handle in `ipcMain.handle('sync:issue')` switch statement
-5. Add new Supabase table for connector storage with RLS policies
+2. Create sync method in `main/services/connectors.ts` with dedicated service pattern (see `github.ts` for reference)
+3. Add UI controls in `renderer/components/settings/` for OAuth/token config
+4. Add IPC handlers in `main/background.ts` for connector operations
+5. Add new Supabase table for connector storage with RLS policies (workspace-scoped)
+6. For OAuth flows: Follow GitHub service pattern with `electron-store` token persistence
+
+**Example**: GitHub connector includes `syncToGitHub()` method that creates workspace-scoped issues on GitHub with embedded screenshots and optional attachments
 
 ### Adding User Profile Fields
 
@@ -205,6 +244,14 @@ Each service uses Supabase Client for database/storage or `electron-store` for l
 3. Update `renderer/types/index.ts` User interface to match
 4. Update `main/services/auth.ts` methods to handle new fields
 5. Update UI components in `renderer/pages/` as needed
+
+### Adding Workspace-Scoped Features
+
+1. Add database table with `workspace_id` foreign key in `supabase-schema.sql`
+2. RLS policy: `(auth.uid() = <subquery checking user is workspace member>)`
+3. Add CRUD methods in appropriate service (e.g., `issues.ts`, `workspace.ts`)
+4. Add IPC handlers in `main/background.ts` with namespace pattern (`workspace:*`)
+5. Add TypeScript types in `renderer/types/index.ts`
 
 ### Debugging Issues
 

@@ -109,7 +109,6 @@ const appSettingsStore = new Store({
 
 // State tracking for tray actions to prevent race conditions
 let isShowingWindow = false;
-let isCheckingForUpdates = false;
 
 // Tray icon manager and recording state
 let trayIconManager: TrayIconManager | null = null;
@@ -240,6 +239,11 @@ async function createMainWindow() {
     );
   }
 
+  // Handle window focus event
+  mainWindow.on("focus", async () => {
+    log.info("[Window] Window focused");
+  });
+
   return mainWindow;
 }
 
@@ -281,9 +285,8 @@ function createSystemTray() {
 }
 
 function registerGlobalShortcuts() {
-  // Register Cmd+Shift+5 (macOS) / Ctrl+Shift+5 (Windows/Linux) for Capture Area
-  const captureAreaShortcut =
-    process.platform === "darwin" ? "Command+Shift+5" : "Control+Shift+5";
+  // Register Ctrl+Shift+5 (Windows/Linux) for Capture Area
+  const captureAreaShortcut = "Control+Shift+5";
 
   const areaRegistered = globalShortcut.register(
     captureAreaShortcut,
@@ -301,9 +304,8 @@ function registerGlobalShortcuts() {
     log.error(`[Shortcuts] Failed to register ${captureAreaShortcut}`);
   }
 
-  // Register Cmd+Shift+3 (macOS) / Ctrl+Shift+3 (Windows/Linux) for Capture Full Screen
-  const captureFullScreenShortcut =
-    process.platform === "darwin" ? "Command+Shift+3" : "Control+Shift+3";
+  // Register Ctrl+Shift+3 (Windows/Linux) for Capture Full Screen
+  const captureFullScreenShortcut = "Control+Shift+3";
 
   const fullScreenRegistered = globalShortcut.register(
     captureFullScreenShortcut,
@@ -342,16 +344,14 @@ function updateTrayMenu() {
   const captureMenuItems: electron.MenuItemConstructorOptions[] = [
     {
       label: "Capture Full Screen",
-      accelerator:
-        process.platform === "darwin" ? "Command+Shift+3" : "Control+Shift+3",
+      accelerator: "Control+Shift+3",
       click: () => {
         handleScreenshotCapture("fullscreen");
       },
     },
     {
       label: "Capture Area",
-      accelerator:
-        process.platform === "darwin" ? "Command+Shift+5" : "Control+Shift+5",
+      accelerator: "Control+Shift+5",
       click: () => {
         handleScreenshotCapture("region");
       },
@@ -402,12 +402,17 @@ function updateTrayMenu() {
   //   };
   // }
 
+  const menuItems: electron.MenuItemConstructorOptions[] = [];
+
+  // Add capture menu items
+  menuItems.push(...captureMenuItems);
+  menuItems.push({ type: "separator" });
+
+  // Recording feature disabled for now - code preserved for future re-enablement
+  // if (recordingState === "recording") { ... }
+
   const contextMenu = Menu.buildFromTemplate([
-    ...captureMenuItems,
-    { type: "separator" },
-    // Recording feature disabled for now - code preserved for future re-enablement
-    // recordingMenuItem,
-    // { type: "separator" },
+    ...menuItems,
     {
       label: "View My Snaps",
       click: async () => {
@@ -462,13 +467,6 @@ function updateTrayMenu() {
     },
     { type: "separator" },
     {
-      label: "Check for Updates",
-      click: async () => {
-        await handleCheckForUpdates();
-      },
-    },
-    { type: "separator" },
-    {
       label: "Quit",
       click: () => {
         isQuitting = true;
@@ -482,6 +480,12 @@ function updateTrayMenu() {
 
   tray.setContextMenu(contextMenu);
 }
+
+/**
+ * Handle macOS screen recording permission request flow
+ * Shows dialog to user and opens System Settings if requested
+ * Returns true if user clicked "Open System Settings", false otherwise
+ */
 
 async function showMainWindow() {
   // Prevent concurrent calls to showMainWindow
@@ -538,14 +542,6 @@ async function createWindowCaptureOverlay() {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height, x, y } = primaryDisplay.bounds;
 
-  // Check permission before attempting capture
-  const hasPermission = await captureService.checkScreenRecordingPermission();
-  if (!hasPermission) {
-    log.info("[Window Capture] No screen recording permission");
-    mainWindow?.show();
-    return;
-  }
-
   // Capture screenshot first to use as background
   const { dataUrl } = await captureService.captureScreenshot({
     mode: "fullscreen",
@@ -580,11 +576,6 @@ async function createWindowCaptureOverlay() {
     visibleOnFullScreen: true,
   });
 
-  // Ensure dock icon stays visible on macOS
-  if (process.platform === "darwin") {
-    app.dock?.show();
-  }
-
   // Load the window capture page
   if (isProd) {
     await windowCaptureOverlay.loadURL("app://./window-capture");
@@ -614,19 +605,6 @@ async function createWindowCaptureOverlay() {
 
 async function createAreaCaptureOverlay() {
   const { screen } = electron;
-
-  // Check permission before attempting capture
-  const hasPermission = await captureService.checkScreenRecordingPermission();
-  if (!hasPermission) {
-    log.info("[Area Capture] No screen recording permission");
-    mainWindow?.show();
-    return;
-  }
-
-  // Ensure dock icon stays visible on macOS
-  if (process.platform === "darwin") {
-    app.dock?.show();
-  }
 
   // For now, use primary display - in future, could show overlay on all displays
   const primaryDisplay = screen.getPrimaryDisplay();
@@ -693,36 +671,8 @@ async function handleScreenshotCapture(
   screenId?: string
 ) {
   try {
-    // Check permission first to avoid getting stuck in a loop
-    const hasPermission = await captureService.checkScreenRecordingPermission();
-    if (!hasPermission) {
-      log.info("[Screenshot] No screen recording permission detected");
-      // Show dialog to user explaining they need to restart the app
-      const result = await dialog.showMessageBox(mainWindow!, {
-        type: "warning",
-        title: "Screen Recording Permission Required",
-        message: "SnapFlow needs Screen Recording permission",
-        detail:
-          "Please grant Screen Recording permission in System Settings > Privacy & Security > Screen Recording, then completely quit and restart SnapFlow.\n\nNote: Simply closing the window won't work - you must fully quit the app (Cmd+Q) and restart it.",
-        buttons: ["Open System Settings", "OK"],
-      });
-
-      if (result.response === 0) {
-        // Open System Settings to Screen Recording
-        shell.openExternal(
-          "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
-        );
-      }
-      return;
-    }
-
     // For window mode, create a transparent overlay for window selection
     if (mode === "window") {
-      // Keep app in dock even when hiding main window
-      if (process.platform === "darwin") {
-        app.dock?.show();
-      }
-
       mainWindow?.hide();
 
       // Wait a bit for window to hide
@@ -734,11 +684,6 @@ async function handleScreenshotCapture(
     }
 
     if (mode === "region") {
-      // Keep app in dock even when hiding main window
-      if (process.platform === "darwin") {
-        app.dock?.show();
-      }
-
       mainWindow?.hide();
 
       // Wait a bit for window to hide (reduced delay for smoother UX)
@@ -751,11 +696,6 @@ async function handleScreenshotCapture(
 
     // For fullscreen, all-screens, or specific-screen, capture immediately
     log.info("[Tray] Starting", mode, "capture...");
-
-    // Keep app in dock even when hiding main window
-    if (process.platform === "darwin") {
-      app.dock?.show();
-    }
 
     mainWindow?.hide();
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -810,27 +750,6 @@ async function handleScreenshotCapture(
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function handleScreenRecording() {
   try {
-    // Check permission first
-    const hasPermission = await captureService.checkScreenRecordingPermission();
-    if (!hasPermission) {
-      log.info("[Recording] No screen recording permission detected");
-      const result = await dialog.showMessageBox(mainWindow!, {
-        type: "warning",
-        title: "Screen Recording Permission Required",
-        message: "SnapFlow needs Screen Recording permission",
-        detail:
-          "Please grant Screen Recording permission in System Settings > Privacy & Security > Screen Recording, then completely quit and restart SnapFlow.\n\nNote: Simply closing the window won't work - you must fully quit the app (Cmd+Q) and restart it.",
-        buttons: ["Open System Settings", "OK"],
-      });
-
-      if (result.response === 0) {
-        shell.openExternal(
-          "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
-        );
-      }
-      return;
-    }
-
     // Create area selector for recording
     await createRecordingAreaSelector();
   } catch (error) {
@@ -922,19 +841,6 @@ async function createRecordingAreaSelector() {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height, x, y } = primaryDisplay.bounds;
 
-  // Check permission
-  const hasPermission = await captureService.checkScreenRecordingPermission();
-  if (!hasPermission) {
-    log.info("[Recording] No screen recording permission");
-    mainWindow?.show();
-    dialog.showErrorBox(
-      "Permission Required",
-      "Screen recording permission is required. Please grant permission in System Settings and restart SnapFlow."
-    );
-    recordingState = "idle";
-    return;
-  }
-
   recordingAreaSelector = new BrowserWindow({
     width,
     height,
@@ -959,11 +865,6 @@ async function createRecordingAreaSelector() {
   recordingAreaSelector.setVisibleOnAllWorkspaces(true, {
     visibleOnFullScreen: true,
   });
-
-  // Ensure dock icon stays visible
-  if (process.platform === "darwin") {
-    app.dock?.show();
-  }
 
   // Load recording area selector
   if (isProd) {
@@ -1096,159 +997,6 @@ async function handleCancelRecording() {
 
   // Show main window
   mainWindow?.show();
-}
-
-async function handleCheckForUpdates() {
-  // Prevent concurrent update checks
-  if (isCheckingForUpdates) {
-    log.info(
-      "[Tray] Update check already in progress, skipping duplicate request"
-    );
-    return;
-  }
-
-  isCheckingForUpdates = true;
-  let checkingDialog: Promise<electron.MessageBoxReturnValue> | null = null;
-
-  try {
-    log.info("[Tray] Checking for updates...");
-
-    // Verify main window exists
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      log.error("[Tray] Main window not available for update check");
-      // Attempt to recreate window
-      await createMainWindow();
-
-      if (!mainWindow) {
-        throw new Error("Unable to create application window");
-      }
-    }
-
-    // Check if in development mode
-    if (process.env.NODE_ENV === "development") {
-      log.info("[Tray] Skipping update check in development mode");
-      await dialog.showMessageBox(mainWindow, {
-        type: "info",
-        title: "Development Mode",
-        message: "Update check disabled in development mode",
-        detail:
-          "Automatic updates are only available in production builds. Please build and install the production version to test updates.",
-        buttons: ["OK"],
-      });
-      return;
-    }
-
-    // Show a loading dialog while checking
-    checkingDialog = dialog.showMessageBox(mainWindow, {
-      type: "info",
-      title: "Checking for Updates",
-      message: "Checking for updates...",
-      detail: "Please wait while we check for the latest version.",
-      buttons: [],
-    });
-
-    // Set a timeout for the update check (30 seconds)
-    const timeoutPromise = new Promise<null>((_, reject) => {
-      setTimeout(() => reject(new Error("Update check timed out")), 30000);
-    });
-
-    // Check for updates with timeout
-    const result = await Promise.race([
-      updaterService.checkForUpdates(),
-      timeoutPromise,
-    ]);
-
-    // Close the loading dialog
-    await checkingDialog;
-
-    if (result && result.updateInfo) {
-      // Update is available - the updater service will handle the download and prompt
-      log.info("[Tray] Update available:", result.updateInfo.version);
-
-      // Show additional confirmation that download will start
-      const { response } = await dialog.showMessageBox(mainWindow, {
-        type: "info",
-        title: "Update Available",
-        message: `Version ${result.updateInfo.version} is available`,
-        detail: `Current version: ${app.getVersion()}\nNew version: ${result.updateInfo.version}\n\nThe update will be downloaded automatically in the background.`,
-        buttons: ["OK"],
-        defaultId: 0,
-      });
-
-      if (response === 0) {
-        log.info("[Tray] User acknowledged update availability");
-      }
-    } else {
-      // No update available - show a message to the user
-      await dialog.showMessageBox(mainWindow, {
-        type: "info",
-        title: "No Updates Available",
-        message: "You're running the latest version!",
-        detail: `SnapFlow is up to date (version ${app.getVersion()}).`,
-        buttons: ["OK"],
-      });
-    }
-  } catch (error) {
-    log.error("[Tray] Failed to check for updates:", error);
-
-    // Close loading dialog if still open
-    if (checkingDialog) {
-      await checkingDialog.catch(() => {
-        /* ignore */
-      });
-    }
-
-    // Verify window still exists before showing error
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      log.error("[Tray] Window destroyed, cannot show error dialog");
-      return;
-    }
-
-    // Determine error type and provide specific guidance
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    let userMessage = "Failed to check for updates";
-    let detailMessage = "An unexpected error occurred. Please try again later.";
-
-    if (
-      errorMessage.includes("ENOTFOUND") ||
-      errorMessage.includes("ETIMEDOUT") ||
-      errorMessage.includes("timed out")
-    ) {
-      userMessage = "Connection Error";
-      detailMessage =
-        "Unable to connect to the update server. Please check your internet connection and try again.";
-    } else if (errorMessage.includes("EACCES")) {
-      userMessage = "Permission Error";
-      detailMessage =
-        "The application does not have permission to check for updates. Please check file permissions.";
-    } else if (errorMessage.includes("404")) {
-      userMessage = "Update Server Error";
-      detailMessage =
-        "Update information not found. This may be a development or pre-release build.";
-    } else if (errorMessage.includes("code signature")) {
-      userMessage = "Signature Verification Error";
-      detailMessage =
-        "Unable to verify update signature. Please download updates manually from GitHub.";
-    } else if (errorMessage.includes("Unable to create application window")) {
-      userMessage = "Application Error";
-      detailMessage =
-        "Unable to open the application window. Please restart SnapFlow.";
-      // Use showErrorBox as fallback when window creation fails
-      dialog.showErrorBox(userMessage, detailMessage);
-      return;
-    }
-
-    // Show error dialog
-    await dialog.showMessageBox(mainWindow, {
-      type: "error",
-      title: userMessage,
-      message: "Update Check Failed",
-      detail: detailMessage,
-      buttons: ["OK"],
-    });
-  } finally {
-    isCheckingForUpdates = false;
-  }
 }
 
 /**
@@ -1709,26 +1457,6 @@ if (app && app.requestSingleInstanceLock) {
     (async () => {
       await app.whenReady();
 
-      // Set application icon for dock (macOS) and taskbar
-      const iconPath = isProd
-        ? path.join(process.resourcesPath, "icon.png")
-        : path.join(__dirname, "../resources/icon.png");
-
-      const appIcon = nativeImage.createFromPath(iconPath);
-      if (process.platform === "darwin") {
-        app.dock?.setIcon(appIcon);
-        // Keep app in dock permanently - never hide
-        // This prevents the dock icon from disappearing during overlay/capture
-        app.dock?.show();
-      }
-
-      // Prevent app from hiding from dock when all windows are closed
-      // This ensures the dock icon is always visible
-      if (process.platform === "darwin") {
-        // Force the app to always show in dock, even with no windows
-        app.dock?.show();
-      }
-
       // Initialize secure config (must run after app.whenReady() — electron.safeStorage requires app ready)
       // Production: loads encrypted secrets from store (or bootstraps from JSON on first launch)
       // Development: no-op (env vars loaded via dotenv from project root)
@@ -1791,69 +1519,8 @@ if (app && app.requestSingleInstanceLock) {
       // Initialize storage
       await storageManager.ensureDirectories();
 
-      // Set custom application menu (remove File and Help)
-      if (process.platform === "darwin") {
-        const template: electron.MenuItemConstructorOptions[] = [
-          {
-            label: app.name,
-            submenu: [
-              { role: "about" },
-              { type: "separator" },
-              { role: "services" },
-              { type: "separator" },
-              { role: "hide" },
-              { role: "hideOthers" },
-              { role: "unhide" },
-              { type: "separator" },
-              { role: "quit" },
-            ],
-          },
-          {
-            label: "Edit",
-            submenu: [
-              { role: "undo" },
-              { role: "redo" },
-              { type: "separator" },
-              { role: "cut" },
-              { role: "copy" },
-              { role: "paste" },
-              { role: "pasteAndMatchStyle" },
-              { role: "delete" },
-              { role: "selectAll" },
-            ],
-          },
-          {
-            label: "View",
-            submenu: [
-              { role: "reload" },
-              { role: "forceReload" },
-              { role: "toggleDevTools" },
-              { type: "separator" },
-              { role: "resetZoom" },
-              { role: "zoomIn" },
-              { role: "zoomOut" },
-              { type: "separator" },
-              { role: "togglefullscreen" },
-            ],
-          },
-          {
-            label: "Window",
-            submenu: [
-              { role: "minimize" },
-              { role: "zoom" },
-              { type: "separator" },
-              { role: "front" },
-              { type: "separator" },
-              { role: "window" },
-            ],
-          },
-        ];
-        const menu = Menu.buildFromTemplate(template);
-        Menu.setApplicationMenu(menu);
-      } else {
-        // On Windows/Linux, remove the menu bar entirely
-        Menu.setApplicationMenu(null);
-      }
+      // Remove the menu bar entirely for Windows/Linux
+      Menu.setApplicationMenu(null);
 
       // Create main window
       await createMainWindow();
@@ -1890,14 +1557,18 @@ if (app && app.requestSingleInstanceLock) {
       });
 
       // Initialize auto-updater (only in production)
-      if (isProd && mainWindow) {
+      if (isProd) {
         updaterService.init();
         updaterService.setMainWindow(mainWindow);
-        // Check for updates 5 seconds after app starts
-        // For unsigned builds, set SKIP_CODE_SIGNATURE_VERIFICATION=true to allow updates
+        // Check for updates after a 3-second delay (don't block startup)
         setTimeout(() => {
-          updaterService.checkForUpdates();
-        }, 5000);
+          updaterService
+            .checkForUpdates()
+            .catch((err) =>
+              log.warn("[Update] Background check failed:", err.message)
+            );
+        }, 3000);
+        log.info("[Update] Auto-updater initialized");
       }
     })();
   }
@@ -4008,46 +3679,36 @@ function setupIPCHandlers() {
   ipcMain.handle("update:check", async () => {
     try {
       const result = await updaterService.checkForUpdates();
-      return { success: true, data: result };
+      const info = updaterService.getUpdateInfo();
+      return {
+        success: true,
+        data: {
+          updateAvailable: !!result?.updateInfo?.version,
+          version: result?.updateInfo?.version,
+          currentVersion: info.currentVersion,
+        },
+      };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "An unexpected error occurred";
-      log.error("IPC Handler error:", error);
-      return { success: false, error: errorMessage };
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return { success: false, error: message };
     }
   });
 
   ipcMain.handle("update:check-manual", async () => {
     try {
-      log.info("[IPC] Manual update check requested");
       const result = await updaterService.checkForUpdates();
-
-      if (result && result.updateInfo) {
-        log.info("[IPC] Update available:", result.updateInfo.version);
-        return {
-          success: true,
-          data: {
-            updateAvailable: true,
-            version: result.updateInfo.version,
-            releaseDate: result.updateInfo.releaseDate,
-          },
-        };
-      } else {
-        log.info("[IPC] No update available");
-        return {
-          success: true,
-          data: {
-            updateAvailable: false,
-            currentVersion: app.getVersion(),
-          },
-        };
-      }
+      const info = updaterService.getUpdateInfo();
+      return {
+        success: true,
+        data: {
+          updateAvailable: !!result?.updateInfo?.version,
+          version: result?.updateInfo?.version,
+          currentVersion: info.currentVersion,
+        },
+      };
     } catch (error) {
-      log.error("[IPC] Manual update check failed:", error);
-      const errorMessage =
-        error instanceof Error ? error.message : "An unexpected error occurred";
-      log.error("IPC Handler error:", error);
-      return { success: false, error: errorMessage };
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return { success: false, error: message };
     }
   });
 
@@ -4056,50 +3717,28 @@ function setupIPCHandlers() {
       await updaterService.downloadUpdate();
       return { success: true };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "An unexpected error occurred";
-      log.error("IPC Handler error:", error);
-      return { success: false, error: errorMessage };
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return { success: false, error: message };
     }
   });
 
-  ipcMain.handle("update:install", () => {
+  ipcMain.handle("update:install", async () => {
     try {
       updaterService.quitAndInstall();
       return { success: true };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "An unexpected error occurred";
-      log.error("IPC Handler error:", error);
-      return { success: false, error: errorMessage };
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return { success: false, error: message };
     }
   });
 
-  // Force install update even if signature verification fails (for development builds)
-  ipcMain.handle("update:force-install", () => {
-    try {
-      log.warn(
-        "[IPC] Force installing update (bypassing signature verification)"
-      );
-      updaterService.quitAndInstall();
-      return { success: true };
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "An unexpected error occurred";
-      log.error("IPC Handler error:", error);
-      return { success: false, error: errorMessage };
-    }
-  });
-
-  ipcMain.handle("update:get-info", () => {
+  ipcMain.handle("update:get-info", async () => {
     try {
       const info = updaterService.getUpdateInfo();
       return { success: true, data: info };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "An unexpected error occurred";
-      log.error("IPC Handler error:", error);
-      return { success: false, error: errorMessage };
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return { success: false, error: message };
     }
   });
 

@@ -4,6 +4,11 @@ copyright: Copyright © 2026 SnapFlow Team
 directories:
   output: dist
   buildResources: resources
+publish:
+  provider: github
+  owner: harsh-simform
+  repo: snapflow-desktop
+  private: false
 files:
   - from: .
     filter:
@@ -19,8 +24,6 @@ extraResources:
     to: tray-icon-white.png
   - from: resources/icon.png
     to: icon.png
-  - from: resources/app-bootstrap.json
-    to: app-bootstrap.json
   - from: .env
     to: .env
 
@@ -28,39 +31,6 @@ protocols:
   - name: SnapFlow
     schemes:
       - snapflow
-
-mac:
-  category: public.app-category.productivity
-  icon: resources/icon.icns
-  target:
-    - target: dmg
-      arch:
-        - universal
-    - target: zip
-      arch:
-        - universal
-  hardenedRuntime: true
-  gatekeeperAssess: true
-  entitlements: resources/entitlements.mac.plist
-  entitlementsInherit: resources/entitlements.mac.plist
-  extendInfo:
-    NSScreenCaptureUsageDescription: "SnapFlow needs access to record your screen to capture screenshots and recordings."
-    NSCameraUsageDescription: "SnapFlow may need camera access for video recordings with camera overlay."
-    NSMicrophoneUsageDescription: "SnapFlow needs microphone access to record audio with your screen recordings."
-
-dmg:
-  title: SnapFlow 1.0.0
-  icon: resources/icon.icns
-  contents:
-    - x: 130
-      y: 220
-    - x: 410
-      y: 220
-      type: link
-      path: /Applications
-  window:
-    width: 540
-    height: 380
 
 win:
   icon: resources/icon.ico

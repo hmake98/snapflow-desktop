@@ -3,7 +3,6 @@ import type { AppProps } from "next/app";
 import { useRouter } from "next/router";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "../components/ui/Tooltip";
-import { UpdateBanner } from "../components/ui/UpdateBanner";
 import { SplashScreen } from "../components/ui/SplashScreen";
 
 import "../styles/globals.css";
@@ -142,7 +141,6 @@ function MyApp({ Component, pageProps }: AppProps) {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <UpdateBanner />
       {!authChecked ? (
         <SplashScreen />
       ) : (
