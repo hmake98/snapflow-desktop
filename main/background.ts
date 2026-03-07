@@ -731,16 +731,24 @@ async function handleScreenshotCapture(
     pendingScreenshot = { dataUrl, mode };
     log.info("[Tray] Screenshot stored in pendingScreenshot");
 
-    mainWindow?.show();
-    // Navigate to annotate page
+    // Navigate to annotate page first (while hidden)
     log.info("[Tray] Navigating to annotate page...");
-    if (isProd) {
-      await mainWindow?.loadURL("app://./annotate");
-    } else {
-      const port = process.argv[2];
-      await mainWindow?.loadURL(`http://localhost:${port}/annotate`);
+    try {
+      if (isProd) {
+        await mainWindow?.loadURL("app://./annotate");
+      } else {
+        const port = process.argv[2];
+        await mainWindow?.loadURL(`http://localhost:${port}/annotate`);
+      }
+      log.info("[Tray] Navigation complete");
+    } catch (err) {
+      log.error("[Tray] Navigation failed:", err);
     }
-    log.info("[Tray] Navigation complete");
+
+    // Then show and focus the window
+    mainWindow?.show();
+    mainWindow?.focus();
+    log.info("[Tray] Window shown and focused");
   } catch (error) {
     log.error("[Tray] Failed to capture screenshot:", error);
   }

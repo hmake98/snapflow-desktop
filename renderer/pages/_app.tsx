@@ -10,6 +10,7 @@ import "../styles/globals.css";
 function MyApp({ Component, pageProps }: AppProps) {
   const router = useRouter();
   const [authChecked, setAuthChecked] = React.useState(false);
+  const [hasInitialized, setHasInitialized] = React.useState(false);
 
   useEffect(() => {
     // Setup OAuth callback listener
@@ -26,8 +27,8 @@ function MyApp({ Component, pageProps }: AppProps) {
   }, []);
 
   useEffect(() => {
-    // Skip if router is not ready yet
-    if (!router.isReady) {
+    // Skip if router is not ready yet or already initialized
+    if (!router.isReady || hasInitialized) {
       return;
     }
 
@@ -92,6 +93,7 @@ function MyApp({ Component, pageProps }: AppProps) {
         if (publicRoutes.includes(router.pathname)) {
           console.log("[App] Public route, auth check skipped");
           setAuthChecked(true);
+          setHasInitialized(true);
           return;
         }
 
@@ -108,6 +110,7 @@ function MyApp({ Component, pageProps }: AppProps) {
         if (semiProtectedRoutes.includes(router.pathname)) {
           console.log("[App] Semi-protected route, auth check passed");
           setAuthChecked(true);
+          setHasInitialized(true);
           return;
         }
 
@@ -130,14 +133,16 @@ function MyApp({ Component, pageProps }: AppProps) {
 
         console.log("[App] Auth check passed, setting authChecked to true");
         setAuthChecked(true);
+        setHasInitialized(true);
       } catch (err) {
         console.error("Auth check error:", err);
         setAuthChecked(true);
+        setHasInitialized(true);
       }
     };
 
     checkAuth();
-  }, [router.isReady, router.pathname]);
+  }, [router.isReady, hasInitialized]);
 
   return (
     <TooltipProvider delayDuration={300}>
