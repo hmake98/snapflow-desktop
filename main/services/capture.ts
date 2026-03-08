@@ -622,15 +622,15 @@ export class CaptureService extends EventEmitter {
       const platform = process.platform;
 
       if (platform === "darwin") {
-        // macOS: use AVFoundation screen capture with format conversion
-        // Use format filter before crop to ensure compatibility
-        const filterChain = `format=yuv420p,crop=${adjustedWidth}:${adjustedHeight}:${adjustedX}:${adjustedY}`;
+        // macOS: use AVFoundation screen capture (full screen)
+        // AVFoundation has compatibility issues with filters, so we capture full screen
+        // Region capture can be implemented as a post-processing step if needed
+        log.info("[Recording] Capturing full screen on macOS (AVFoundation)");
 
         ffmpegCmd = ffmpeg()
           .input("1") // macOS screen 1 (primary display)
           .inputFormat("avfoundation")
           .inputOptions(["-framerate 30"])
-          .videoFilters(filterChain)
           .videoCodec("libvpx-vp9")
           .outputOptions([
             "-b:v 2500k",
