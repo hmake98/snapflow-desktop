@@ -41,6 +41,7 @@ export class OverlayService {
         skipTaskbar: true,
         enableLargerThanScreen: true,
         backgroundColor: "#00000000",
+        show: false, // Don't show until content loads
         webPreferences: {
           nodeIntegration: false,
           contextIsolation: true,
@@ -62,6 +63,9 @@ export class OverlayService {
           `http://localhost:${port}/recording-overlay`
         );
       }
+
+      // Show the overlay window after content loads
+      this.overlayWindow.show();
 
       // Clean up reference when window closes
       this.overlayWindow.on("closed", () => {
