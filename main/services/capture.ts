@@ -19,39 +19,83 @@ function ensureFFmpegReady() {
   // Try multiple approaches to find FFmpeg
   const pathsToTry: string[] = [];
 
-  // Approach 1: Direct path from ffmpeg-static (works in node_modules)
+  log.info("[Recording] __dirname:", __dirname);
+  log.info("[Recording] process.cwd():", process.cwd());
+
+  // Approach 1: Direct path from ffmpeg-static (works in development)
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const ffmpegStatic = require("ffmpeg-static") as string;
     if (ffmpegStatic && typeof ffmpegStatic === "string") {
+      log.info("[Recording] Found ffmpeg-static require() at:", ffmpegStatic);
       pathsToTry.push(ffmpegStatic);
     }
   } catch (_e) {
     log.warn("[Recording] Could not require ffmpeg-static");
   }
 
-  // Approach 2: Relative to node_modules (for bundled/built version)
+  // Approach 2: Common path patterns
   try {
-    const nodeModulesPath = path.join(
-      __dirname,
-      "..",
-      "..",
+    const candidatePaths = [
+      // For development: node_modules/ffmpeg-static/ffmpeg
+      path.join(__dirname, "..", "node_modules", "ffmpeg-static", "ffmpeg"),
+      // For some builds: project root is one level up
+      path.join(
+        __dirname,
+        "..",
+        "..",
+        "node_modules",
+        "ffmpeg-static",
+        "ffmpeg"
+      ),
+      // Try from process.cwd()
+      path.join(process.cwd(), "node_modules", "ffmpeg-static", "ffmpeg"),
+      // Try with /app in path
+      path.join(
+        process.cwd(),
+        "app",
+        "..",
+        "node_modules",
+        "ffmpeg-static",
+        "ffmpeg"
+      ),
+      // Fixed path pattern
+      "/Users/hmake98/Documents/snapflow-desktop/node_modules/ffmpeg-static/ffmpeg",
+    ];
+
+    for (const candidatePath of candidatePaths) {
+      if (!pathsToTry.includes(candidatePath)) {
+        pathsToTry.push(candidatePath);
+      }
+    }
+  } catch (_e) {
+    log.warn("[Recording] Could not construct candidate paths");
+  }
+
+  // Approach 3: Try absolute path using process.cwd()
+  try {
+    const ffmpegPath = path.join(
+      process.cwd(),
       "node_modules",
       "ffmpeg-static",
       "ffmpeg"
     );
-    pathsToTry.push(nodeModulesPath);
+    pathsToTry.push(ffmpegPath);
   } catch (_e) {
-    log.warn("[Recording] Could not construct node_modules path");
+    log.warn("[Recording] Could not construct cwd path");
   }
 
-  // Approach 3: Relative to app root
+  // Approach 4: Try standard home directory location (if user installed ffmpeg)
   try {
-    const appRootPath = path.join(__dirname, "..", "ffmpeg");
-    pathsToTry.push(appRootPath);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const homeDir = require("os").homedir();
+    const ffmpegPath = path.join(homeDir, ".local", "bin", "ffmpeg");
+    pathsToTry.push(ffmpegPath);
   } catch (_e) {
-    log.warn("[Recording] Could not construct app root path");
+    log.warn("[Recording] Could not construct home path");
   }
+
+  log.info("[Recording] Searching for FFmpeg in paths:", pathsToTry);
 
   // Try each path
   for (const ffmpegPath of pathsToTry) {
@@ -59,6 +103,8 @@ function ensureFFmpegReady() {
       log.info("[Recording] Using FFmpeg from:", ffmpegPath);
       ffmpeg.setFfmpegPath(ffmpegPath);
       return true;
+    } else {
+      log.info("[Recording] Path does not exist:", ffmpegPath);
     }
   }
 
@@ -83,7 +129,6 @@ function ensureFFmpegReady() {
   }
 
   log.error("[Recording] FFmpeg not found in any expected location");
-  log.error("[Recording] Searched paths:", pathsToTry);
   return false;
 }
 
