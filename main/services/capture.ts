@@ -733,37 +733,66 @@ export class CaptureService extends EventEmitter {
       this.recordingOutputPath.match(/rec_\d+/)?.[0] || `rec_${Date.now()}`;
 
     try {
-      // Stop the FFmpeg process
+      // Save the output path before clearing it
+      const outputPath = this.recordingOutputPath;
+
+      // Stop the FFmpeg process gracefully
       log.info("[Recording] Sending stop signal to FFmpeg...");
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(
           () => reject(new Error("FFmpeg stop timeout")),
-          10000
+          15000
         );
 
-        this.ffmpegProcess?.kill();
+        // Try to send quit command first (graceful shutdown)
+        if (this.ffmpegProcess) {
+          try {
+            // Send 'q' to FFmpeg to gracefully stop encoding
+            if (this.ffmpegProcess.stdin) {
+              this.ffmpegProcess.stdin.write("q\n");
+              log.info("[Recording] Sent quit command to FFmpeg");
+            } else {
+              log.warn("[Recording] FFmpeg stdin not available, using SIGTERM");
+              this.ffmpegProcess.kill("SIGTERM");
+            }
+          } catch (_e) {
+            log.warn(
+              "[Recording] Could not send quit command, killing with SIGTERM"
+            );
+            this.ffmpegProcess?.kill("SIGTERM");
+          }
+        }
 
-        // Wait a bit for the file to be written
-        setTimeout(() => {
-          clearTimeout(timeout);
-          resolve();
-        }, 500);
+        // Wait for process to finish
+        const checkInterval = setInterval(() => {
+          if (!this.ffmpegProcess || this.ffmpegProcess.killed) {
+            clearInterval(checkInterval);
+            clearTimeout(timeout);
+            resolve();
+          }
+        }, 100);
       });
 
       log.info("[Recording] FFmpeg process stopped");
 
-      // Verify output file exists
+      // Verify output file exists and has data
       const fs = await import("fs");
-      if (!fs.existsSync(this.recordingOutputPath)) {
-        throw new Error(`Output file not created: ${this.recordingOutputPath}`);
+      if (!fs.existsSync(outputPath)) {
+        throw new Error(`Output file not created: ${outputPath}`);
       }
 
-      const fileSize = fs.statSync(this.recordingOutputPath).size;
+      const fileSize = fs.statSync(outputPath).size;
       log.info("[Recording] Video file created, size:", fileSize, "bytes");
+
+      if (fileSize === 0) {
+        throw new Error(
+          "Recording file is empty - FFmpeg may not have encoded properly"
+        );
+      }
 
       // Generate thumbnail from video
       const thumbnailPath = await this.createVideoThumbnail(
-        this.recordingOutputPath,
+        outputPath,
         issueId
       );
 
@@ -775,7 +804,6 @@ export class CaptureService extends EventEmitter {
       this.recordingBounds = null;
       this.recordingStartTime = null;
 
-      const outputPath = this.recordingOutputPath;
       return {
         issueId,
         filePath: outputPath,
