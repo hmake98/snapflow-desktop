@@ -622,18 +622,15 @@ export class CaptureService extends EventEmitter {
       const platform = process.platform;
 
       if (platform === "darwin") {
-        // macOS: use AVFoundation screen capture
-        // Build crop filter - AVFoundation may output odd pixel formats
-        const cropFilter = `crop=${adjustedWidth}:${adjustedHeight}:${adjustedX}:${adjustedY}`;
+        // macOS: use AVFoundation screen capture with format conversion
+        // Use format filter before crop to ensure compatibility
+        const filterChain = `format=yuv420p,crop=${adjustedWidth}:${adjustedHeight}:${adjustedX}:${adjustedY}`;
 
         ffmpegCmd = ffmpeg()
           .input("1") // macOS screen 1 (primary display)
           .inputFormat("avfoundation")
-          .inputOptions([
-            "-framerate 30",
-            "-pixel_format uyvy422", // Specify pixel format for compatibility
-          ])
-          .videoFilters(cropFilter)
+          .inputOptions(["-framerate 30"])
+          .videoFilters(filterChain)
           .videoCodec("libvpx-vp9")
           .outputOptions([
             "-b:v 2500k",
