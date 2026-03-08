@@ -8,6 +8,84 @@ import {
 } from "electron";
 import log from "electron-log";
 import { storageManager } from "../utils/storage";
+import ffmpeg from "fluent-ffmpeg";
+import { EventEmitter } from "events";
+import path from "path";
+import { execSync } from "child_process";
+import fs from "fs";
+
+// Initialize FFmpeg - delay until recording starts
+function ensureFFmpegReady() {
+  // Try multiple approaches to find FFmpeg
+  const pathsToTry: string[] = [];
+
+  // Approach 1: Direct path from ffmpeg-static (works in node_modules)
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ffmpegStatic = require("ffmpeg-static") as string;
+    if (ffmpegStatic && typeof ffmpegStatic === "string") {
+      pathsToTry.push(ffmpegStatic);
+    }
+  } catch (_e) {
+    log.warn("[Recording] Could not require ffmpeg-static");
+  }
+
+  // Approach 2: Relative to node_modules (for bundled/built version)
+  try {
+    const nodeModulesPath = path.join(
+      __dirname,
+      "..",
+      "..",
+      "node_modules",
+      "ffmpeg-static",
+      "ffmpeg"
+    );
+    pathsToTry.push(nodeModulesPath);
+  } catch (_e) {
+    log.warn("[Recording] Could not construct node_modules path");
+  }
+
+  // Approach 3: Relative to app root
+  try {
+    const appRootPath = path.join(__dirname, "..", "ffmpeg");
+    pathsToTry.push(appRootPath);
+  } catch (_e) {
+    log.warn("[Recording] Could not construct app root path");
+  }
+
+  // Try each path
+  for (const ffmpegPath of pathsToTry) {
+    if (fs.existsSync(ffmpegPath)) {
+      log.info("[Recording] Using FFmpeg from:", ffmpegPath);
+      ffmpeg.setFfmpegPath(ffmpegPath);
+      return true;
+    }
+  }
+
+  // Fallback: try system FFmpeg
+  try {
+    const ffmpegPath = execSync(
+      process.platform === "win32"
+        ? "where ffmpeg 2>nul"
+        : "which ffmpeg 2>/dev/null",
+      {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "ignore"],
+      }
+    ).trim();
+    if (ffmpegPath && fs.existsSync(ffmpegPath)) {
+      log.info("[Recording] Using system FFmpeg from:", ffmpegPath);
+      ffmpeg.setFfmpegPath(ffmpegPath);
+      return true;
+    }
+  } catch (_e) {
+    log.warn("[Recording] System FFmpeg not found");
+  }
+
+  log.error("[Recording] FFmpeg not found in any expected location");
+  log.error("[Recording] Searched paths:", pathsToTry);
+  return false;
+}
 
 interface CaptureOptions {
   mode: "fullscreen" | "window" | "region" | "all-screens" | "specific-screen";
@@ -21,7 +99,7 @@ interface CaptureOptions {
   };
 }
 
-export class CaptureService {
+export class CaptureService extends EventEmitter {
   // Recording state
   private recordingWindow: BrowserWindow | null = null;
   private recordingBounds: {
@@ -31,6 +109,12 @@ export class CaptureService {
     height: number;
   } | null = null;
   private recordingStartTime: number | null = null;
+  private ffmpegProcess: ffmpeg.FfmpegCommand | null = null;
+  private recordingOutputPath: string | null = null;
+
+  constructor() {
+    super();
+  }
 
   /**
    * Clear the permission cache (no-op, kept for compatibility)
@@ -432,7 +516,7 @@ export class CaptureService {
   }
 
   /**
-   * Start screen recording for a specific region
+   * Start screen recording for a specific region using FFmpeg
    */
   async startRecording(bounds: {
     x: number;
@@ -440,207 +524,140 @@ export class CaptureService {
     width: number;
     height: number;
   }): Promise<void> {
-    if (this.recordingWindow) {
+    if (this.ffmpegProcess) {
       throw new Error("Recording already in progress");
     }
 
-    log.info("[Recording] Starting recording with bounds:", bounds);
+    log.info("[Recording] Starting FFmpeg recording with bounds:", bounds);
 
     this.recordingBounds = bounds;
     this.recordingStartTime = Date.now();
 
-    // Create a hidden window that will handle the recording
-    this.recordingWindow = new BrowserWindow({
-      show: false, // Always hidden
-      width: 1,
-      height: 1,
-      webPreferences: {
-        nodeIntegration: true,
-        contextIsolation: false,
-        webSecurity: false, // Needed for getUserMedia with desktop capture
-      },
-    });
+    // Generate output path
+    const issueId = `rec_${Date.now()}`;
+    this.recordingOutputPath = storageManager.getRecordingPath(issueId);
 
-    // Listen for console messages from the recording window
-    this.recordingWindow.webContents.on(
-      "console-message",
-      (_event, level, message) => {
-        const prefix = "[Recording Window]";
-        switch (level) {
-          case 0: // log
-            log.info(prefix, message);
-            break;
-          case 1: // warning
-            log.warn(prefix, message);
-            break;
-          case 2: // error
-            log.error(prefix, message);
-            break;
-          default:
-            log.info(prefix, message);
-        }
-      }
-    );
-
-    // Get screen source for recording
-    const sources = await desktopCapturer.getSources({
-      types: ["screen"],
-      thumbnailSize: { width: 1, height: 1 },
-    });
-
-    if (sources.length === 0) {
-      throw new Error("No screen sources available for recording");
+    // Ensure output directory exists
+    const fs = await import("fs");
+    const path = await import("path");
+    const dirPath = path.dirname(this.recordingOutputPath);
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
     }
 
-    const primarySource = sources[0];
-    log.info("[Recording] Using source:", primarySource.id);
-
-    // Get the display's scale factor
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const scaleFactor = primaryDisplay.scaleFactor || 1;
-
-    // Grant media permissions so getUserMedia works inside the hidden window
-    this.recordingWindow.webContents.session.setPermissionRequestHandler(
-      (_webContents, permission, callback) => {
-        callback(permission === "media" || permission === "display-capture");
+    try {
+      // Ensure FFmpeg is properly configured
+      if (!ensureFFmpegReady()) {
+        throw new Error(
+          "FFmpeg not found - please install FFmpeg or use ffmpeg-static npm package"
+        );
       }
-    );
 
-    // Load a minimal HTML page (no inline <script>) so the renderer gets a
-    // proper browsing context with navigator.mediaDevices available.
-    // All logic is injected afterwards via executeJavaScript, which bypasses
-    // the renderer's CSP entirely.
-    await this.recordingWindow.loadURL(
-      "data:text/html;charset=utf-8,<!DOCTYPE html><html><body></body></html>"
-    );
+      // Get display info for proper screen capture coordinates
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const displayBounds = primaryDisplay.bounds;
+      const scaleFactor = primaryDisplay.scaleFactor || 1;
 
-    // Inject recording logic via executeJavaScript (runs in main-process context,
-    // not subject to renderer CSP).
-    const startScript = `
-      (async () => {
-        window.__recordingError = null;
+      // Adjust bounds for display scale factor and position
+      const adjustedX = Math.floor((bounds.x - displayBounds.x) * scaleFactor);
+      const adjustedY = Math.floor((bounds.y - displayBounds.y) * scaleFactor);
+      const adjustedWidth = Math.floor(bounds.width * scaleFactor);
+      const adjustedHeight = Math.floor(bounds.height * scaleFactor);
 
-        try {
-          console.log('[Recording] Starting recording...');
+      log.info("[Recording] Adjusted bounds:", {
+        x: adjustedX,
+        y: adjustedY,
+        width: adjustedWidth,
+        height: adjustedHeight,
+        scaleFactor,
+      });
 
-          // Get full-screen stream using the desktop capture source
-          const screenStream = await navigator.mediaDevices.getUserMedia({
-            audio: false,
-            video: {
-              mandatory: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: ${JSON.stringify(primarySource.id)},
-                minWidth: 1,
-                maxWidth: 4096,
-                minHeight: 1,
-                maxHeight: 2160
-              }
-            }
-          });
+      // Configure FFmpeg command based on platform
+      let ffmpegCmd = ffmpeg();
+      const platform = process.platform;
 
-          console.log('[Recording] Full screen stream acquired');
+      if (platform === "darwin") {
+        // macOS: use AVFoundation screen capture with crop filter
+        const cropFilter = `crop=${adjustedWidth}:${adjustedHeight}:${adjustedX}:${adjustedY}`;
+        ffmpegCmd = ffmpeg()
+          .input("1") // macOS screen 1 (primary display)
+          .inputFormat("avfoundation")
+          .inputOptions(["-framerate 30"])
+          .videoFilters(cropFilter)
+          .videoCodec("libvpx-vp9")
+          .outputOptions([
+            "-b:v 2500k",
+            "-deadline realtime",
+            "-cpu-used 5",
+            "-row-mt 1",
+          ])
+          .format("webm")
+          .output(this.recordingOutputPath);
+      } else if (platform === "win32") {
+        // Windows: use GDIgrab with absolute coordinates
+        ffmpegCmd = ffmpeg()
+          .input("desktop")
+          .inputFormat("gdigrab")
+          .inputOptions([
+            `-offset_x ${Math.floor(bounds.x)}`,
+            `-offset_y ${Math.floor(bounds.y)}`,
+            `-video_size ${Math.floor(bounds.width)}x${Math.floor(bounds.height)}`,
+            "-framerate 30",
+          ])
+          .videoCodec("libvpx-vp9")
+          .outputOptions([
+            "-b:v 2500k",
+            "-deadline realtime",
+            "-cpu-used 5",
+            "-row-mt 1",
+          ])
+          .format("webm")
+          .output(this.recordingOutputPath);
+      } else {
+        // Linux: use x11grab
+        const display = process.env.DISPLAY || ":0";
+        ffmpegCmd = ffmpeg()
+          .input(`${display}+${Math.floor(bounds.x)},${Math.floor(bounds.y)}`)
+          .inputFormat("x11grab")
+          .inputOptions([
+            "-framerate 30",
+            `-video_size ${Math.floor(bounds.width)}x${Math.floor(bounds.height)}`,
+          ])
+          .videoCodec("libvpx-vp9")
+          .outputOptions([
+            "-b:v 2500k",
+            "-deadline realtime",
+            "-cpu-used 5",
+            "-row-mt 1",
+          ])
+          .format("webm")
+          .output(this.recordingOutputPath);
+      }
 
-          // Feed stream into a hidden <video> element
-          const video = document.createElement('video');
-          video.srcObject = screenStream;
-          video.muted = true;
-          document.body.appendChild(video);
-          await video.play();
+      // Handle errors
+      ffmpegCmd.on("error", (err) => {
+        log.error("[Recording] FFmpeg error:", err);
+        this.ffmpegProcess = null;
+      });
 
-          await new Promise((resolve) => {
-            if (video.readyState >= 2) { resolve(); return; }
-            video.onloadedmetadata = resolve;
-          });
+      ffmpegCmd.on("end", () => {
+        log.info("[Recording] FFmpeg process finished");
+      });
 
-          console.log('[Recording] Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+      // Start recording
+      log.info("[Recording] Starting FFmpeg process...");
+      this.ffmpegProcess = ffmpegCmd;
+      ffmpegCmd.run();
 
-          // Create an off-screen canvas cropped to the selected region
-          const sf = ${scaleFactor};
-          const canvas = document.createElement('canvas');
-          canvas.width  = ${bounds.width}  * sf;
-          canvas.height = ${bounds.height} * sf;
-          document.body.appendChild(canvas);
-
-          const ctx = canvas.getContext('2d');
-          const srcX = ${bounds.x} * sf;
-          const srcY = ${bounds.y} * sf;
-          const srcW = ${bounds.width}  * sf;
-          const srcH = ${bounds.height} * sf;
-
-          console.log('[Recording] Canvas:', canvas.width, 'x', canvas.height,
-                      '| source rect:', srcX, srcY, srcW, srcH);
-
-          let animId;
-          function drawFrame() {
-            ctx.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, canvas.width, canvas.height);
-            animId = requestAnimationFrame(drawFrame);
-          }
-          drawFrame();
-
-          const canvasStream = canvas.captureStream(30);
-          console.log('[Recording] Canvas stream created (30 fps)');
-
-          // Pick the best supported mimeType
-          const mimeType = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
-            .find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
-
-          const recorder = new MediaRecorder(canvasStream, {
-            mimeType,
-            videoBitsPerSecond: 2_500_000
-          });
-
-          const chunks = [];
-          recorder.ondataavailable = (e) => {
-            if (e.data && e.data.size > 0) chunks.push(e.data);
-          };
-          recorder.onerror = (e) => {
-            console.error('[Recording] MediaRecorder error:', e.error);
-          };
-
-          recorder.start(1000);
-          console.log('[Recording] MediaRecorder started, mimeType:', mimeType);
-
-          // Expose stop helper so stopRecording() can call it later
-          window.__stopRecording = () => new Promise((resolve, reject) => {
-            recorder.onstop = () => {
-              cancelAnimationFrame(animId);
-              canvasStream.getTracks().forEach(t => t.stop());
-              screenStream.getTracks().forEach(t => t.stop());
-
-              const blob = new Blob(chunks, { type: 'video/webm' });
-              console.log('[Recording] Blob size:', blob.size, 'bytes');
-
-              const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result);
-              reader.onerror   = reject;
-              reader.readAsArrayBuffer(blob);
-            };
-
-            if (recorder.state !== 'inactive') {
-              recorder.stop();
-            } else {
-              reject(new Error('MediaRecorder already inactive'));
-            }
-          });
-
-        } catch (err) {
-          window.__recordingError = err && err.message ? err.message : String(err);
-          console.error('[Recording] Failed to start:', window.__recordingError);
-        }
-      })();
-    `;
-
-    await this.recordingWindow.webContents.executeJavaScript(startScript);
-
-    // Verify recording actually started
-    const startError = await this.recordingWindow.webContents.executeJavaScript(
-      "window.__recordingError"
-    );
-    if (startError) {
-      throw new Error(`Recording failed to start: ${startError}`);
+      log.info("[Recording] FFmpeg recording started successfully");
+    } catch (error) {
+      this.ffmpegProcess = null;
+      this.recordingOutputPath = null;
+      this.recordingBounds = null;
+      this.recordingStartTime = null;
+      log.error("[Recording] Failed to start recording:", error);
+      throw error;
     }
-
-    log.info("[Recording] Recording window loaded and started");
   }
 
   /**
@@ -652,69 +669,87 @@ export class CaptureService {
     thumbnailPath: string;
     duration: number;
   }> {
-    if (!this.recordingWindow || !this.recordingBounds) {
+    if (
+      !this.ffmpegProcess ||
+      !this.recordingOutputPath ||
+      !this.recordingBounds
+    ) {
       throw new Error("No recording in progress");
     }
 
-    log.info("[Recording] Stopping recording");
+    log.info("[Recording] Stopping FFmpeg recording");
 
     const duration = this.recordingStartTime
       ? Date.now() - this.recordingStartTime
       : 0;
+    const issueId =
+      this.recordingOutputPath.match(/rec_\d+/)?.[0] || `rec_${Date.now()}`;
 
     try {
-      // Execute stop in the recording window
-      const videoData =
-        await this.recordingWindow.webContents.executeJavaScript(
-          `window.__stopRecording()`
+      // Stop the FFmpeg process
+      log.info("[Recording] Sending stop signal to FFmpeg...");
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(
+          () => reject(new Error("FFmpeg stop timeout")),
+          10000
         );
 
-      log.info(
-        "[Recording] Video data received:",
-        videoData ? videoData.byteLength : 0,
-        "bytes"
-      );
+        this.ffmpegProcess?.kill();
 
-      // Generate issue ID
-      const issueId = `rec_${Date.now()}`;
+        // Wait a bit for the file to be written
+        setTimeout(() => {
+          clearTimeout(timeout);
+          resolve();
+        }, 500);
+      });
 
-      // Save video file
-      const videoBuffer = Buffer.from(videoData);
-      const filePath = await storageManager.saveFile(
-        issueId,
-        videoBuffer,
-        "webm"
-      );
+      log.info("[Recording] FFmpeg process stopped");
 
-      log.info("[Recording] Video saved to:", filePath);
+      // Verify output file exists
+      const fs = await import("fs");
+      if (!fs.existsSync(this.recordingOutputPath)) {
+        throw new Error(`Output file not created: ${this.recordingOutputPath}`);
+      }
+
+      const fileSize = fs.statSync(this.recordingOutputPath).size;
+      log.info("[Recording] Video file created, size:", fileSize, "bytes");
 
       // Generate thumbnail from video
-      const thumbnailPath = await this.createVideoThumbnail(filePath, issueId);
+      const thumbnailPath = await this.createVideoThumbnail(
+        this.recordingOutputPath,
+        issueId
+      );
 
       log.info("[Recording] Thumbnail saved to:", thumbnailPath);
 
       // Clean up
-      if (this.recordingWindow) {
-        this.recordingWindow.close();
-        this.recordingWindow = null;
-      }
+      this.ffmpegProcess = null;
+      this.recordingOutputPath = null;
       this.recordingBounds = null;
       this.recordingStartTime = null;
 
+      const outputPath = this.recordingOutputPath;
       return {
         issueId,
-        filePath,
+        filePath: outputPath,
         thumbnailPath,
         duration,
       };
     } catch (error) {
       log.error("[Recording] Error stopping recording:", error);
 
-      // Clean up on error
-      if (this.recordingWindow) {
-        this.recordingWindow.close();
-        this.recordingWindow = null;
+      // Kill FFmpeg process if still running
+      if (this.ffmpegProcess) {
+        try {
+          this.ffmpegProcess.kill();
+        } catch (killError) {
+          log.warn("[Recording] Error killing FFmpeg:", killError);
+        }
       }
+
+      // Clean up
+      this.ffmpegProcess = null;
+      this.recordingOutputPath = null;
       this.recordingBounds = null;
       this.recordingStartTime = null;
 

@@ -213,7 +213,7 @@ export default function HomePage() {
     // Listen for window picker show request from main process
     const unsubscribe = window.ipc.on(
       "recording:show-picker",
-      (_event, sources: unknown) => {
+      (sources: unknown) => {
         setRecordingSources(sources as RecordingSource[]);
         setShowWindowPicker(true);
       }

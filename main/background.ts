@@ -448,6 +448,16 @@ function updateTrayMenu() {
   menuItems.push({ type: "separator" });
   menuItems.push(recordingMenuItem);
 
+  // Add "Start recording with selection" option when not recording
+  if (!isRecording) {
+    menuItems.push({
+      label: "Start Recording with Selection",
+      click: async () => {
+        await handleStartRecordingWithSelection();
+      },
+    });
+  }
+
   const contextMenu = Menu.buildFromTemplate([
     ...menuItems,
     { type: "separator" },
@@ -869,34 +879,50 @@ async function handleStartRecordingFlow() {
     } else {
       // No default, show picker modal in main window
       log.info("[Recording] No default source, showing picker in main window");
-      recorderService.setState("selecting");
-      updateTrayMenu();
-
-      // Keep app in dock
-      if (process.platform === "darwin") {
-        app.dock?.show();
-      }
-
-      // Show main window with picker modal
-      mainWindow?.show();
-      mainWindow?.focus();
-
-      // Show window picker modal in the main window
-      try {
-        await windowPickerService.showPickerInMainWindow(mainWindow);
-      } catch (error) {
-        log.error("[Recording] Failed to show picker:", error);
-        recorderService.setState("idle");
-        recordingState = "idle";
-        updateTrayMenu();
-        dialog.showErrorBox(
-          "Recording Error",
-          "Failed to show recording source picker. Please try again."
-        );
-      }
+      await handleStartRecordingWithSelection();
     }
   } catch (error) {
-    log.error("[Recording] Failed to start recording flow:", error);
+    log.error("[Recording] Failed to start recording:", error);
+    dialog.showErrorBox("Recording Error", "Failed to start recording");
+    recorderService.setState("idle");
+    updateTrayMenu();
+  }
+}
+
+/**
+ * Always show the picker for user to select a screen/window
+ * Used when user explicitly chooses "Start recording with selection" from menu
+ */
+async function handleStartRecordingWithSelection() {
+  try {
+    log.info("[Recording] Starting recording with selection");
+    recorderService.setState("selecting");
+    updateTrayMenu();
+
+    // Keep app in dock
+    if (process.platform === "darwin") {
+      app.dock?.show();
+    }
+
+    // Show main window with picker modal
+    mainWindow?.show();
+    mainWindow?.focus();
+
+    // Show window picker modal in the main window
+    try {
+      await windowPickerService.showPickerInMainWindow(mainWindow);
+    } catch (error) {
+      log.error("[Recording] Failed to show picker:", error);
+      recorderService.setState("idle");
+      recordingState = "idle";
+      updateTrayMenu();
+      dialog.showErrorBox(
+        "Recording Error",
+        "Failed to show recording source picker. Please try again."
+      );
+    }
+  } catch (error) {
+    log.error("[Recording] Failed to start recording with selection:", error);
     recorderService.setState("idle");
     recordingState = "idle";
     updateTrayMenu();
@@ -3101,15 +3127,33 @@ function setupIPCHandlers() {
       log.info("[IPC] Starting recording with source:", sourceId);
       try {
         windowPickerService.closePicker();
+
+        // Handle "Full Screen" special case
+        let actualSourceId = sourceId;
+        let actualBounds = displayBounds;
+
+        if (sourceId === "full-screen") {
+          const primaryDisplay = screen.getPrimaryDisplay();
+          actualSourceId = `screen:${primaryDisplay.id}:0`;
+          actualBounds = primaryDisplay.bounds;
+          log.info(
+            "[IPC] Full screen selected, using primary display:",
+            actualSourceId
+          );
+        }
+
         if (setAsDefault) {
           recordingSettingsService.setDefaultSource({
-            id: sourceId,
+            id: actualSourceId,
             name: sourceName,
-            type: sourceId.startsWith("screen") ? "screen" : "window",
-            displayBounds,
+            type: actualSourceId.startsWith("screen") ? "screen" : "window",
+            displayBounds: actualBounds,
           });
         }
-        await handleStartRecordingWithSource(sourceId, displayBounds ?? null);
+        await handleStartRecordingWithSource(
+          actualSourceId,
+          actualBounds ?? null
+        );
         return { success: true };
       } catch (error) {
         const errorMessage =

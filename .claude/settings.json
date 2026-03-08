@@ -12,7 +12,8 @@
       "Bash(npm run build:pack)",
       "Bash(grep -E \"\\(Packaging|packaging|See \\\\`dist\\)\")",
       "Bash(SKIP_CODE_SIGNATURE_VERIFICATION=true npm run build:pack)",
-      "Bash(npm list update-electron-app)"
+      "Bash(npm list update-electron-app)",
+      "Bash(node -e \"const ffmpegStatic = require\\(''ffmpeg-static''\\); console.log\\(''ffmpeg-static path:'', ffmpegStatic\\); console.log\\(''exists:'', require\\(''fs''\\).existsSync\\(ffmpegStatic\\)\\);\")"
     ]
   }
 }

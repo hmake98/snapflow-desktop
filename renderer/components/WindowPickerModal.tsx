@@ -29,7 +29,7 @@ export function WindowPickerModal({
   onCancel,
   isLoading = false,
 }: WindowPickerModalProps) {
-  const [defaultChecked, setDefaultChecked] = useState(false);
+  const [defaultChecked, setDefaultChecked] = useState(true); // Auto-check by default
   const [isSelecting, setIsSelecting] = useState(false);
 
   const handleSelectSource = async (source: RecordingSource) => {
