@@ -54,18 +54,19 @@ process.on("unhandledRejection", (reason: unknown) => {
 const isProd = process.env.NODE_ENV === "production";
 
 // Load environment variables
-// Development: load from .env in project root
-// Production (CI): secrets are loaded by secureConfig.initialize() after app.whenReady()
-// Production (local build): also try to load from .env as fallback
+// Development: load from .env in project root (dotenv auto-resolves to cwd)
+// Production: load from resources/.env — placed there by electron-builder extraResources
 if (!isProd) {
   dotenv.config();
 } else {
-  // Local production builds might still have .env available (for testing)
-  // Try to load it as a fallback before secureConfig initialization
-  const devEnvPath = path.join(__dirname, "../.env");
-  if (fs.existsSync(devEnvPath)) {
-    log.info("[Startup] Loading .env for local production build");
-    dotenv.config({ path: devEnvPath });
+  // process.resourcesPath is the correct location for extraResources in packaged apps.
+  // __dirname points inside app.asar and cannot be used to reach extraResources.
+  const envPath = path.join(process.resourcesPath, ".env");
+  if (fs.existsSync(envPath)) {
+    log.info("[Startup] Loading .env from resources");
+    dotenv.config({ path: envPath });
+  } else {
+    log.warn("[Startup] .env not found at resources path:", envPath);
   }
 }
 
