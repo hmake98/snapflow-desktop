@@ -43,6 +43,9 @@ const api = {
     ipcRenderer.invoke("tenant:update", { tenantId, name, description }),
 
   // Workspace methods
+  setActiveWorkspace: (workspaceId: string) =>
+    ipcRenderer.invoke("workspace:set-active", { workspaceId }),
+  getActiveWorkspaceId: () => ipcRenderer.invoke("workspace:get-active"),
   createWorkspace: (tenantId: string, name: string, description?: string) =>
     ipcRenderer.invoke("workspace:create", { tenantId, name, description }),
   listWorkspaces: (tenantId: string) =>
@@ -91,7 +94,8 @@ const api = {
     type: "screenshot" | "recording",
     filePath: string,
     description?: string,
-    thumbnailPath?: string
+    thumbnailPath?: string,
+    workspaceId?: string
   ) =>
     ipcRenderer.invoke("issue:create", {
       userId,
@@ -100,8 +104,10 @@ const api = {
       filePath,
       description,
       thumbnailPath,
+      workspaceId,
     }),
-  listIssues: (userId: string) => ipcRenderer.invoke("issue:list", { userId }),
+  listIssues: (userId: string, workspaceId?: string) =>
+    ipcRenderer.invoke("issue:list", { userId, workspaceId }),
   updateIssue: (issueId: string, updates: Record<string, unknown>) =>
     ipcRenderer.invoke("issue:update", { issueId, updates }),
   deleteIssue: (issueId: string) =>

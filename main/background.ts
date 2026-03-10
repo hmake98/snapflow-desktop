@@ -132,6 +132,9 @@ let pendingRecording: {
   issueId?: string;
 } | null = null;
 
+// Active workspace scoped to the current session (set by renderer on login/switch)
+let activeWorkspaceId: string | null = null;
+
 if (isProd) {
   serve({ directory: "app" });
 } else {
@@ -1999,6 +2002,7 @@ function setupIPCHandlers() {
 
   ipcMain.handle("user:logout", async () => {
     try {
+      activeWorkspaceId = null;
       await sessionManager.clearUser();
       return { success: true };
     } catch (error) {
@@ -2124,6 +2128,17 @@ function setupIPCHandlers() {
       }
     }
   );
+
+  // Active workspace tracking (persisted in main process for full-page-reload scenarios)
+  ipcMain.handle("workspace:set-active", (_event, { workspaceId }) => {
+    activeWorkspaceId = workspaceId ?? null;
+    log.info("[Workspace] Active workspace set:", activeWorkspaceId);
+    return { success: true };
+  });
+
+  ipcMain.handle("workspace:get-active", () => {
+    return { success: true, data: activeWorkspaceId };
+  });
 
   // Workspace handlers
   ipcMain.handle(
@@ -2522,7 +2537,7 @@ function setupIPCHandlers() {
     "issue:create",
     async (
       _event,
-      { userId, title, type, filePath, description, thumbnailPath }
+      { userId, title, type, filePath, description, thumbnailPath, workspaceId }
     ) => {
       try {
         const issue = await issueService.createIssue(
@@ -2531,7 +2546,8 @@ function setupIPCHandlers() {
           type,
           filePath,
           description,
-          thumbnailPath
+          thumbnailPath,
+          workspaceId
         );
 
         // Trigger auto-sync to cloud if enabled (fire-and-forget)
@@ -2574,9 +2590,9 @@ function setupIPCHandlers() {
     }
   );
 
-  ipcMain.handle("issue:list", async (_event, { userId }) => {
+  ipcMain.handle("issue:list", async (_event, { userId, workspaceId }) => {
     try {
-      const issues = issueService.getIssues(userId);
+      const issues = issueService.getIssues(userId, workspaceId);
       return { success: true, data: issues };
     } catch (error) {
       const errorMessage =

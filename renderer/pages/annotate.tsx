@@ -5,9 +5,11 @@ import { toast } from "sonner";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { WindowControls } from "../components/ui/WindowControls";
+import { useStore } from "../store/useStore";
 
 export default function AnnotatePage() {
   const router = useRouter();
+  const { activeWorkspace } = useStore();
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -513,13 +515,28 @@ export default function AnnotatePage() {
         return;
       }
 
+      // Resolve workspace: prefer store → main-process session → API fallback
+      let workspaceId = activeWorkspace?.id;
+      if (!workspaceId) {
+        const activeResult = await window.api.getActiveWorkspaceId();
+        if (activeResult.success && activeResult.data) {
+          workspaceId = activeResult.data;
+        } else {
+          const wsResult = await window.api.getUserWorkspaces();
+          if (wsResult.success && wsResult.data?.length) {
+            workspaceId = wsResult.data[0].id;
+          }
+        }
+      }
+
       const issueResult = await window.api.createIssue(
         currentUser.id,
         title,
         "screenshot",
         saveResult.data.filePath,
         description || undefined,
-        saveResult.data.thumbnailPath
+        saveResult.data.thumbnailPath,
+        workspaceId
       );
 
       if (issueResult.success) {

@@ -224,28 +224,23 @@ export default function HomePage() {
     };
   }, []);
 
+  // Reload snaps when workspace changes
+  useEffect(() => {
+    if (activeWorkspace) {
+      loadSnapsForWorkspace(activeWorkspace.id);
+    }
+  }, [activeWorkspace?.id]);
+
   // Listen for auto-sync completion and refresh issues
   useEffect(() => {
     const unsubscribe = window.api.onAutoSyncCompleted(async (data) => {
       console.log("[Home] Auto-sync completed, reloading issues...", data);
-      // Reload issues from local storage to get updated sync status
-      const issuesResult = await window.api.listIssues(data.userId);
+      const issuesResult = await window.api.listIssues(
+        data.userId,
+        activeWorkspace?.id
+      );
       if (issuesResult.success) {
-        console.log(
-          "[Home] Reloaded issues after auto-sync:",
-          issuesResult.data?.length,
-          "snaps"
-        );
-        if (issuesResult.data && issuesResult.data.length > 0) {
-          console.log(
-            "[Home] First snap sync status:",
-            issuesResult.data[0].syncStatus
-          );
-        }
         setIssues(issuesResult.data || []);
-        console.log(
-          "[Home] Issues reloaded after auto-sync, Zustand store updated"
-        );
       } else {
         console.error(
           "[Home] Failed to reload issues after auto-sync:",
@@ -257,7 +252,24 @@ export default function HomePage() {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [setIssues]);
+  }, [setIssues, activeWorkspace?.id]);
+
+  const loadSnapsForWorkspace = async (wsId: string) => {
+    try {
+      const userResult = await window.api.getUser();
+      if (userResult.success && userResult.data) {
+        const issuesResult = await window.api.listIssues(
+          userResult.data.id,
+          wsId
+        );
+        if (issuesResult.success) {
+          setIssues(issuesResult.data || []);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to reload snaps for workspace:", error);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -278,26 +290,24 @@ export default function HomePage() {
           return;
         }
 
-        // Get workspace ID
-        const tenantResult = await window.api.getUserTenant();
-        if (tenantResult.success && tenantResult.data?.id) {
-          const workspacesResult = await window.api.listWorkspaces(
-            tenantResult.data.id
-          );
-          if (workspacesResult.success && workspacesResult.data?.length > 0) {
-            setWorkspaceId(workspacesResult.data[0].id);
-          }
-        }
-
-        // Load user workspaces for the switcher
+        // Load user workspaces and set active workspace
         const wsResult = await window.api.getUserWorkspaces();
+        let resolvedWorkspaceId: string | undefined;
         if (wsResult.success && wsResult.data?.length) {
+          const ws = activeWorkspace ?? wsResult.data[0];
           if (!activeWorkspace) {
             setActiveWorkspace(wsResult.data[0]);
           }
+          resolvedWorkspaceId = ws.id;
+          setWorkspaceId(ws.id);
+          // Keep main process in sync so full-page-reload pages can resolve workspace
+          window.api.setActiveWorkspace(ws.id);
         }
 
-        const issuesResult = await window.api.listIssues(userResult.data.id);
+        const issuesResult = await window.api.listIssues(
+          userResult.data.id,
+          resolvedWorkspaceId
+        );
         if (issuesResult.success) {
           setIssues(issuesResult.data || []);
         }
@@ -318,7 +328,10 @@ export default function HomePage() {
     try {
       // Optimistic update
       updateIssue(issue.id, { syncStatus: "syncing" });
-      toast.loading("Syncing to GitHub...", { id: `sync-${issue.id}` });
+      toast("Syncing to GitHub...", {
+        id: `sync-${issue.id}`,
+        duration: Infinity,
+      });
 
       const result = await window.api.syncIssue(issue.id, connectorId);
 
@@ -1158,7 +1171,7 @@ export default function HomePage() {
 
   const handleZohoSync = async (issue: Issue, connectorId: string) => {
     updateIssue(issue.id, { syncStatus: "syncing" });
-    const toastId = toast.loading("Syncing to Zoho...");
+    const toastId = toast("Syncing to Zoho...", { duration: Infinity });
     try {
       const result = await window.api.syncIssueToZoho(issue.id, connectorId);
       toast.dismiss(toastId);

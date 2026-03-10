@@ -111,6 +111,8 @@ function MyApp({ Component, pageProps }: AppProps) {
             "[App] Not authenticated on protected route, redirecting to /auth"
           );
           await router.push("/auth");
+          setAuthChecked(true);
+          setHasInitialized(true);
           return;
         }
 
@@ -163,17 +165,22 @@ function MyApp({ Component, pageProps }: AppProps) {
             position="top-right"
             theme="dark"
             toastOptions={{
-              className:
-                "rounded-xl border border-gray-800/50 bg-gray-900/95 backdrop-blur-xl text-gray-100 shadow-2xl cursor-pointer",
+              className: "rounded-xl text-gray-100 shadow-2xl",
               style: {
-                background: "rgba(17, 24, 39, 0.95)",
-                backdropFilter: "blur(16px)",
-                border: "1px solid rgba(75, 85, 99, 0.3)",
+                background: "rgba(17, 24, 39, 0.98)",
+                border: "1px solid rgba(75, 85, 99, 0.35)",
+                color: "rgb(243 244 246)",
               },
               duration: 4000,
+              classNames: {
+                closeButton:
+                  "!bg-gray-700 !border-gray-600 !text-gray-300 !cursor-pointer !pointer-events-auto !opacity-100 !z-10 hover:!bg-gray-600 hover:!text-gray-100",
+              },
             }}
             closeButton
             richColors
+            expand
+            gap={8}
           />
         </>
       )}
