@@ -1,7 +1,6 @@
 import React, { useEffect } from "react";
 import type { AppProps } from "next/app";
 import { useRouter } from "next/router";
-import { Toaster } from "sonner";
 import { TooltipProvider } from "../components/ui/Tooltip";
 import { SplashScreen } from "../components/ui/SplashScreen";
 
@@ -156,34 +155,7 @@ function MyApp({ Component, pageProps }: AppProps) {
 
   return (
     <TooltipProvider delayDuration={300}>
-      {!authChecked ? (
-        <SplashScreen />
-      ) : (
-        <>
-          <Component {...pageProps} />
-          <Toaster
-            position="top-right"
-            theme="dark"
-            toastOptions={{
-              className: "rounded-xl text-gray-100 shadow-2xl",
-              style: {
-                background: "rgba(17, 24, 39, 0.98)",
-                border: "1px solid rgba(75, 85, 99, 0.35)",
-                color: "rgb(243 244 246)",
-              },
-              duration: 4000,
-              classNames: {
-                closeButton:
-                  "!bg-gray-700 !border-gray-600 !text-gray-300 !cursor-pointer !pointer-events-auto !opacity-100 !z-10 hover:!bg-gray-600 hover:!text-gray-100",
-              },
-            }}
-            closeButton
-            richColors
-            expand
-            gap={8}
-          />
-        </>
-      )}
+      {!authChecked ? <SplashScreen /> : <Component {...pageProps} />}
     </TooltipProvider>
   );
 }

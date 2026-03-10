@@ -257,36 +257,3 @@
     @apply text-red-400;
   }
 }
-
-/* ── Sonner overrides (unlayered — wins over Sonner's injected styles) ───── */
-
-/* Allow close button to render outside toast bounds */
-[data-sonner-toast] {
-  overflow: visible !important;
-}
-
-/* Close button: always a pointer, always on top, always clickable */
-[data-sonner-toaster] [data-close-button] {
-  pointer-events: auto !important;
-  touch-action: auto !important;
-  cursor: pointer !important;
-  z-index: 10 !important;
-  opacity: 1 !important;
-  background: rgb(55 65 81) !important;
-  border: 1px solid rgb(75 85 99) !important;
-  color: rgb(209 213 219) !important;
-  transition:
-    background 150ms,
-    border-color 150ms;
-}
-
-[data-sonner-toaster] [data-close-button]:hover {
-  background: rgb(75 85 99) !important;
-  border-color: rgb(107 114 128) !important;
-  color: rgb(243 244 246) !important;
-}
-
-[data-sonner-toaster] [data-close-button] svg {
-  width: 13px !important;
-  height: 13px !important;
-}

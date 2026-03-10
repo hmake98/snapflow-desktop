@@ -38,6 +38,7 @@ const {
   Menu,
   nativeImage,
   BrowserWindow,
+  Notification,
   protocol,
   dialog,
   shell,
@@ -2569,8 +2570,20 @@ function setupIPCHandlers() {
                   userId,
                   syncedCount: result.syncedCount,
                 });
+                if (Notification.isSupported()) {
+                  new Notification({
+                    title: "SnapFlow – Auto-Sync Complete",
+                    body: `${result.syncedCount} item${result.syncedCount !== 1 ? "s" : ""} synced to cloud`,
+                  }).show();
+                }
               } else if (!result.success) {
                 log.warn("[AutoSync] Sync failed:", result.errors);
+                if (Notification.isSupported()) {
+                  new Notification({
+                    title: "SnapFlow – Auto-Sync Failed",
+                    body: result.errors?.[0] || "Could not sync to cloud",
+                  }).show();
+                }
               }
             })
             .catch((err) =>
@@ -2689,6 +2702,12 @@ function setupIPCHandlers() {
                 userId: issue.userId,
                 syncedCount: result.syncedCount,
               });
+              if (Notification.isSupported()) {
+                new Notification({
+                  title: "SnapFlow – Auto-Sync Complete",
+                  body: `${result.syncedCount} item${result.syncedCount !== 1 ? "s" : ""} synced to cloud`,
+                }).show();
+              }
             }
           })
           .catch((err) =>
@@ -3482,9 +3501,10 @@ function setupIPCHandlers() {
   );
 
   // Sync handler - Cloud (Supabase)
-  ipcMain.handle("sync:to-cloud", async (_event, { userId }) => {
+  ipcMain.handle("sync:to-cloud", async (_event, { userId, workspaceId }) => {
     try {
-      const result = await syncService.syncAllToCloud(userId);
+      const wsId = workspaceId ?? activeWorkspaceId ?? undefined;
+      const result = await syncService.syncAllToCloud(userId, wsId);
       return { success: result.success, data: result };
     } catch (error) {
       const errorMessage =
@@ -3494,9 +3514,10 @@ function setupIPCHandlers() {
     }
   });
 
-  ipcMain.handle("sync:from-cloud", async (_event, { userId }) => {
+  ipcMain.handle("sync:from-cloud", async (_event, { userId, workspaceId }) => {
     try {
-      const result = await syncService.fetchFromCloud(userId);
+      const wsId = workspaceId ?? activeWorkspaceId ?? undefined;
+      const result = await syncService.fetchFromCloud(userId, wsId);
       return { success: result.success, data: result };
     } catch (error) {
       const errorMessage =
@@ -3506,9 +3527,10 @@ function setupIPCHandlers() {
     }
   });
 
-  ipcMain.handle("sync:full", async (_event, { userId }) => {
+  ipcMain.handle("sync:full", async (_event, { userId, workspaceId }) => {
     try {
-      const result = await syncService.fullSync(userId);
+      const wsId = workspaceId ?? activeWorkspaceId ?? undefined;
+      const result = await syncService.fullSync(userId, wsId);
       return { success: result.success, data: result };
     } catch (error) {
       const errorMessage =
@@ -3893,6 +3915,21 @@ function setupIPCHandlers() {
       };
     }
   });
+
+  ipcMain.handle(
+    "util:show-notification",
+    (_event, { title, body }: { title: string; body?: string }) => {
+      try {
+        if (Notification.isSupported()) {
+          new Notification({ title, body }).show();
+        }
+        return { success: true };
+      } catch (error) {
+        log.error("[Util] Failed to show notification:", error);
+        return { success: false };
+      }
+    }
+  );
 
   // Window control handlers
   ipcMain.handle("window:close", () => {

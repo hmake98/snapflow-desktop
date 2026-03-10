@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
-import { toast } from "sonner";
 import type { Workspace } from "../types";
 import { WindowControls } from "../components/ui/WindowControls";
 import { Button } from "../components/ui/Button";
@@ -73,19 +72,22 @@ export default function JoinWorkspacePage() {
       if (!result.success) {
         const errorMsg = result.error || "Failed to join workspace";
         setError(errorMsg);
-        toast.error(errorMsg);
+        window.api.showNotification("Join Failed", errorMsg);
         setJoining(false);
         return;
       }
 
-      toast.success("Successfully joined workspace! Setting up...");
+      window.api.showNotification(
+        "Workspace Joined",
+        "Successfully joined workspace!"
+      );
 
       // Navigate to member onboarding
       await router.push("/onboarding?mode=member");
     } catch (err) {
       const message = err instanceof Error ? err.message : "An error occurred";
       setError(message);
-      toast.error(message);
+      window.api.showNotification("Error", message);
       setJoining(false);
     }
   };
@@ -98,7 +100,7 @@ export default function JoinWorkspacePage() {
       await router.push("/auth");
     } catch (err) {
       const message = err instanceof Error ? err.message : "An error occurred";
-      toast.error(message);
+      window.api.showNotification("Error", message);
     }
   };
 

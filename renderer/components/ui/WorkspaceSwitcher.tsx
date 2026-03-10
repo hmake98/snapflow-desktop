@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import { toast } from "sonner";
 import { useStore } from "../../store/useStore";
 import type { WorkspaceWithRole } from "../../types";
 
@@ -50,7 +49,7 @@ export function WorkspaceSwitcher() {
     setActiveWorkspace(ws);
     window.api.setActiveWorkspace(ws.id);
     setOpen(false);
-    toast.success(`Switched to ${ws.name}`);
+    window.api.showNotification("Workspace Switched", `Switched to ${ws.name}`);
   };
 
   const ROLE_COLORS: Record<string, string> = {

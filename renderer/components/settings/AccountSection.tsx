@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { toast } from "sonner";
 import { Button } from "../ui/Button";
 import { WorkspacesSection } from "./WorkspacesSection";
 import { UsersSection } from "./UsersSection";
@@ -132,7 +131,7 @@ export const AccountSection: React.FC = () => {
       }
     } catch (error) {
       console.error("Failed to load user:", error);
-      toast.error("Failed to load user information");
+      window.api.showNotification("Error", "Failed to load user information");
     }
   };
 
@@ -212,12 +211,18 @@ export const AccountSection: React.FC = () => {
       if (result.success) {
         setUser(result.data);
         setEditing(false);
-        toast.success("Profile updated");
+        window.api.showNotification(
+          "Profile Updated",
+          "Profile saved successfully"
+        );
       } else {
-        toast.error(result.error || "Failed to update profile");
+        window.api.showNotification(
+          "Error",
+          result.error || "Failed to update profile"
+        );
       }
     } catch {
-      toast.error("Failed to update profile");
+      window.api.showNotification("Error", "Failed to update profile");
     } finally {
       setSaving(false);
     }

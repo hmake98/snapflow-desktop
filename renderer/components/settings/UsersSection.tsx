@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { toast } from "sonner";
 import { Button } from "../ui/Button";
 import type { WorkspaceMemberWithUser, UserRole, Workspace } from "../../types";
 
@@ -74,11 +73,14 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
       if (result.success && result.data) {
         setMembers(result.data);
       } else {
-        toast.error(result.error ?? "Failed to load members");
+        window.api.showNotification(
+          "Error",
+          result.error ?? "Failed to load members"
+        );
       }
     } catch (error) {
       console.error("Failed to load members:", error);
-      toast.error("Failed to load workspace members");
+      window.api.showNotification("Error", "Failed to load workspace members");
     } finally {
       setLoading(false);
     }
@@ -101,17 +103,21 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
       );
 
       if (result.success) {
-        toast.success(
-          `Invite sent to ${inviteForm.email} — they'll receive an email to join.`
+        window.api.showNotification(
+          "Invite Sent",
+          `Invite sent to ${inviteForm.email}`
         );
         setInviteForm({ email: "", role: "dev" });
         setShowInviteForm(false);
       } else {
-        toast.error(result.error ?? "Failed to send invite");
+        window.api.showNotification(
+          "Error",
+          result.error ?? "Failed to send invite"
+        );
       }
     } catch (error) {
       console.error("Invite error:", error);
-      toast.error("Failed to send invite");
+      window.api.showNotification("Error", "Failed to send invite");
     } finally {
       setInviting(false);
     }
@@ -128,16 +134,22 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
       );
 
       if (result.success) {
-        toast.success(`${confirmRemove.userName} has been removed`);
+        window.api.showNotification(
+          "Member Removed",
+          `${confirmRemove.userName} has been removed`
+        );
         setMembers((prev) =>
           prev.filter((m) => m.userId !== confirmRemove.userId)
         );
       } else {
-        toast.error(result.error ?? "Failed to remove member");
+        window.api.showNotification(
+          "Error",
+          result.error ?? "Failed to remove member"
+        );
       }
     } catch (error) {
       console.error("Remove error:", error);
-      toast.error("Failed to remove member");
+      window.api.showNotification("Error", "Failed to remove member");
     } finally {
       setRemovingId(null);
       setConfirmRemove(null);
@@ -159,7 +171,8 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
       );
 
       if (result.success) {
-        toast.success(
+        window.api.showNotification(
+          "Role Updated",
           `${member.user.name}'s role updated to ${ROLE_LABELS[newRole]}`
         );
         setMembers((prev) =>
@@ -168,11 +181,14 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
           )
         );
       } else {
-        toast.error(result.error ?? "Failed to update role");
+        window.api.showNotification(
+          "Error",
+          result.error ?? "Failed to update role"
+        );
       }
     } catch (error) {
       console.error("Role update error:", error);
-      toast.error("Failed to update role");
+      window.api.showNotification("Error", "Failed to update role");
     } finally {
       setUpdatingRoleId(null);
     }

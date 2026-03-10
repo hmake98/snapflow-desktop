@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { toast } from "sonner";
 import { Button } from "../ui/Button";
 import type {
   Workspace,
@@ -87,15 +86,21 @@ function WorkspaceMembersPanel({
         role
       );
       if (r.success) {
-        toast.success(`Role updated to ${ROLE_LABELS[role]}`);
+        window.api.showNotification(
+          "Role Updated",
+          `Role updated to ${ROLE_LABELS[role]}`
+        );
         setMembers((p) =>
           p.map((m) => (m.userId === member.userId ? { ...m, role } : m))
         );
       } else {
-        toast.error(r.error ?? "Failed to update role");
+        window.api.showNotification(
+          "Error",
+          r.error ?? "Failed to update role"
+        );
       }
     } catch {
-      toast.error("Failed to update role");
+      window.api.showNotification("Error", "Failed to update role");
     } finally {
       setUpdatingId(null);
     }
@@ -109,13 +114,19 @@ function WorkspaceMembersPanel({
         member.userId
       );
       if (r.success) {
-        toast.success(`${member.user.name} removed`);
+        window.api.showNotification(
+          "Member Removed",
+          `${member.user.name} removed`
+        );
         setMembers((p) => p.filter((m) => m.userId !== member.userId));
       } else {
-        toast.error(r.error ?? "Failed to remove member");
+        window.api.showNotification(
+          "Error",
+          r.error ?? "Failed to remove member"
+        );
       }
     } catch {
-      toast.error("Failed to remove member");
+      window.api.showNotification("Error", "Failed to remove member");
     } finally {
       setRemovingId(null);
     }
@@ -336,13 +347,16 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
     try {
       const r = await window.api.updateTenant(tenant.id, tenantName.trim());
       if (r.success) {
-        toast.success("Organization name updated");
+        window.api.showNotification("Saved", "Organization name updated");
         setEditingTenant(false);
       } else {
-        toast.error(r.error ?? "Failed to update organization");
+        window.api.showNotification(
+          "Error",
+          r.error ?? "Failed to update organization"
+        );
       }
     } catch {
-      toast.error("Failed to update organization");
+      window.api.showNotification("Error", "Failed to update organization");
     } finally {
       setSavingTenant(false);
     }
@@ -360,11 +374,17 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
           form.description.trim() || undefined
         );
         if (r.success) {
-          toast.success(`Workspace "${form.name}" created`);
+          window.api.showNotification(
+            "Workspace Created",
+            `Workspace "${form.name}" created`
+          );
           setWorkspaces((p) => [r.data, ...p]);
           closeModal();
         } else {
-          toast.error(r.error ?? "Failed to create workspace");
+          window.api.showNotification(
+            "Error",
+            r.error ?? "Failed to create workspace"
+          );
         }
       } else if (modalMode === "edit" && editTarget) {
         const r = await window.api.updateWorkspace(
@@ -373,17 +393,23 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
           form.description.trim() || undefined
         );
         if (r.success) {
-          toast.success("Workspace updated");
+          window.api.showNotification(
+            "Workspace Updated",
+            "Workspace updated successfully"
+          );
           setWorkspaces((p) =>
             p.map((w) => (w.id === editTarget.id ? r.data : w))
           );
           closeModal();
         } else {
-          toast.error(r.error ?? "Failed to update workspace");
+          window.api.showNotification(
+            "Error",
+            r.error ?? "Failed to update workspace"
+          );
         }
       }
     } catch {
-      toast.error("Failed to save workspace");
+      window.api.showNotification("Error", "Failed to save workspace");
     } finally {
       setSaving(false);
     }
@@ -395,14 +421,20 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
     try {
       const r = await window.api.deleteWorkspace(confirmDelete.id);
       if (r.success) {
-        toast.success(`Workspace "${confirmDelete.name}" deleted`);
+        window.api.showNotification(
+          "Workspace Deleted",
+          `Workspace "${confirmDelete.name}" deleted`
+        );
         setWorkspaces((p) => p.filter((w) => w.id !== confirmDelete.id));
         setConfirmDelete(null);
       } else {
-        toast.error(r.error ?? "Failed to delete workspace");
+        window.api.showNotification(
+          "Error",
+          r.error ?? "Failed to delete workspace"
+        );
       }
     } catch {
-      toast.error("Failed to delete workspace");
+      window.api.showNotification("Error", "Failed to delete workspace");
     } finally {
       setDeleting(false);
     }

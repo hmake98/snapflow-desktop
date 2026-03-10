@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
-import { toast } from "sonner";
 import { WindowControls } from "../components/ui/WindowControls";
 import { useStore } from "../store/useStore";
 
@@ -220,14 +219,23 @@ export default function AnnotateRecording() {
                 <button
                   onClick={async () => {
                     if (!issueId) {
-                      toast.error("Recording ID not available");
+                      window.api.showNotification(
+                        "Error",
+                        "Recording ID not available"
+                      );
                       return;
                     }
                     const result = await window.api.pasteBug(issueId);
                     if (result.success) {
-                      toast.success("Bug report copied to clipboard");
+                      window.api.showNotification(
+                        "Copied",
+                        "Bug report copied to clipboard"
+                      );
                     } else {
-                      toast.error("Failed to copy bug report");
+                      window.api.showNotification(
+                        "Copy Failed",
+                        "Failed to copy bug report"
+                      );
                     }
                   }}
                   disabled={isSaving || !issueId}

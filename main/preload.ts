@@ -226,11 +226,12 @@ const api = {
     ipcRenderer.invoke("sync:issue-zoho", { issueId, connectorId }),
 
   // Sync methods - Cloud (Supabase)
-  syncToCloud: (userId: string) =>
-    ipcRenderer.invoke("sync:to-cloud", { userId }),
-  syncFromCloud: (userId: string) =>
-    ipcRenderer.invoke("sync:from-cloud", { userId }),
-  fullSync: (userId: string) => ipcRenderer.invoke("sync:full", { userId }),
+  syncToCloud: (userId: string, workspaceId?: string) =>
+    ipcRenderer.invoke("sync:to-cloud", { userId, workspaceId }),
+  syncFromCloud: (userId: string, workspaceId?: string) =>
+    ipcRenderer.invoke("sync:from-cloud", { userId, workspaceId }),
+  fullSync: (userId: string, workspaceId?: string) =>
+    ipcRenderer.invoke("sync:full", { userId, workspaceId }),
   getSyncHistory: (userId: string) =>
     ipcRenderer.invoke("sync:get-history", { userId }),
 
@@ -374,6 +375,8 @@ const api = {
   // Utility methods
   openExternalUrl: (url: string) =>
     ipcRenderer.invoke("util:open-external", { url }),
+  showNotification: (title: string, body?: string) =>
+    ipcRenderer.invoke("util:show-notification", { title, body }),
 };
 
 contextBridge.exposeInMainWorld("ipc", handler);

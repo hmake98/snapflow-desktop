@@ -69,33 +69,23 @@ export function ZohoConnectorManager() {
   const getWorkspace = async () => {
     try {
       log("Fetching workspace...");
-      const tenantResult = await window.api.getUserTenant();
-      if (!tenantResult.success) {
-        log("Failed to get tenant:", tenantResult.error);
-        setLoading(false);
-        return;
-      }
-      if (!tenantResult.data?.id) {
-        log("No tenant found");
-        setLoading(false);
+      // Prefer the actively selected workspace
+      const activeResult = await window.api.getActiveWorkspaceId();
+      if (activeResult.success && activeResult.data) {
+        log("Active workspace found:", activeResult.data);
+        setWorkspaceId(activeResult.data);
         return;
       }
 
-      const workspacesResult = await window.api.listWorkspaces(
-        tenantResult.data.id
-      );
-      if (!workspacesResult.success) {
-        log("Failed to get workspaces:", workspacesResult.error);
-        setLoading(false);
-        return;
-      }
-      if (!workspacesResult.data?.length) {
+      // Fallback: first workspace from user
+      const workspacesResult = await window.api.getUserWorkspaces();
+      if (!workspacesResult.success || !workspacesResult.data?.length) {
         log("No workspaces found");
         setLoading(false);
         return;
       }
 
-      log("Workspace found:", workspacesResult.data[0].id);
+      log("Workspace fallback:", workspacesResult.data[0].id);
       setWorkspaceId(workspacesResult.data[0].id);
     } catch (error) {
       console.error("Failed to get workspace:", error);

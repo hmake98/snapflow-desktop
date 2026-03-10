@@ -22,7 +22,13 @@ interface SyncHistory {
   completed_at: string | null;
 }
 
-export function CloudSyncIndicator({ userId }: { userId: string }) {
+export function CloudSyncIndicator({
+  userId,
+  workspaceId,
+}: {
+  userId: string;
+  workspaceId?: string;
+}) {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({
     isSyncing: false,
     lastSync: null,
@@ -96,7 +102,7 @@ export function CloudSyncIndicator({ userId }: { userId: string }) {
   const handleSync = async () => {
     setSyncStatus((prev) => ({ ...prev, isSyncing: true, error: null }));
     try {
-      const result = await window.api.syncToCloud(userId);
+      const result = await window.api.syncToCloud(userId, workspaceId);
       if (result.success) {
         setSyncStatus({
           isSyncing: false,

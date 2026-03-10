@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
-import { toast } from "sonner";
 import type { Tenant, Workspace, OnboardingStatus, UserRole } from "../types";
 import { WindowControls } from "../components/ui/WindowControls";
 import { Button } from "../components/ui/Button";
@@ -238,7 +237,10 @@ export default function OnboardingPage() {
 
       const newTenant = result.data as Tenant;
       setTenant(newTenant);
-      toast.success("Organization created successfully!");
+      window.api.showNotification(
+        "Organization Created",
+        "Organization created successfully!"
+      );
       // Proceed to step 2 (invite team)
       await updateStep(2);
     } catch (err) {
@@ -305,11 +307,15 @@ export default function OnboardingPage() {
     setInvitesSending(false);
 
     if (failureCount > 0) {
-      toast.warning(
+      window.api.showNotification(
+        "Invites Partially Sent",
         `Sent ${successCount} invite(s), ${failureCount} failed. You can retry from Settings.`
       );
     } else if (successCount > 0) {
-      toast.success(`Sent ${successCount} invite(s) successfully!`);
+      window.api.showNotification(
+        "Invites Sent",
+        `Sent ${successCount} invite(s) successfully!`
+      );
     }
   }
 
@@ -343,7 +349,10 @@ export default function OnboardingPage() {
 
       const newWorkspace = result.data as Workspace;
       setWorkspace(newWorkspace);
-      toast.success("Workspace created successfully!");
+      window.api.showNotification(
+        "Workspace Created",
+        "Workspace created successfully!"
+      );
 
       // Send any queued invites for this workspace
       if (invites.length > 0) {
@@ -512,7 +521,10 @@ export default function OnboardingPage() {
 
       setConnectorAddedType("github");
       setConnectors([...connectors, { type: "github" }]);
-      toast.success("GitHub connector added successfully!");
+      window.api.showNotification(
+        "GitHub Connected",
+        "GitHub connector added successfully!"
+      );
 
       // Reset the form
       handleGitHubCancelOAuth();
@@ -576,7 +588,10 @@ export default function OnboardingPage() {
 
       setConnectorAddedType("zoho");
       setConnectors([...connectors, { type: "zoho" }]);
-      toast.success("Zoho connector added successfully!");
+      window.api.showNotification(
+        "Zoho Connected",
+        "Zoho connector added successfully!"
+      );
 
       // Reset the form
       handleZohoCancelOAuth();
@@ -596,7 +611,8 @@ export default function OnboardingPage() {
   // Handle skip connectors (go to home but incomplete)
   async function _handleSkipConnectors() {
     // Can skip connectors for now
-    toast.warning(
+    window.api.showNotification(
+      "Connectors Skipped",
       "You can add connectors later in settings. Some features may be unavailable."
     );
     router.push("/home");
