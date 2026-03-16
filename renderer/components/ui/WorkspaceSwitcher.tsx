@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import { toast } from "sonner";
 import { useStore } from "../../store/useStore";
 import type { WorkspaceWithRole } from "../../types";
 
@@ -31,6 +30,7 @@ export function WorkspaceSwitcher() {
         // Auto-set active workspace if none selected
         if (!activeWorkspace && r.data.length > 0) {
           setActiveWorkspace(r.data[0]);
+          window.api.setActiveWorkspace(r.data[0].id);
         }
       }
     } catch (err) {
@@ -47,8 +47,9 @@ export function WorkspaceSwitcher() {
 
   const handleSelect = (ws: WorkspaceWithRole) => {
     setActiveWorkspace(ws);
+    window.api.setActiveWorkspace(ws.id);
     setOpen(false);
-    toast.success(`Switched to ${ws.name}`);
+    window.api.showNotification("Workspace Switched", `Switched to ${ws.name}`);
   };
 
   const ROLE_COLORS: Record<string, string> = {

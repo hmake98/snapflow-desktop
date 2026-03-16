@@ -1,7 +1,6 @@
 import React, { useEffect } from "react";
 import type { AppProps } from "next/app";
 import { useRouter } from "next/router";
-import { Toaster } from "sonner";
 import { TooltipProvider } from "../components/ui/Tooltip";
 import { SplashScreen } from "../components/ui/SplashScreen";
 
@@ -111,6 +110,8 @@ function MyApp({ Component, pageProps }: AppProps) {
             "[App] Not authenticated on protected route, redirecting to /auth"
           );
           await router.push("/auth");
+          setAuthChecked(true);
+          setHasInitialized(true);
           return;
         }
 
@@ -154,29 +155,7 @@ function MyApp({ Component, pageProps }: AppProps) {
 
   return (
     <TooltipProvider delayDuration={300}>
-      {!authChecked ? (
-        <SplashScreen />
-      ) : (
-        <>
-          <Component {...pageProps} />
-          <Toaster
-            position="top-right"
-            theme="dark"
-            toastOptions={{
-              className:
-                "rounded-xl border border-gray-800/50 bg-gray-900/95 backdrop-blur-xl text-gray-100 shadow-2xl cursor-pointer",
-              style: {
-                background: "rgba(17, 24, 39, 0.95)",
-                backdropFilter: "blur(16px)",
-                border: "1px solid rgba(75, 85, 99, 0.3)",
-              },
-              duration: 4000,
-            }}
-            closeButton
-            richColors
-          />
-        </>
-      )}
+      {!authChecked ? <SplashScreen /> : <Component {...pageProps} />}
     </TooltipProvider>
   );
 }

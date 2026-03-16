@@ -38,6 +38,7 @@ const {
   Menu,
   nativeImage,
   BrowserWindow,
+  Notification,
   protocol,
   dialog,
   shell,
@@ -54,18 +55,19 @@ process.on("unhandledRejection", (reason: unknown) => {
 const isProd = process.env.NODE_ENV === "production";
 
 // Load environment variables
-// Development: load from .env in project root
-// Production (CI): secrets are loaded by secureConfig.initialize() after app.whenReady()
-// Production (local build): also try to load from .env as fallback
+// Development: load from .env in project root (dotenv auto-resolves to cwd)
+// Production: load from resources/.env — placed there by electron-builder extraResources
 if (!isProd) {
   dotenv.config();
 } else {
-  // Local production builds might still have .env available (for testing)
-  // Try to load it as a fallback before secureConfig initialization
-  const devEnvPath = path.join(__dirname, "../.env");
-  if (fs.existsSync(devEnvPath)) {
-    log.info("[Startup] Loading .env for local production build");
-    dotenv.config({ path: devEnvPath });
+  // process.resourcesPath is the correct location for extraResources in packaged apps.
+  // __dirname points inside app.asar and cannot be used to reach extraResources.
+  const envPath = path.join(process.resourcesPath, ".env");
+  if (fs.existsSync(envPath)) {
+    log.info("[Startup] Loading .env from resources");
+    dotenv.config({ path: envPath });
+  } else {
+    log.warn("[Startup] .env not found at resources path:", envPath);
   }
 }
 
@@ -130,6 +132,9 @@ let pendingRecording: {
   thumbnailPath?: string;
   issueId?: string;
 } | null = null;
+
+// Active workspace scoped to the current session (set by renderer on login/switch)
+let activeWorkspaceId: string | null = null;
 
 if (isProd) {
   serve({ directory: "app" });
@@ -2024,6 +2029,7 @@ function setupIPCHandlers() {
 
   ipcMain.handle("user:logout", async () => {
     try {
+      activeWorkspaceId = null;
       await sessionManager.clearUser();
       return { success: true };
     } catch (error) {
@@ -2149,6 +2155,17 @@ function setupIPCHandlers() {
       }
     }
   );
+
+  // Active workspace tracking (persisted in main process for full-page-reload scenarios)
+  ipcMain.handle("workspace:set-active", (_event, { workspaceId }) => {
+    activeWorkspaceId = workspaceId ?? null;
+    log.info("[Workspace] Active workspace set:", activeWorkspaceId);
+    return { success: true };
+  });
+
+  ipcMain.handle("workspace:get-active", () => {
+    return { success: true, data: activeWorkspaceId };
+  });
 
   // Workspace handlers
   ipcMain.handle(
@@ -2547,7 +2564,7 @@ function setupIPCHandlers() {
     "issue:create",
     async (
       _event,
-      { userId, title, type, filePath, description, thumbnailPath }
+      { userId, title, type, filePath, description, thumbnailPath, workspaceId }
     ) => {
       try {
         const issue = await issueService.createIssue(
@@ -2556,7 +2573,8 @@ function setupIPCHandlers() {
           type,
           filePath,
           description,
-          thumbnailPath
+          thumbnailPath,
+          workspaceId
         );
 
         // Trigger auto-sync to cloud if enabled (fire-and-forget)
@@ -2578,8 +2596,20 @@ function setupIPCHandlers() {
                   userId,
                   syncedCount: result.syncedCount,
                 });
+                if (Notification.isSupported()) {
+                  new Notification({
+                    title: "SnapFlow – Auto-Sync Complete",
+                    body: `${result.syncedCount} item${result.syncedCount !== 1 ? "s" : ""} synced to cloud`,
+                  }).show();
+                }
               } else if (!result.success) {
                 log.warn("[AutoSync] Sync failed:", result.errors);
+                if (Notification.isSupported()) {
+                  new Notification({
+                    title: "SnapFlow – Auto-Sync Failed",
+                    body: result.errors?.[0] || "Could not sync to cloud",
+                  }).show();
+                }
               }
             })
             .catch((err) =>
@@ -2599,9 +2629,9 @@ function setupIPCHandlers() {
     }
   );
 
-  ipcMain.handle("issue:list", async (_event, { userId }) => {
+  ipcMain.handle("issue:list", async (_event, { userId, workspaceId }) => {
     try {
-      const issues = issueService.getIssues(userId);
+      const issues = issueService.getIssues(userId, workspaceId);
       return { success: true, data: issues };
     } catch (error) {
       const errorMessage =
@@ -2698,6 +2728,12 @@ function setupIPCHandlers() {
                 userId: issue.userId,
                 syncedCount: result.syncedCount,
               });
+              if (Notification.isSupported()) {
+                new Notification({
+                  title: "SnapFlow – Auto-Sync Complete",
+                  body: `${result.syncedCount} item${result.syncedCount !== 1 ? "s" : ""} synced to cloud`,
+                }).show();
+              }
             }
           })
           .catch((err) =>
@@ -3509,9 +3545,10 @@ function setupIPCHandlers() {
   );
 
   // Sync handler - Cloud (Supabase)
-  ipcMain.handle("sync:to-cloud", async (_event, { userId }) => {
+  ipcMain.handle("sync:to-cloud", async (_event, { userId, workspaceId }) => {
     try {
-      const result = await syncService.syncAllToCloud(userId);
+      const wsId = workspaceId ?? activeWorkspaceId ?? undefined;
+      const result = await syncService.syncAllToCloud(userId, wsId);
       return { success: result.success, data: result };
     } catch (error) {
       const errorMessage =
@@ -3521,9 +3558,10 @@ function setupIPCHandlers() {
     }
   });
 
-  ipcMain.handle("sync:from-cloud", async (_event, { userId }) => {
+  ipcMain.handle("sync:from-cloud", async (_event, { userId, workspaceId }) => {
     try {
-      const result = await syncService.fetchFromCloud(userId);
+      const wsId = workspaceId ?? activeWorkspaceId ?? undefined;
+      const result = await syncService.fetchFromCloud(userId, wsId);
       return { success: result.success, data: result };
     } catch (error) {
       const errorMessage =
@@ -3533,9 +3571,10 @@ function setupIPCHandlers() {
     }
   });
 
-  ipcMain.handle("sync:full", async (_event, { userId }) => {
+  ipcMain.handle("sync:full", async (_event, { userId, workspaceId }) => {
     try {
-      const result = await syncService.fullSync(userId);
+      const wsId = workspaceId ?? activeWorkspaceId ?? undefined;
+      const result = await syncService.fullSync(userId, wsId);
       return { success: result.success, data: result };
     } catch (error) {
       const errorMessage =
@@ -3920,6 +3959,21 @@ function setupIPCHandlers() {
       };
     }
   });
+
+  ipcMain.handle(
+    "util:show-notification",
+    (_event, { title, body }: { title: string; body?: string }) => {
+      try {
+        if (Notification.isSupported()) {
+          new Notification({ title, body }).show();
+        }
+        return { success: true };
+      } catch (error) {
+        log.error("[Util] Failed to show notification:", error);
+        return { success: false };
+      }
+    }
+  );
 
   // Window control handlers
   ipcMain.handle("window:close", () => {

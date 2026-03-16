@@ -1,7 +1,6 @@
 import React from "react";
 import { useRouter } from "next/router";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
-import { toast } from "sonner";
 
 interface GlobalHeaderProps {
   user: { name?: string; email?: string } | null;
@@ -111,7 +110,7 @@ export function GlobalHeader({ user }: GlobalHeaderProps) {
       await window.api.logout();
       await router.push("/auth");
     } catch (_error) {
-      toast.error("Failed to logout");
+      window.api.showNotification("Error", "Failed to logout");
     }
   };
 

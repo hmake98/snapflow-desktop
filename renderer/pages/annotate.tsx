@@ -1,13 +1,14 @@
 import React, { useEffect, useState, useRef } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
-import { toast } from "sonner";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { WindowControls } from "../components/ui/WindowControls";
+import { useStore } from "../store/useStore";
 
 export default function AnnotatePage() {
   const router = useRouter();
+  const { activeWorkspace } = useStore();
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -83,7 +84,7 @@ export default function AnnotatePage() {
       })
       .catch((err) => {
         console.error("Failed to load Konva:", err);
-        toast.error("Failed to load image editor");
+        window.api.showNotification("Error", "Failed to load image editor");
       });
 
     // Listen for screenshot captured via IPC event (sent by main process after
@@ -464,7 +465,7 @@ export default function AnnotatePage() {
 
   const handleSave = async () => {
     if (!title.trim()) {
-      toast.error("Please enter a title");
+      window.api.showNotification("Validation Error", "Please enter a title");
       return;
     }
 
@@ -472,7 +473,10 @@ export default function AnnotatePage() {
       console.error(
         "[Annotate] Cannot save - no current user. Redirecting to auth."
       );
-      toast.error("User not found. Please login again.");
+      window.api.showNotification(
+        "Session Expired",
+        "User not found. Please login again."
+      );
       router.push("/auth");
       return;
     }
@@ -480,7 +484,7 @@ export default function AnnotatePage() {
     console.log("[Annotate] Saving screenshot with user:", currentUser.id);
 
     if (!stageRef.current) {
-      toast.error("Editor not ready");
+      window.api.showNotification("Error", "Editor not ready");
       return;
     }
 
@@ -508,9 +512,26 @@ export default function AnnotatePage() {
 
       const saveResult = await window.api.saveCapture(tempId, arrayBuffer);
       if (!saveResult.success) {
-        toast.error(`Failed to save screenshot: ${saveResult.error}`);
+        window.api.showNotification(
+          "Save Failed",
+          saveResult.error || "Failed to save screenshot"
+        );
         setSaving(false);
         return;
+      }
+
+      // Resolve workspace: prefer store → main-process session → API fallback
+      let workspaceId = activeWorkspace?.id;
+      if (!workspaceId) {
+        const activeResult = await window.api.getActiveWorkspaceId();
+        if (activeResult.success && activeResult.data) {
+          workspaceId = activeResult.data;
+        } else {
+          const wsResult = await window.api.getUserWorkspaces();
+          if (wsResult.success && wsResult.data?.length) {
+            workspaceId = wsResult.data[0].id;
+          }
+        }
       }
 
       const issueResult = await window.api.createIssue(
@@ -519,20 +540,30 @@ export default function AnnotatePage() {
         "screenshot",
         saveResult.data.filePath,
         description || undefined,
-        saveResult.data.thumbnailPath
+        saveResult.data.thumbnailPath,
+        workspaceId
       );
 
       if (issueResult.success) {
-        toast.success("Screenshot saved successfully");
+        window.api.showNotification(
+          "Screenshot Saved",
+          "Screenshot saved successfully"
+        );
         router.push("/home");
       } else {
-        toast.error(`Failed to create issue: ${issueResult.error}`);
+        window.api.showNotification(
+          "Save Failed",
+          issueResult.error || "Failed to create issue"
+        );
       }
 
       setSaving(false);
     } catch (error) {
       console.error("Save error:", error);
-      toast.error("An error occurred while saving");
+      window.api.showNotification(
+        "Save Failed",
+        "An error occurred while saving"
+      );
       setSaving(false);
     }
   };

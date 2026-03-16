@@ -43,6 +43,9 @@ const api = {
     ipcRenderer.invoke("tenant:update", { tenantId, name, description }),
 
   // Workspace methods
+  setActiveWorkspace: (workspaceId: string) =>
+    ipcRenderer.invoke("workspace:set-active", { workspaceId }),
+  getActiveWorkspaceId: () => ipcRenderer.invoke("workspace:get-active"),
   createWorkspace: (tenantId: string, name: string, description?: string) =>
     ipcRenderer.invoke("workspace:create", { tenantId, name, description }),
   listWorkspaces: (tenantId: string) =>
@@ -91,7 +94,8 @@ const api = {
     type: "screenshot" | "recording",
     filePath: string,
     description?: string,
-    thumbnailPath?: string
+    thumbnailPath?: string,
+    workspaceId?: string
   ) =>
     ipcRenderer.invoke("issue:create", {
       userId,
@@ -100,8 +104,10 @@ const api = {
       filePath,
       description,
       thumbnailPath,
+      workspaceId,
     }),
-  listIssues: (userId: string) => ipcRenderer.invoke("issue:list", { userId }),
+  listIssues: (userId: string, workspaceId?: string) =>
+    ipcRenderer.invoke("issue:list", { userId, workspaceId }),
   updateIssue: (issueId: string, updates: Record<string, unknown>) =>
     ipcRenderer.invoke("issue:update", { issueId, updates }),
   deleteIssue: (issueId: string) =>
@@ -220,11 +226,12 @@ const api = {
     ipcRenderer.invoke("sync:issue-zoho", { issueId, connectorId }),
 
   // Sync methods - Cloud (Supabase)
-  syncToCloud: (userId: string) =>
-    ipcRenderer.invoke("sync:to-cloud", { userId }),
-  syncFromCloud: (userId: string) =>
-    ipcRenderer.invoke("sync:from-cloud", { userId }),
-  fullSync: (userId: string) => ipcRenderer.invoke("sync:full", { userId }),
+  syncToCloud: (userId: string, workspaceId?: string) =>
+    ipcRenderer.invoke("sync:to-cloud", { userId, workspaceId }),
+  syncFromCloud: (userId: string, workspaceId?: string) =>
+    ipcRenderer.invoke("sync:from-cloud", { userId, workspaceId }),
+  fullSync: (userId: string, workspaceId?: string) =>
+    ipcRenderer.invoke("sync:full", { userId, workspaceId }),
   getSyncHistory: (userId: string) =>
     ipcRenderer.invoke("sync:get-history", { userId }),
 
@@ -368,6 +375,8 @@ const api = {
   // Utility methods
   openExternalUrl: (url: string) =>
     ipcRenderer.invoke("util:open-external", { url }),
+  showNotification: (title: string, body?: string) =>
+    ipcRenderer.invoke("util:show-notification", { title, body }),
 };
 
 contextBridge.exposeInMainWorld("ipc", handler);

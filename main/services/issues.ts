@@ -21,6 +21,7 @@ interface Snap {
     connectorId?: string;
   }[];
   userId: string;
+  workspaceId?: string;
   tags?: string[];
   [key: string]: unknown;
 }
@@ -42,7 +43,8 @@ export class SnapService {
     type: "screenshot" | "recording",
     filePath: string,
     description?: string,
-    thumbnailPath?: string
+    thumbnailPath?: string,
+    workspaceId?: string
   ): Promise<Snap> {
     log.info("[Snap Service] === CREATE SNAP START ===");
     log.info("[Snap Service] User ID:", userId);
@@ -61,6 +63,7 @@ export class SnapService {
       syncStatus: "local",
       syncedTo: [],
       userId,
+      workspaceId,
     };
 
     log.info("[Snap Service] Generated snap ID:", snap.id);
@@ -80,17 +83,22 @@ export class SnapService {
     return snap;
   }
 
-  getSnaps(userId?: string): Snap[] {
+  getSnaps(userId?: string, workspaceId?: string): Snap[] {
     log.info("[Snap Service] Getting snaps for user:", userId || "all");
 
     const snaps = (store as any).get("snaps");
-    if (userId) {
-      const filtered = snaps.filter((snap) => snap.userId === userId);
-      log.info("[Snap Service] Found", filtered.length, "snaps for user");
-      return filtered;
+    let filtered = userId
+      ? snaps.filter((snap) => snap.userId === userId)
+      : snaps;
+
+    if (workspaceId) {
+      filtered = filtered.filter(
+        (snap: Snap) => snap.workspaceId === workspaceId
+      );
     }
-    log.info("[Snap Service] Found", snaps.length, "total snaps");
-    return snaps;
+
+    log.info("[Snap Service] Found", filtered.length, "snaps");
+    return filtered;
   }
 
   getSnapById(snapId: string): Snap | undefined {
@@ -220,7 +228,8 @@ export class IssueService extends SnapService {
     type: "screenshot" | "recording",
     filePath: string,
     description?: string,
-    thumbnailPath?: string
+    thumbnailPath?: string,
+    workspaceId?: string
   ): Promise<Issue> {
     return this.createSnap(
       userId,
@@ -228,12 +237,13 @@ export class IssueService extends SnapService {
       type,
       filePath,
       description,
-      thumbnailPath
+      thumbnailPath,
+      workspaceId
     );
   }
 
-  getIssues(userId?: string): Issue[] {
-    return this.getSnaps(userId);
+  getIssues(userId?: string, workspaceId?: string): Issue[] {
+    return this.getSnaps(userId, workspaceId);
   }
 
   getIssueById(issueId: string): Issue | undefined {

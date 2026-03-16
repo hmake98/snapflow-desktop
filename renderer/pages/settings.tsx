@@ -12,6 +12,7 @@ import {
   UpdatesSection,
   CloudSyncIndicator,
 } from "../components/settings";
+import useStore from "../store/useStore";
 
 type Tab = "account" | "connectors" | "sync" | "general" | "recording";
 
@@ -26,6 +27,7 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("account");
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { activeWorkspace } = useStore();
 
   useEffect(() => {
     loadUser();
@@ -412,7 +414,10 @@ export default function SettingsPage() {
                 {isLoading ? (
                   <SkeletonSyncCard />
                 ) : user ? (
-                  <CloudSyncIndicator userId={user.id} />
+                  <CloudSyncIndicator
+                    userId={user.id}
+                    workspaceId={activeWorkspace?.id}
+                  />
                 ) : (
                   <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 border border-gray-700/50 rounded-2xl p-8 hover:border-gray-600/50 transition-all duration-300 backdrop-blur-sm max-w-4xl">
                     <div className="text-center py-12">

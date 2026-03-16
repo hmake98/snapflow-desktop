@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { format } from "date-fns";
-import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent } from "../components/ui/Card";
@@ -224,28 +223,23 @@ export default function HomePage() {
     };
   }, []);
 
+  // Reload snaps when workspace changes
+  useEffect(() => {
+    if (activeWorkspace) {
+      loadSnapsForWorkspace(activeWorkspace.id);
+    }
+  }, [activeWorkspace?.id]);
+
   // Listen for auto-sync completion and refresh issues
   useEffect(() => {
     const unsubscribe = window.api.onAutoSyncCompleted(async (data) => {
       console.log("[Home] Auto-sync completed, reloading issues...", data);
-      // Reload issues from local storage to get updated sync status
-      const issuesResult = await window.api.listIssues(data.userId);
+      const issuesResult = await window.api.listIssues(
+        data.userId,
+        activeWorkspace?.id
+      );
       if (issuesResult.success) {
-        console.log(
-          "[Home] Reloaded issues after auto-sync:",
-          issuesResult.data?.length,
-          "snaps"
-        );
-        if (issuesResult.data && issuesResult.data.length > 0) {
-          console.log(
-            "[Home] First snap sync status:",
-            issuesResult.data[0].syncStatus
-          );
-        }
         setIssues(issuesResult.data || []);
-        console.log(
-          "[Home] Issues reloaded after auto-sync, Zustand store updated"
-        );
       } else {
         console.error(
           "[Home] Failed to reload issues after auto-sync:",
@@ -257,7 +251,24 @@ export default function HomePage() {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [setIssues]);
+  }, [setIssues, activeWorkspace?.id]);
+
+  const loadSnapsForWorkspace = async (wsId: string) => {
+    try {
+      const userResult = await window.api.getUser();
+      if (userResult.success && userResult.data) {
+        const issuesResult = await window.api.listIssues(
+          userResult.data.id,
+          wsId
+        );
+        if (issuesResult.success) {
+          setIssues(issuesResult.data || []);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to reload snaps for workspace:", error);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -278,26 +289,24 @@ export default function HomePage() {
           return;
         }
 
-        // Get workspace ID
-        const tenantResult = await window.api.getUserTenant();
-        if (tenantResult.success && tenantResult.data?.id) {
-          const workspacesResult = await window.api.listWorkspaces(
-            tenantResult.data.id
-          );
-          if (workspacesResult.success && workspacesResult.data?.length > 0) {
-            setWorkspaceId(workspacesResult.data[0].id);
-          }
-        }
-
-        // Load user workspaces for the switcher
+        // Load user workspaces and set active workspace
         const wsResult = await window.api.getUserWorkspaces();
+        let resolvedWorkspaceId: string | undefined;
         if (wsResult.success && wsResult.data?.length) {
+          const ws = activeWorkspace ?? wsResult.data[0];
           if (!activeWorkspace) {
             setActiveWorkspace(wsResult.data[0]);
           }
+          resolvedWorkspaceId = ws.id;
+          setWorkspaceId(ws.id);
+          // Keep main process in sync so full-page-reload pages can resolve workspace
+          window.api.setActiveWorkspace(ws.id);
         }
 
-        const issuesResult = await window.api.listIssues(userResult.data.id);
+        const issuesResult = await window.api.listIssues(
+          userResult.data.id,
+          resolvedWorkspaceId
+        );
         if (issuesResult.success) {
           setIssues(issuesResult.data || []);
         }
@@ -307,7 +316,7 @@ export default function HomePage() {
       }
     } catch (error) {
       console.error("Failed to load data:", error);
-      toast.error("Failed to load data");
+      window.api.showNotification("SnapFlow", "Failed to load data");
       router.push("/auth");
     } finally {
       setLoading(false);
@@ -318,22 +327,25 @@ export default function HomePage() {
     try {
       // Optimistic update
       updateIssue(issue.id, { syncStatus: "syncing" });
-      toast.loading("Syncing to GitHub...", { id: `sync-${issue.id}` });
 
       const result = await window.api.syncIssue(issue.id, connectorId);
 
       if (result.success) {
         const message = result.data?.message || "Successfully synced to GitHub";
-        toast.success(message, {
-          id: `sync-${issue.id}`,
-        });
+        window.api.showNotification("Synced to GitHub", message);
         loadData(); // Reload to get updated sync status
       } else {
-        toast.error(`Sync failed: ${result.error}`, { id: `sync-${issue.id}` });
+        window.api.showNotification(
+          "GitHub Sync Failed",
+          result.error || "Sync failed"
+        );
         updateIssue(issue.id, { syncStatus: "failed" });
       }
-    } catch {
-      toast.error("An error occurred during sync", { id: `sync-${issue.id}` });
+    } catch (err) {
+      window.api.showNotification(
+        "GitHub Sync Failed",
+        err instanceof Error ? err.message : "An error occurred"
+      );
       updateIssue(issue.id, { syncStatus: "failed" });
     }
   };
@@ -357,14 +369,20 @@ export default function HomePage() {
       const result = await window.api.deleteIssue(issueToDelete);
       if (result.success) {
         deleteIssue(issueToDelete);
-        toast.success("Issue deleted successfully");
+        window.api.showNotification("Deleted", "Item deleted successfully");
         setDeleteDialogOpen(false);
         setIssueToDelete(null);
       } else {
-        toast.error(`Delete failed: ${result.error}`);
+        window.api.showNotification(
+          "Delete Failed",
+          result.error || "Could not delete item"
+        );
       }
     } catch {
-      toast.error("An error occurred while deleting");
+      window.api.showNotification(
+        "Delete Failed",
+        "An error occurred while deleting"
+      );
     }
   };
 
@@ -376,12 +394,18 @@ export default function HomePage() {
         if (previewIssue && previewIssue.id === issueId) {
           setPreviewIssue({ ...previewIssue, tags });
         }
-        toast.success("Tags updated successfully");
+        window.api.showNotification("Tags Updated", "Tags saved successfully");
       } else {
-        toast.error(`Failed to update tags: ${result.error}`);
+        window.api.showNotification(
+          "Update Failed",
+          result.error || "Failed to update tags"
+        );
       }
     } catch {
-      toast.error("An error occurred while updating tags");
+      window.api.showNotification(
+        "Update Failed",
+        "An error occurred while updating tags"
+      );
     }
   };
 
@@ -397,12 +421,21 @@ export default function HomePage() {
           setPreviewIssue({ ...previewIssue, description });
         }
         setIsEditingDescription(false);
-        toast.success("Description updated successfully");
+        window.api.showNotification(
+          "Description Updated",
+          "Description saved successfully"
+        );
       } else {
-        toast.error(`Failed to update description: ${result.error}`);
+        window.api.showNotification(
+          "Update Failed",
+          result.error || "Failed to update description"
+        );
       }
     } catch {
-      toast.error("An error occurred while updating description");
+      window.api.showNotification(
+        "Update Failed",
+        "An error occurred while updating description"
+      );
     }
   };
 
@@ -418,7 +451,7 @@ export default function HomePage() {
 
   const handleUpdateTitle = async (issueId: string, title: string) => {
     if (!title.trim()) {
-      toast.error("Title cannot be empty");
+      window.api.showNotification("Validation Error", "Title cannot be empty");
       return;
     }
 
@@ -430,12 +463,21 @@ export default function HomePage() {
           setPreviewIssue({ ...previewIssue, title });
         }
         setIsEditingTitle(false);
-        toast.success("Title updated successfully");
+        window.api.showNotification(
+          "Title Updated",
+          "Title saved successfully"
+        );
       } else {
-        toast.error(`Failed to update title: ${result.error}`);
+        window.api.showNotification(
+          "Update Failed",
+          result.error || "Failed to update title"
+        );
       }
     } catch {
-      toast.error("An error occurred while updating title");
+      window.api.showNotification(
+        "Update Failed",
+        "An error occurred while updating title"
+      );
     }
   };
 
@@ -1158,20 +1200,26 @@ export default function HomePage() {
 
   const handleZohoSync = async (issue: Issue, connectorId: string) => {
     updateIssue(issue.id, { syncStatus: "syncing" });
-    const toastId = toast.loading("Syncing to Zoho...");
     try {
       const result = await window.api.syncIssueToZoho(issue.id, connectorId);
-      toast.dismiss(toastId);
       if (result.success) {
-        toast.success("Synced to Zoho!");
+        window.api.showNotification(
+          "Synced to Zoho",
+          "Issue successfully synced to Zoho Projects"
+        );
         loadData();
       } else {
-        toast.error(result.error || "Sync failed");
+        window.api.showNotification(
+          "Zoho Sync Failed",
+          result.error || "Sync failed"
+        );
         updateIssue(issue.id, { syncStatus: "failed" });
       }
     } catch (error) {
-      toast.dismiss(toastId);
-      toast.error(error instanceof Error ? error.message : "Sync failed");
+      window.api.showNotification(
+        "Zoho Sync Failed",
+        error instanceof Error ? error.message : "Sync failed"
+      );
       updateIssue(issue.id, { syncStatus: "failed" });
     }
   };
@@ -1196,7 +1244,10 @@ export default function HomePage() {
         console.log("[LOGOUT] ✓ Logout successful!");
       }
 
-      toast.success("Logged out successfully");
+      window.api.showNotification(
+        "Signed Out",
+        "You have been logged out of SnapFlow"
+      );
 
       // Navigate using Next.js router
       console.log("[LOGOUT] Starting navigation to /auth...");
@@ -1213,7 +1264,7 @@ export default function HomePage() {
       // Clear state and redirect even on error
       setUser(null);
       setIssues([]);
-      toast.error("Logged out");
+      window.api.showNotification("Signed Out", "Session ended");
       console.log("[LOGOUT] Attempting navigation after error...");
       router.push("/auth");
       console.log("[LOGOUT] === LOGOUT FLOW END (with error) ===");
@@ -2170,7 +2221,10 @@ export default function HomePage() {
                               navigator.clipboard.writeText(
                                 previewIssue.cloudFileUrl!
                               );
-                              toast.success("Link copied to clipboard!");
+                              window.api.showNotification(
+                                "Copied",
+                                "Link copied to clipboard"
+                              );
                             }}
                             title="Copy to clipboard"
                           >
@@ -2266,9 +2320,15 @@ export default function HomePage() {
                             previewIssue.id
                           );
                           if (result.success) {
-                            toast.success("Bug report copied to clipboard");
+                            window.api.showNotification(
+                              "Copied",
+                              "Bug report copied to clipboard"
+                            );
                           } else {
-                            toast.error("Failed to copy bug report");
+                            window.api.showNotification(
+                              "Copy Failed",
+                              "Failed to copy bug report"
+                            );
                           }
                         }}
                         className="w-full text-xs h-9"
@@ -2334,9 +2394,15 @@ export default function HomePage() {
 
             if (result.success) {
               setShowWindowPicker(false);
-              toast.success("Recording started");
+              window.api.showNotification(
+                "Recording Started",
+                "Click the tray icon to stop recording"
+              );
             } else {
-              toast.error(`Failed to start recording: ${result.error}`);
+              window.api.showNotification(
+                "Recording Failed",
+                result.error || "Could not start recording"
+              );
             }
           }}
           onCancel={() => {

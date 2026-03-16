@@ -441,7 +441,10 @@ export class SyncService {
   /**
    * Sync all local issues to Supabase
    */
-  async syncAllToCloud(userId: string): Promise<SyncResult> {
+  async syncAllToCloud(
+    userId: string,
+    workspaceId?: string
+  ): Promise<SyncResult> {
     const supabase = getSupabase();
     if (!supabase) {
       return {
@@ -483,9 +486,10 @@ export class SyncService {
     }
     log.info("[Sync] Storage bucket is ready!");
 
-    // Get workspace ID for user
-    const workspaceId = await this.getWorkspaceIdForUser(userId);
-    if (!workspaceId) {
+    // Get workspace ID — use provided value or derive from user
+    const resolvedWorkspaceId =
+      workspaceId || (await this.getWorkspaceIdForUser(userId));
+    if (!resolvedWorkspaceId) {
       const error =
         "No workspace found for user. Please complete onboarding first.";
       log.error("[Sync]", error);
@@ -493,17 +497,17 @@ export class SyncService {
       result.errors.push(error);
       return result;
     }
-    log.info("[Sync] Using workspace:", workspaceId);
+    log.info("[Sync] Using workspace:", resolvedWorkspaceId);
 
-    // Get all local issues for this user
-    const localIssues = issueService.getIssues(userId);
+    // Get all local issues scoped to this workspace
+    const localIssues = issueService.getIssues(userId, resolvedWorkspaceId);
 
     // Create sync history record
     const syncHistoryId = await this.createSyncHistory(
       userId,
       "push",
       localIssues.length,
-      workspaceId
+      resolvedWorkspaceId
     );
     result.syncHistoryId = syncHistoryId || undefined;
 
@@ -591,7 +595,7 @@ export class SyncService {
 
           const issueData = {
             id: issue.id,
-            workspace_id: workspaceId,
+            workspace_id: resolvedWorkspaceId,
             created_by: userId,
             title: issue.title,
             description: issue.description || null,
@@ -719,7 +723,10 @@ export class SyncService {
    * Fetch issues from Supabase cloud and merge with local data
    * Downloads files from cloud if they don't exist locally
    */
-  async fetchFromCloud(userId: string): Promise<SyncResult> {
+  async fetchFromCloud(
+    userId: string,
+    workspaceId?: string
+  ): Promise<SyncResult> {
     const supabase = getSupabase();
     if (!supabase) {
       return {
@@ -737,11 +744,11 @@ export class SyncService {
       errors: [],
     };
 
-    // Get workspace ID for user
-    const workspaceId = await this.getWorkspaceIdForUser(userId);
-    if (!workspaceId) {
+    // Get workspace ID — use provided value or derive from user
+    const resolvedWorkspaceId =
+      workspaceId || (await this.getWorkspaceIdForUser(userId));
+    if (!resolvedWorkspaceId) {
       log.warn("[Sync] No workspace found for user, skipping fetch");
-      // This is not a fatal error for pull — user just has no workspace yet
       return result;
     }
 
@@ -750,7 +757,7 @@ export class SyncService {
       userId,
       "pull",
       0,
-      workspaceId
+      resolvedWorkspaceId
     );
     result.syncHistoryId = syncHistoryId || undefined;
 
@@ -759,7 +766,7 @@ export class SyncService {
       const { data: cloudIssues, error } = await supabase
         .from("snaps")
         .select("*")
-        .eq("workspace_id", workspaceId)
+        .eq("workspace_id", resolvedWorkspaceId)
         .eq("created_by", userId)
         .order("timestamp", { ascending: false });
 
@@ -1009,12 +1016,12 @@ export class SyncService {
   /**
    * Full sync: Push local changes to cloud and pull cloud changes to local
    */
-  async fullSync(userId: string): Promise<SyncResult> {
+  async fullSync(userId: string, workspaceId?: string): Promise<SyncResult> {
     // First push local changes to cloud
-    const pushResult = await this.syncAllToCloud(userId);
+    const pushResult = await this.syncAllToCloud(userId, workspaceId);
 
     // Then pull cloud changes to local
-    const pullResult = await this.fetchFromCloud(userId);
+    const pullResult = await this.fetchFromCloud(userId, workspaceId);
 
     // Combine results
     return {
