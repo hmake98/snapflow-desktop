@@ -210,6 +210,7 @@ export type IPCChannel =
   | "recording:set-default-source"
   | "recording:clear-default-source"
   | "clipboard:paste-bug"
+  | "clipboard:copy-bug-data"
   | "connector:list"
   | "connector:add"
   | "connector:update"

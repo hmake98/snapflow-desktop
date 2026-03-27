@@ -24,11 +24,11 @@ import {
   DialogTitle,
   DialogVisuallyHidden,
 } from "../components/ui/Dialog";
-import { WindowControls } from "../components/ui/WindowControls";
 import { WorkspaceSwitcher } from "../components/ui/WorkspaceSwitcher";
 import { useStore } from "../store/useStore";
 import { LocalImage } from "../components/ui/LocalImage";
 import { WindowPickerModal } from "../components/WindowPickerModal";
+import { ProfileDropdown } from "../components/ui/ProfileDropdown";
 import type { Issue } from "../types";
 
 interface RecordingSource {
@@ -40,128 +40,6 @@ interface RecordingSource {
 }
 
 // ─── Profile Dropdown ─────────────────────────────────────────────────────────
-
-function ProfileDropdown({
-  user,
-  onSettings,
-  onLogout,
-}: {
-  user: { name?: string; email?: string } | null;
-  onSettings: () => void;
-  onLogout: () => void;
-}) {
-  const [open, setOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node))
-        setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2.5 h-9 pl-2 pr-3 rounded-lg hover:bg-gray-800/60 transition-all group"
-      >
-        <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-lg flex-shrink-0">
-          {user?.name?.charAt(0).toUpperCase() ?? "?"}
-        </div>
-        <span className="text-sm font-medium text-gray-300 max-w-[120px] truncate">
-          {user?.name ?? ""}
-        </span>
-        <svg
-          className={`w-3.5 h-3.5 text-gray-500 transition-transform flex-shrink-0 ${open ? "rotate-180" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 9l-7 7-7-7"
-          />
-        </svg>
-      </button>
-
-      {open && (
-        <div className="absolute right-0 top-full mt-2 w-56 bg-gray-900 border border-gray-700/50 rounded-xl shadow-2xl z-50 overflow-hidden">
-          {/* User info */}
-          <div className="px-4 py-3 border-b border-gray-800">
-            <p className="text-sm font-medium text-gray-200 truncate">
-              {user?.name}
-            </p>
-            <p className="text-xs text-gray-500 truncate mt-0.5">
-              {user?.email}
-            </p>
-          </div>
-
-          {/* Menu items */}
-          <div className="p-1.5 space-y-0.5">
-            <button
-              onClick={() => {
-                setOpen(false);
-                onSettings();
-              }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800/60 hover:text-gray-100 transition-all text-left"
-            >
-              <svg
-                className="w-4 h-4 text-gray-400 flex-shrink-0"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-              </svg>
-              Settings
-            </button>
-
-            <div className="h-px bg-gray-800 my-1" />
-
-            <button
-              onClick={() => {
-                setOpen(false);
-                onLogout();
-              }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all text-left"
-            >
-              <svg
-                className="w-4 h-4 flex-shrink-0"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                />
-              </svg>
-              Sign out
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─── Home Page ─────────────────────────────────────────────────────────────────
 
@@ -185,8 +63,8 @@ export default function HomePage() {
   const [statusFilter, setStatusFilter] = useState<
     "all" | "cloud" | "github" | "zoho"
   >("all");
-  const [sortBy, setSortBy] = useState<"date" | "name">("date");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [sortBy, setSortBy] = useState<"date" | "name">("name");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [issueToDelete, setIssueToDelete] = useState<string | null>(null);
@@ -199,6 +77,8 @@ export default function HomePage() {
   const [editedTitle, setEditedTitle] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(12);
+
+  const [isPastingBug, setIsPastingBug] = useState(false);
 
   // Window picker modal state
   const [showWindowPicker, setShowWindowPicker] = useState(false);
@@ -350,6 +230,33 @@ export default function HomePage() {
     }
   };
 
+  const handleCloudSync = async (issue: Issue) => {
+    if (!user) return;
+    updateIssue(issue.id, { syncStatus: "syncing" });
+    try {
+      const result = await window.api.syncToCloud(user.id, workspaceId);
+      if (result.success) {
+        window.api.showNotification(
+          "Cloud Sync",
+          "Synced to cloud successfully"
+        );
+        loadData();
+      } else {
+        window.api.showNotification(
+          "Cloud Sync Failed",
+          result.error || "Sync failed"
+        );
+        updateIssue(issue.id, { syncStatus: "failed" });
+      }
+    } catch (err) {
+      window.api.showNotification(
+        "Cloud Sync Failed",
+        err instanceof Error ? err.message : "Sync failed"
+      );
+      updateIssue(issue.id, { syncStatus: "failed" });
+    }
+  };
+
   const confirmDelete = (issueId: string) => {
     setIssueToDelete(issueId);
     setDeleteDialogOpen(true);
@@ -369,7 +276,6 @@ export default function HomePage() {
       const result = await window.api.deleteIssue(issueToDelete);
       if (result.success) {
         deleteIssue(issueToDelete);
-        window.api.showNotification("Deleted", "Item deleted successfully");
         setDeleteDialogOpen(false);
         setIssueToDelete(null);
       } else {
@@ -394,7 +300,6 @@ export default function HomePage() {
         if (previewIssue && previewIssue.id === issueId) {
           setPreviewIssue({ ...previewIssue, tags });
         }
-        window.api.showNotification("Tags Updated", "Tags saved successfully");
       } else {
         window.api.showNotification(
           "Update Failed",
@@ -421,10 +326,6 @@ export default function HomePage() {
           setPreviewIssue({ ...previewIssue, description });
         }
         setIsEditingDescription(false);
-        window.api.showNotification(
-          "Description Updated",
-          "Description saved successfully"
-        );
       } else {
         window.api.showNotification(
           "Update Failed",
@@ -463,10 +364,6 @@ export default function HomePage() {
           setPreviewIssue({ ...previewIssue, title });
         }
         setIsEditingTitle(false);
-        window.api.showNotification(
-          "Title Updated",
-          "Title saved successfully"
-        );
       } else {
         window.api.showNotification(
           "Update Failed",
@@ -1295,60 +1192,29 @@ export default function HomePage() {
         <title>Home - SnapFlow</title>
       </Head>
       <div className="min-h-screen bg-gray-950">
-        {/* Titlebar with Window Controls - Draggable */}
-        <div
-          className="glass-strong border-b border-white/5 sticky top-0 z-20 backdrop-blur-xl"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        {/* Titlebar */}
+        <header
+          className="bg-gray-950 border-b border-gray-800/40 sticky top-0 z-20 flex items-center justify-between h-11"
+          style={
+            {
+              WebkitAppRegion: "drag",
+              paddingLeft: "84px",
+              paddingRight: "12px",
+            } as React.CSSProperties
+          }
         >
-          <div className="flex items-center justify-end h-9 pl-4">
-            <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-              <WindowControls />
-            </div>
+          {/* Left: workspace switcher */}
+          <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+            <WorkspaceSwitcher />
           </div>
-        </div>
 
-        {/* Header/Navbar */}
-        <header className="glass-strong border-b border-white/10 sticky top-9 z-10 backdrop-blur-xl">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex items-center justify-between">
-              <motion.div
-                className="flex items-center space-x-3"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/25">
-                  <svg
-                    className="w-6 h-6 text-white"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
-                    />
-                  </svg>
-                </div>
-                <h1 className="text-2xl font-bold text-blue-400">SnapFlow</h1>
-              </motion.div>
-
-              <motion.div
-                className="flex items-center space-x-3"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.3, delay: 0.1 }}
-              >
-                <WorkspaceSwitcher />
-                <ProfileDropdown
-                  user={user}
-                  onSettings={() => router.push("/settings")}
-                  onLogout={handleLogout}
-                />
-              </motion.div>
-            </div>
+          {/* Right: profile */}
+          <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+            <ProfileDropdown
+              user={user}
+              onSettings={() => router.push("/settings")}
+              onLogout={handleLogout}
+            />
           </div>
         </header>
 
@@ -1407,6 +1273,26 @@ export default function HomePage() {
                           strokeLinejoin="round"
                           strokeWidth={2}
                           d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                      </svg>
+                    ),
+                  },
+                  {
+                    id: "recording",
+                    label: "Recordings",
+                    count: issues.filter((i) => i.type === "recording").length,
+                    icon: (
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
                         />
                       </svg>
                     ),
@@ -1593,7 +1479,7 @@ export default function HomePage() {
                         className="relative h-40 bg-gray-800 overflow-hidden cursor-pointer"
                         onClick={() => openPreview(issue)}
                       >
-                        {issue.thumbnailPath ? (
+                        {issue.thumbnailPath && issue.type !== "recording" ? (
                           <>
                             <LocalImage
                               src={issue.thumbnailPath}
@@ -1616,6 +1502,28 @@ export default function HomePage() {
                                       strokeWidth={2}
                                       d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"
                                     />
+                                  </svg>
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        ) : issue.type === "recording" && issue.filePath ? (
+                          <>
+                            <video
+                              src={`snapflow://${issue.filePath}`}
+                              className="w-full h-full object-cover"
+                              muted
+                              preload="metadata"
+                            />
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all duration-300 flex items-center justify-center">
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                <div className="bg-white/10 backdrop-blur-sm rounded-full p-4">
+                                  <svg
+                                    className="w-8 h-8 text-white"
+                                    fill="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path d="M8 5v14l11-7z" />
                                   </svg>
                                 </div>
                               </div>
@@ -1740,6 +1648,45 @@ export default function HomePage() {
                           </div>
 
                           <div className="flex items-center space-x-0.5">
+                            {/* Cloud sync button */}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleCloudSync(issue)}
+                              disabled={
+                                issue.syncStatus === "syncing" ||
+                                issue.syncStatus === "synced"
+                              }
+                              title={
+                                issue.syncStatus === "synced"
+                                  ? "Synced to cloud"
+                                  : "Sync to cloud"
+                              }
+                              className={`hover:bg-gray-800 ${issue.syncStatus === "synced" ? "text-blue-400" : ""}`}
+                            >
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                {issue.syncStatus === "synced" ? (
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                  />
+                                ) : (
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                                  />
+                                )}
+                              </svg>
+                            </Button>
                             <GitHubSyncDropdown
                               issue={issue}
                               workspaceId={workspaceId}
@@ -1850,7 +1797,15 @@ export default function HomePage() {
               <div className="flex flex-col md:flex-row w-full h-full">
                 {/* Main Image Preview */}
                 <div className="flex-1 bg-gray-950 overflow-auto p-4 min-h-0">
-                  {previewIssue.filePath ? (
+                  {previewIssue.type === "recording" &&
+                  previewIssue.filePath ? (
+                    <video
+                      src={`snapflow://${previewIssue.filePath}`}
+                      controls
+                      className="w-full h-full"
+                      style={{ background: "#000", objectFit: "contain" }}
+                    />
+                  ) : previewIssue.filePath ? (
                     <LocalImage
                       src={previewIssue.filePath}
                       alt={previewIssue.title}
@@ -2246,7 +2201,9 @@ export default function HomePage() {
                             variant="ghost"
                             size="xs"
                             onClick={() => {
-                              window.open(previewIssue.cloudFileUrl, "_blank");
+                              window.api.openExternalUrl(
+                                previewIssue.cloudFileUrl
+                              );
                             }}
                             title="Open in browser"
                           >
@@ -2299,6 +2256,46 @@ export default function HomePage() {
                   <div className="px-4 sm:px-6 py-2.5 sm:py-3 border-t border-gray-800 flex-shrink-0">
                     <div className="flex flex-wrap gap-1.5 sm:gap-2">
                       <div className="flex-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleCloudSync(previewIssue)}
+                          disabled={
+                            previewIssue.syncStatus === "syncing" ||
+                            previewIssue.syncStatus === "synced"
+                          }
+                          className={`w-full justify-center text-xs h-9 ${previewIssue.syncStatus === "synced" ? "text-blue-400 border-blue-500/30" : ""}`}
+                        >
+                          <svg
+                            className="w-3.5 h-3.5 mr-1.5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            {previewIssue.syncStatus === "synced" ? (
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                              />
+                            ) : (
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                              />
+                            )}
+                          </svg>
+                          {previewIssue.syncStatus === "syncing"
+                            ? "Syncing..."
+                            : previewIssue.syncStatus === "synced"
+                              ? "Synced"
+                              : "Cloud Sync"}
+                        </Button>
+                      </div>
+                      <div className="flex-1">
                         <GitHubSyncDropdown
                           issue={previewIssue}
                           workspaceId={workspaceId}
@@ -2315,20 +2312,31 @@ export default function HomePage() {
                       <Button
                         variant="outline"
                         size="sm"
+                        disabled={isPastingBug}
                         onClick={async () => {
-                          const result = await window.api.pasteBug(
-                            previewIssue.id
-                          );
-                          if (result.success) {
-                            window.api.showNotification(
-                              "Copied",
-                              "Bug report copied to clipboard"
-                            );
-                          } else {
-                            window.api.showNotification(
-                              "Copy Failed",
-                              "Failed to copy bug report"
-                            );
+                          setIsPastingBug(true);
+                          try {
+                            const result = await window.api.copyBugData({
+                              title: previewIssue.title,
+                              description: previewIssue.description,
+                              cloudFileUrl: previewIssue.cloudFileUrl,
+                              type: previewIssue.type,
+                              filePath: previewIssue.filePath,
+                              syncedTo: previewIssue.syncedTo,
+                            });
+                            if (result.success) {
+                              const msg = result.synced
+                                ? "Bug report with media link copied to clipboard"
+                                : "Bug report copied to clipboard (no cloud link — sync to include media)";
+                              window.api.showNotification("Copied", msg);
+                            } else {
+                              window.api.showNotification(
+                                "Copy Failed",
+                                result.error || "Failed to copy bug report"
+                              );
+                            }
+                          } finally {
+                            setIsPastingBug(false);
                           }
                         }}
                         className="w-full text-xs h-9"
@@ -2346,7 +2354,7 @@ export default function HomePage() {
                             d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
                           />
                         </svg>
-                        Paste Bug
+                        {isPastingBug ? "Copying..." : "Paste Bug"}
                       </Button>
                       <Button
                         variant="danger"

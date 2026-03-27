@@ -3,7 +3,6 @@ import Head from "next/head";
 import { useRouter } from "next/router";
 import { Button } from "../components/ui/Button";
 import { SkeletonSyncCard } from "../components/ui/Skeleton";
-import { WindowControls } from "../components/ui/WindowControls";
 import {
   AccountSection,
   DisplaysSection,
@@ -12,7 +11,8 @@ import {
   UpdatesSection,
   CloudSyncIndicator,
 } from "../components/settings";
-import useStore from "../store/useStore";
+import { useStore } from "../store/useStore";
+import { ProfileDropdown } from "../components/ui/ProfileDropdown";
 
 type Tab = "account" | "connectors" | "sync" | "general" | "recording";
 
@@ -133,115 +133,50 @@ export default function SettingsPage() {
       </Head>
 
       <div className="min-h-screen bg-gray-950">
-        {/* Titlebar with Window Controls - Draggable */}
-        <div
-          className="glass-strong border-b border-white/5 sticky top-0 z-20 backdrop-blur-xl"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        {/* Titlebar */}
+        <header
+          className="bg-gray-950 border-b border-gray-800/40 sticky top-0 z-20 flex items-center justify-between h-11"
+          style={
+            {
+              WebkitAppRegion: "drag",
+              paddingLeft: "84px",
+              paddingRight: "12px",
+            } as React.CSSProperties
+          }
         >
-          <div className="flex items-center justify-end h-9 pl-4">
-            <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-              <WindowControls />
-            </div>
+          <div
+            className="flex items-center gap-2 text-gray-400"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          >
+            <button
+              onClick={() => router.push("/home")}
+              className="flex items-center gap-1.5 h-7 px-2 rounded-md hover:bg-gray-800/70 hover:text-gray-200 transition-all text-sm"
+            >
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
+                />
+              </svg>
+              <span>Settings</span>
+            </button>
           </div>
-        </div>
 
-        {/* Main Header/Navbar - Same as Home Page */}
-        <header className="glass-strong border-b border-white/10 sticky top-9 z-10 backdrop-blur-xl">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/25">
-                  <svg
-                    className="w-6 h-6 text-white"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
-                    />
-                  </svg>
-                </div>
-                <h1 className="text-2xl font-bold text-blue-400">SnapFlow</h1>
-              </div>
-
-              <div className="flex items-center space-x-3">
-                <div className="flex items-center space-x-3 pl-3 border-l border-gray-700/50">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-9 h-9 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold shadow-lg">
-                      {user?.name?.charAt(0).toUpperCase()}
-                    </div>
-                    <span className="text-sm font-medium text-gray-300">
-                      {user?.name}
-                    </span>
-                  </div>
-                  <button
-                    onClick={handleLogout}
-                    className="h-8 px-3 text-sm inline-flex items-center justify-center rounded-lg font-medium transition-all duration-200 bg-transparent text-gray-400 hover:bg-gray-800/50 hover:text-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500/50"
-                  >
-                    Logout
-                  </button>
-                </div>
-              </div>
-            </div>
+          <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+            <ProfileDropdown
+              user={user}
+              onSettings={() => router.push("/settings")}
+              onLogout={handleLogout}
+            />
           </div>
         </header>
-
-        {/* Secondary Navigation Bar */}
-        <div className="glass-strong border-b border-white/5 backdrop-blur-xl sticky top-[104px] z-10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => router.push("/home")}
-                className="flex items-center space-x-2 text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 rounded-lg px-3 py-2 transition-all duration-200"
-                title="Back to Home"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 19l-7-7 7-7"
-                  />
-                </svg>
-                <span className="text-sm font-medium">Back to Home</span>
-              </button>
-              <div className="w-px h-4 bg-gray-600"></div>
-              <div className="flex items-center space-x-2">
-                <svg
-                  className="w-4 h-4 text-gray-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                  />
-                </svg>
-                <span className="text-sm font-medium text-gray-300">
-                  Settings
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -365,14 +300,14 @@ export default function SettingsPage() {
             {activeTab === "account" && <AccountSection />}
 
             {activeTab === "connectors" && (
-              <>
+              <div className="space-y-6">
                 {/* GitHub Section */}
-                <div className="mb-8">
-                  <div className="mb-6">
-                    <h2 className="text-xl font-semibold text-gray-100 mb-2">
+                <div>
+                  <div className="mb-4">
+                    <h2 className="text-base font-semibold text-gray-100 mb-1">
                       GitHub Integration
                     </h2>
-                    <p className="text-sm text-gray-400">
+                    <p className="text-sm text-gray-500">
                       Connect your repositories to automatically sync
                       screenshots as issues
                     </p>
@@ -380,22 +315,21 @@ export default function SettingsPage() {
                   <GitHubConnectorManager />
                 </div>
 
-                {/* Divider */}
-                <div className="py-8 border-t border-gray-800"></div>
+                <div className="border-t border-gray-800" />
 
                 {/* Zoho Section */}
                 <div>
-                  <div className="mb-6">
-                    <h2 className="text-xl font-semibold text-gray-100 mb-2">
+                  <div className="mb-4">
+                    <h2 className="text-base font-semibold text-gray-100 mb-1">
                       Zoho Projects Integration
                     </h2>
-                    <p className="text-sm text-gray-400">
+                    <p className="text-sm text-gray-500">
                       Connect your Zoho workspace to sync screenshots as tasks
                     </p>
                   </div>
                   <ZohoConnectorManager />
                 </div>
-              </>
+              </div>
             )}
 
             {activeTab === "sync" && (

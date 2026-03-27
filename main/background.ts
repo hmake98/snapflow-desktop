@@ -111,7 +111,11 @@ let pendingGitHubTokens: {
 // App settings store
 const appSettingsStore = new Store({
   name: "snapflow-app-settings",
-  defaults: { autoSync: false },
+  defaults: {
+    autoSync: false,
+    autoSyncScreenshots: false,
+    autoSyncRecordings: false,
+  },
 }) as any;
 
 // State tracking for tray actions to prevent race conditions
@@ -185,7 +189,8 @@ async function createMainWindow() {
       width: 1200,
       height: 800,
       icon: iconPath,
-      frame: false,
+      backgroundColor: "#030712", // matches Tailwind bg-gray-950
+      titleBarStyle: "hiddenInset", // macOS: keeps native traffic lights, no title text
       webPreferences: {
         preload: path.join(__dirname, "preload.js"),
         contextIsolation: true,
@@ -204,8 +209,8 @@ async function createMainWindow() {
           ...details.responseHeaders,
           "Content-Security-Policy": [
             isProd
-              ? "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'"
-              : "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: http://localhost:*",
+              ? "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; media-src 'self' snapflow: blob:"
+              : "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: http://localhost:*; media-src 'self' snapflow: blob:",
           ],
         },
       });
@@ -2577,45 +2582,31 @@ function setupIPCHandlers() {
           workspaceId
         );
 
-        // Trigger auto-sync to cloud if enabled (fire-and-forget)
-        if (appSettingsStore.get("autoSync")) {
-          syncService
-            .syncAllToCloud(userId)
-            .then((result) => {
-              log.info("[AutoSync] Sync completed. Result:", {
-                success: result.success,
+        // Trigger auto-sync to cloud (fire-and-forget)
+        syncService
+          .syncAllToCloud(userId)
+          .then((result) => {
+            log.info("[AutoSync] Sync completed. Result:", {
+              success: result.success,
+              syncedCount: result.syncedCount,
+              failedCount: result.failedCount,
+            });
+            if (result.success && mainWindow && mainWindow.webContents) {
+              // Notify renderer that auto-sync completed so it can refresh
+              log.info(
+                "[AutoSync] Sending auto-sync-completed event to renderer"
+              );
+              mainWindow.webContents.send("auto-sync-completed", {
+                userId,
                 syncedCount: result.syncedCount,
-                failedCount: result.failedCount,
               });
-              if (result.success && mainWindow && mainWindow.webContents) {
-                // Notify renderer that auto-sync completed so it can refresh
-                log.info(
-                  "[AutoSync] Sending auto-sync-completed event to renderer"
-                );
-                mainWindow.webContents.send("auto-sync-completed", {
-                  userId,
-                  syncedCount: result.syncedCount,
-                });
-                if (Notification.isSupported()) {
-                  new Notification({
-                    title: "SnapFlow – Auto-Sync Complete",
-                    body: `${result.syncedCount} item${result.syncedCount !== 1 ? "s" : ""} synced to cloud`,
-                  }).show();
-                }
-              } else if (!result.success) {
-                log.warn("[AutoSync] Sync failed:", result.errors);
-                if (Notification.isSupported()) {
-                  new Notification({
-                    title: "SnapFlow – Auto-Sync Failed",
-                    body: result.errors?.[0] || "Could not sync to cloud",
-                  }).show();
-                }
-              }
-            })
-            .catch((err) =>
-              log.warn("[AutoSync] Background cloud sync failed:", err.message)
-            );
-        }
+            } else if (!result.success) {
+              log.warn("[AutoSync] Sync failed:", result.errors);
+            }
+          })
+          .catch((err) =>
+            log.warn("[AutoSync] Background cloud sync failed:", err.message)
+          );
 
         return { success: true, data: issue };
       } catch (error) {
@@ -2717,29 +2708,20 @@ function setupIPCHandlers() {
         }
       }
 
-      // Trigger auto-sync to cloud if enabled (fire-and-forget)
-      if (appSettingsStore.get("autoSync")) {
-        syncService
-          .syncAllToCloud(issue.userId)
-          .then((result) => {
-            if (result.success && mainWindow && mainWindow.webContents) {
-              // Notify renderer that auto-sync completed so it can refresh
-              mainWindow.webContents.send("auto-sync-completed", {
-                userId: issue.userId,
-                syncedCount: result.syncedCount,
-              });
-              if (Notification.isSupported()) {
-                new Notification({
-                  title: "SnapFlow – Auto-Sync Complete",
-                  body: `${result.syncedCount} item${result.syncedCount !== 1 ? "s" : ""} synced to cloud`,
-                }).show();
-              }
-            }
-          })
-          .catch((err) =>
-            log.warn("[AutoSync] Background cloud sync failed:", err.message)
-          );
-      }
+      // Trigger auto-sync to cloud (fire-and-forget)
+      syncService
+        .syncAllToCloud(issue.userId)
+        .then((result) => {
+          if (result.success && mainWindow && mainWindow.webContents) {
+            mainWindow.webContents.send("auto-sync-completed", {
+              userId: issue.userId,
+              syncedCount: result.syncedCount,
+            });
+          }
+        })
+        .catch((err) =>
+          log.warn("[AutoSync] Background cloud sync failed:", err.message)
+        );
 
       return { success: true, data: issue };
     } catch (error) {
@@ -3244,16 +3226,32 @@ function setupIPCHandlers() {
     }
   });
 
-  // Copy bug report to clipboard
+  // Copy bug report to clipboard by snap ID (snap must already be in local store)
   ipcMain.handle("clipboard:paste-bug", async (_event, { snapId }) => {
     log.info("[IPC] Copying bug report to clipboard for snap:", snapId);
     try {
-      const snap = await issueService.getSnapById(snapId);
+      let snap = await issueService.getSnapById(snapId);
       if (!snap) {
         return { success: false, error: "Snap not found" };
       }
+
+      // Try to sync to cloud first so we can include the cloud URL
+      if (!snap.cloudFileUrl) {
+        try {
+          const syncResult = await syncService.syncAllToCloud(snap.userId);
+          if (syncResult.success) {
+            snap = (await issueService.getSnapById(snapId)) || snap;
+          }
+        } catch (syncErr) {
+          log.warn(
+            "[Clipboard] Sync failed, copying with available data:",
+            syncErr
+          );
+        }
+      }
+
       clipboardService.copyBugReport(snap);
-      return { success: true };
+      return { success: true, synced: !!snap.cloudFileUrl };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
@@ -3261,6 +3259,36 @@ function setupIPCHandlers() {
       return { success: false, error: errorMessage };
     }
   });
+
+  // Copy bug report to clipboard from raw snap data (no store lookup required)
+  ipcMain.handle(
+    "clipboard:copy-bug-data",
+    async (
+      _event,
+      { title, description, cloudFileUrl, type, filePath, syncedTo }
+    ) => {
+      log.info("[IPC] Copying bug report from raw data to clipboard");
+      try {
+        clipboardService.copyBugReport({
+          id: "temp",
+          title,
+          description,
+          cloudFileUrl,
+          type,
+          filePath,
+          syncedTo,
+        });
+        return { success: true, synced: !!cloudFileUrl };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred";
+        log.error("[Clipboard] Copy bug data error:", error);
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
 
   ipcMain.handle("capture:get-pending", async () => {
     log.info("[IPC] Getting pending screenshot, exists:", !!pendingScreenshot);
@@ -3623,6 +3651,21 @@ function setupIPCHandlers() {
             : "An unexpected error occurred";
         log.error("IPC Handler error:", error);
         return { success: false, error: errorMessage };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    "app:open-external-url",
+    async (_event, { url }: { url: string }) => {
+      try {
+        await shell.openExternal(url);
+        return { success: true };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to open URL",
+        };
       }
     }
   );

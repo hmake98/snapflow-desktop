@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
-import { WindowControls } from "../components/ui/WindowControls";
 
 const getDisplayError = (errorMsg: string): string => {
   const msg = errorMsg.toLowerCase();
@@ -119,17 +118,11 @@ export default function AuthPage() {
         <title>{isLogin ? "Login" : "Sign Up"} - SnapFlow</title>
       </Head>
       <div className="h-screen bg-gray-950 flex flex-col overflow-hidden">
-        {/* Titlebar with Window Controls - Draggable */}
+        {/* Native drag region */}
         <div
-          className="glass-strong border-b border-white/5 flex-shrink-0"
+          className="h-11 flex-shrink-0 bg-gray-950"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        >
-          <div className="flex items-center justify-end h-9 pl-4">
-            <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-              <WindowControls />
-            </div>
-          </div>
-        </div>
+        />
 
         {/* Auth Content */}
         <div className="flex-1 flex items-center justify-center p-4 overflow-y-auto">

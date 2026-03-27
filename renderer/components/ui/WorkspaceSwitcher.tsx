@@ -73,10 +73,10 @@ export function WorkspaceSwitcher() {
       {/* Trigger button */}
       <button
         onClick={handleToggle}
-        className="flex items-center gap-2 h-9 pl-3 pr-2.5 rounded-lg bg-gray-800/60 border border-gray-700/50 hover:bg-gray-800 hover:border-gray-600/60 transition-all text-sm text-gray-300 max-w-[180px]"
+        className="flex items-center gap-1.5 h-7 pl-2.5 pr-2 rounded-md hover:bg-gray-800/70 transition-all text-sm text-gray-400 hover:text-gray-200 max-w-[200px]"
       >
         <svg
-          className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0"
+          className="w-3.5 h-3.5 text-gray-500 flex-shrink-0"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -108,7 +108,7 @@ export function WorkspaceSwitcher() {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-64 bg-gray-900 border border-gray-700/50 rounded-xl shadow-2xl z-50 overflow-hidden">
+        <div className="absolute left-0 top-full mt-2 w-64 bg-gray-900 border border-gray-700/50 rounded-xl shadow-2xl z-50 overflow-hidden">
           <div className="p-2">
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wider px-2 py-1.5">
               Your Workspaces

@@ -3,7 +3,6 @@ import Head from "next/head";
 import { useRouter } from "next/router";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
-import { WindowControls } from "../components/ui/WindowControls";
 import { useStore } from "../store/useStore";
 
 export default function AnnotatePage() {
@@ -90,6 +89,11 @@ export default function AnnotatePage() {
     // Listen for screenshot captured via IPC event (sent by main process after
     // navigating to this page — acts as the primary delivery mechanism)
     console.log("[Annotate] Setting up screenshot listener...");
+    const autoTitle = () => {
+      const now = new Date();
+      return `Screenshot ${now.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}`;
+    };
+
     const cleanup = window.api.onScreenshotCaptured((data: any) => {
       console.log("[Annotate] Screenshot received via IPC event!", {
         hasDataUrl: !!data?.dataUrl,
@@ -97,6 +101,7 @@ export default function AnnotatePage() {
         mode: data?.mode,
       });
       setScreenshot(data.dataUrl);
+      setTitle((prev) => prev || autoTitle());
     });
 
     // Also poll getPendingScreenshot as a fallback in case the IPC event
@@ -111,6 +116,7 @@ export default function AnnotatePage() {
             mode: result.data.mode,
           });
           setScreenshot(result.data.dataUrl);
+          setTitle((prev) => prev || autoTitle());
         } else {
           console.log("[Annotate] No pending screenshot found");
         }
@@ -625,21 +631,21 @@ export default function AnnotatePage() {
         <title>Annotate Screenshot - SnapFlow</title>
       </Head>
       <div className="h-screen bg-gray-950 flex flex-col overflow-hidden">
-        {/* Titlebar with Window Controls - Draggable */}
+        {/* Unified Toolbar */}
         <div
-          className="glass-strong border-b border-white/5 flex-shrink-0"
+          className="bg-gray-900 border-b border-gray-800 flex-shrink-0"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         >
-          <div className="flex items-center justify-end h-9 pl-4">
-            <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-              <WindowControls />
-            </div>
-          </div>
-        </div>
-
-        {/* Unified Toolbar */}
-        <div className="bg-gray-900 border-b border-gray-800 flex-shrink-0">
-          <div className="flex items-center h-12 px-3 gap-2 overflow-x-auto">
+          <div
+            className="flex items-center h-12 gap-2 overflow-x-auto"
+            style={
+              {
+                WebkitAppRegion: "no-drag",
+                paddingLeft: "84px",
+                paddingRight: "12px",
+              } as React.CSSProperties
+            }
+          >
             {/* Context label */}
             <div className="flex items-center gap-1.5 flex-shrink-0">
               <div className="w-6 h-6 bg-blue-600/20 border border-blue-500/30 rounded-md flex items-center justify-center">

@@ -10,5 +10,4 @@ module.exports = {
     // Enable TypeScript checking during build
     ignoreBuildErrors: false,
   },
-  turbopack: {},
 };

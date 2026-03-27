@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import type { Tenant, Workspace, OnboardingStatus, UserRole } from "../types";
-import { WindowControls } from "../components/ui/WindowControls";
 import { Button } from "../components/ui/Button";
 
 function slugify(text: string): string {
@@ -632,17 +631,11 @@ export default function OnboardingPage() {
         <title>SnapFlow - Onboarding</title>
       </Head>
       <div className="h-screen bg-gray-950 flex flex-col overflow-hidden">
-        {/* Titlebar */}
+        {/* Native drag region */}
         <div
-          className="glass-strong border-b border-white/5 flex-shrink-0"
+          className="h-11 flex-shrink-0 bg-gray-950"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        >
-          <div className="flex items-center justify-end h-9 pl-4">
-            <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-              <WindowControls />
-            </div>
-          </div>
-        </div>
+        />
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto">

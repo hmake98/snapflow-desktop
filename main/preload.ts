@@ -180,6 +180,19 @@ const api = {
   // Clipboard methods
   pasteBug: (snapId: string) =>
     ipcRenderer.invoke("clipboard:paste-bug", { snapId }),
+  copyBugData: (data: {
+    title: string;
+    description?: string;
+    cloudFileUrl?: string;
+    type?: string;
+    filePath?: string;
+    syncedTo?: {
+      platform: string;
+      externalId: string;
+      url?: string;
+      connectorId?: string;
+    }[];
+  }) => ipcRenderer.invoke("clipboard:copy-bug-data", data),
 
   // Listeners
   onRecordingSources: (callback: (sources: unknown[]) => void) => {
@@ -239,7 +252,6 @@ const api = {
   getAutoSync: () => ipcRenderer.invoke("settings:get-auto-sync"),
   setAutoSync: (enabled: boolean) =>
     ipcRenderer.invoke("settings:set-auto-sync", { enabled }),
-
   // Database methods
   getDatabaseConfig: () => ipcRenderer.invoke("db:get-config"),
   setDatabaseConfig: (url: string) =>
