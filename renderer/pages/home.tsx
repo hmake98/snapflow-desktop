@@ -105,6 +105,19 @@ export default function HomePage() {
     };
   }, [setIssues, activeWorkspace?.id]);
 
+  // Safety-net: re-fetch issues after short delays to catch any auto-sync
+  // that completed before or during the initial render (especially for screenshots
+  // where the annotate page calls createIssue then immediately navigates here).
+  useEffect(() => {
+    const t1 = setTimeout(() => loadSnapsForWorkspace(activeWorkspace?.id || workspaceId), 3000);
+    const t2 = setTimeout(() => loadSnapsForWorkspace(activeWorkspace?.id || workspaceId), 8000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const loadSnapsForWorkspace = async (wsId: string) => {
     try {
       const userResult = await window.api.getUser();
@@ -202,7 +215,7 @@ export default function HomePage() {
     }
   };
 
-  const handleCloudSync = async (issue: Issue) => {
+  const _handleCloudSync = async (issue: Issue) => {
     if (!user) return;
     updateIssue(issue.id, { syncStatus: "syncing" });
     try {
@@ -1620,45 +1633,6 @@ export default function HomePage() {
                           </div>
 
                           <div className="flex items-center space-x-0.5">
-                            {/* Cloud sync button */}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleCloudSync(issue)}
-                              disabled={
-                                issue.syncStatus === "syncing" ||
-                                issue.syncStatus === "synced"
-                              }
-                              title={
-                                issue.syncStatus === "synced"
-                                  ? "Synced to cloud"
-                                  : "Sync to cloud"
-                              }
-                              className={`hover:bg-gray-800 ${issue.syncStatus === "synced" ? "text-blue-400" : ""}`}
-                            >
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                {issue.syncStatus === "synced" ? (
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                  />
-                                ) : (
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                                  />
-                                )}
-                              </svg>
-                            </Button>
                             <GitHubSyncDropdown
                               issue={issue}
                               workspaceId={workspaceId}
@@ -2227,46 +2201,6 @@ export default function HomePage() {
                   {/* Action Buttons - Footer */}
                   <div className="px-4 sm:px-6 py-2.5 sm:py-3 border-t border-gray-800 flex-shrink-0">
                     <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                      <div className="flex-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleCloudSync(previewIssue)}
-                          disabled={
-                            previewIssue.syncStatus === "syncing" ||
-                            previewIssue.syncStatus === "synced"
-                          }
-                          className={`w-full justify-center text-xs h-9 ${previewIssue.syncStatus === "synced" ? "text-blue-400 border-blue-500/30" : ""}`}
-                        >
-                          <svg
-                            className="w-3.5 h-3.5 mr-1.5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            {previewIssue.syncStatus === "synced" ? (
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                              />
-                            ) : (
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                              />
-                            )}
-                          </svg>
-                          {previewIssue.syncStatus === "syncing"
-                            ? "Syncing..."
-                            : previewIssue.syncStatus === "synced"
-                              ? "Synced"
-                              : "Cloud Sync"}
-                        </Button>
-                      </div>
                       <div className="flex-1">
                         <GitHubSyncDropdown
                           issue={previewIssue}

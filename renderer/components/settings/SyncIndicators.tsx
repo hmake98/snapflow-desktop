@@ -5,7 +5,6 @@ import { SkeletonSyncCard } from "../ui/Skeleton";
 interface SyncStatus {
   isSyncing: boolean;
   lastSync: number | null;
-  syncCount: number;
   error: string | null;
 }
 
@@ -32,14 +31,42 @@ export function CloudSyncIndicator({
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({
     isSyncing: false,
     lastSync: null,
-    syncCount: 0,
     error: null,
   });
   const [isLoading, setIsLoading] = useState(true);
+  // Actual count of items currently synced in cloud (syncStatus === "synced")
+  const [syncedItemsCount, setSyncedItemsCount] = useState(0);
 
   useEffect(() => {
     loadSyncHistory();
+    loadSyncedItemsCount();
   }, [userId]);
+
+  // Refresh counts whenever a background auto-sync completes
+  useEffect(() => {
+    const unsubscribe = window.api.onAutoSyncCompleted(async () => {
+      await loadSyncedItemsCount();
+      await loadSyncHistory();
+    });
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [userId, workspaceId]);
+
+  /** Count items whose syncStatus is "synced" from the local store */
+  const loadSyncedItemsCount = async () => {
+    try {
+      const result = await window.api.listIssues(userId, workspaceId);
+      if (result.success && result.data) {
+        const count = (result.data as any[]).filter(
+          (issue) => issue.syncStatus === "synced"
+        ).length;
+        setSyncedItemsCount(count);
+      }
+    } catch (error) {
+      console.error("Failed to load synced items count:", error);
+    }
+  };
 
   const loadSyncHistory = async () => {
     try {
@@ -55,7 +82,6 @@ export function CloudSyncIndicator({
             lastSync: history.completed_at
               ? new Date(history.completed_at).getTime()
               : null,
-            syncCount: history.synced_count,
             error:
               history.status === "failed" && history.errors.length > 0
                 ? history.errors[0]
@@ -78,12 +104,14 @@ export function CloudSyncIndicator({
         setSyncStatus({
           isSyncing: false,
           lastSync: Date.now(),
-          syncCount: result.data.syncedCount,
           error: null,
         });
 
-        // Reload sync history after successful sync
-        setTimeout(() => loadSyncHistory(), 1000);
+        // Refresh synced items count + history
+        setTimeout(() => {
+          loadSyncedItemsCount();
+          loadSyncHistory();
+        }, 1000);
       } else {
         setSyncStatus((prev) => ({
           ...prev,
@@ -230,7 +258,7 @@ export function CloudSyncIndicator({
               </span>
             </div>
             <p className="text-lg font-semibold text-gray-100">
-              {syncStatus.lastSync ? syncStatus.syncCount : "-"}
+              {syncedItemsCount}
             </p>
           </div>
         </div>

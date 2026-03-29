@@ -859,101 +859,57 @@ export class CaptureService extends EventEmitter {
   }
 
   /**
-   * Create thumbnail from video file
+   * Create thumbnail from video file using FFmpeg frame extraction.
+   * This is more reliable than loading the video in a hidden BrowserWindow,
+   * because the Electron renderer cannot always decode WebM/VP9 via file://.
    */
   async createVideoThumbnail(
     videoPath: string,
     issueId: string
   ): Promise<string> {
-    try {
-      log.info("[Recording] Creating thumbnail from video:", videoPath);
+    log.info("[Recording] Creating thumbnail from video:", videoPath);
 
-      // Create a hidden window to extract a video frame for the thumbnail.
-      // We load about:blank and inject all logic via executeJavaScript so that
-      // inline-script CSP restrictions are completely bypassed.
-      const thumbWindow = new BrowserWindow({
-        show: false,
-        width: 1,
-        height: 1,
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: false,
-          webSecurity: false, // needed to load file:// video URLs
-        },
+    // Ensure the thumbnail directory exists
+    const thumbnailPath = storageManager.getThumbnailPath(issueId);
+    const dirPath = path.dirname(thumbnailPath);
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+
+    // Try FFmpeg frame extraction first
+    try {
+      if (!ensureFFmpegReady()) {
+        throw new Error("FFmpeg not available for thumbnail extraction");
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        ffmpeg(videoPath)
+          .inputOptions(["-ss 1"]) // seek to 1-second mark
+          .outputOptions([
+            "-frames:v 1",
+            "-vf scale=800:-2", // scale to max 800px wide, keep aspect ratio
+            "-y", // overwrite output
+          ])
+          .output(thumbnailPath)
+          .on("end", () => resolve())
+          .on("error", (err) => reject(err))
+          .run();
       });
 
-      await thumbWindow.loadURL(
-        "data:text/html;charset=utf-8,<!DOCTYPE html><html><body></body></html>"
-      );
-
-      const videoUrl = `file://${videoPath}`;
-      const thumbnailData = await thumbWindow.webContents.executeJavaScript(`
-        (function() {
-          return new Promise((resolve, reject) => {
-            const video = document.createElement('video');
-            const canvas = document.createElement('canvas');
-            video.muted = true;
-            document.body.appendChild(video);
-            document.body.appendChild(canvas);
-
-            video.onloadeddata = () => {
-              video.currentTime = Math.min(video.duration * 0.1, 1);
-            };
-
-            video.onseeked = () => {
-              try {
-                canvas.width  = video.videoWidth;
-                canvas.height = video.videoHeight;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                canvas.toBlob((blob) => {
-                  if (!blob) { reject(new Error('toBlob returned null')); return; }
-                  const reader = new FileReader();
-                  reader.onloadend = () => resolve(reader.result);
-                  reader.onerror   = reject;
-                  reader.readAsArrayBuffer(blob);
-                }, 'image/png');
-              } catch (err) {
-                reject(err);
-              }
-            };
-
-            video.onerror = () => reject(new Error('Video load error'));
-            video.src  = ${JSON.stringify(videoUrl)};
-            video.load();
-          });
-        })()
-      `);
-
-      thumbWindow.close();
-
-      // Save thumbnail
-      const thumbnailBuffer = Buffer.from(thumbnailData);
-      const resizedThumbnail = await this.resizeThumbnail(thumbnailBuffer);
-      const thumbnailPath = await storageManager.saveThumbnail(
-        issueId,
-        resizedThumbnail
-      );
+      // Verify the file was actually written
+      if (!fs.existsSync(thumbnailPath) || fs.statSync(thumbnailPath).size === 0) {
+        throw new Error("FFmpeg wrote an empty or missing thumbnail file");
+      }
 
       log.info("[Recording] Thumbnail created successfully:", thumbnailPath);
       return thumbnailPath;
     } catch (error) {
       log.error("[Recording] Failed to create thumbnail:", error);
 
-      // Fallback: create a placeholder thumbnail
-      const placeholderImage = nativeImage.createEmpty();
-      const thumbnailBuffer = placeholderImage.toPNG();
-      const thumbnailPath = storageManager.getThumbnailPath(issueId);
-
-      const fs = await import("fs");
-      const path = await import("path");
-      const dirPath = path.dirname(thumbnailPath);
-
-      if (!fs.existsSync(dirPath)) {
-        fs.mkdirSync(dirPath, { recursive: true });
-      }
-
-      fs.writeFileSync(thumbnailPath, thumbnailBuffer);
+      // Fallback: write an empty placeholder so the rest of the flow doesn't break
+      const placeholderBuffer = nativeImage.createEmpty().toPNG();
+      fs.writeFileSync(thumbnailPath, placeholderBuffer);
+      log.info("[Recording] Wrote placeholder thumbnail:", thumbnailPath);
       return thumbnailPath;
     }
   }

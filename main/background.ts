@@ -2658,8 +2658,9 @@ function setupIPCHandlers() {
               syncedCount: result.syncedCount,
               failedCount: result.failedCount,
             });
-            if (result.success && mainWindow && mainWindow.webContents) {
-              // Notify renderer that auto-sync completed so it can refresh
+            // Always notify renderer so the UI reflects the updated syncStatus,
+            // even on partial failures (some items may have synced successfully).
+            if (mainWindow && mainWindow.webContents) {
               log.info(
                 "[AutoSync] Sending auto-sync-completed event to renderer"
               );
@@ -2667,8 +2668,9 @@ function setupIPCHandlers() {
                 userId,
                 syncedCount: result.syncedCount,
               });
-            } else if (!result.success) {
-              log.warn("[AutoSync] Sync failed:", result.errors);
+            }
+            if (!result.success) {
+              log.warn("[AutoSync] Sync had errors:", result.errors);
             }
           })
           .catch((err) =>
@@ -2779,11 +2781,15 @@ function setupIPCHandlers() {
       syncService
         .syncAllToCloud(issue.userId)
         .then((result) => {
-          if (result.success && mainWindow && mainWindow.webContents) {
+          // Always notify renderer so the UI reflects updated syncStatus.
+          if (mainWindow && mainWindow.webContents) {
             mainWindow.webContents.send("auto-sync-completed", {
               userId: issue.userId,
               syncedCount: result.syncedCount,
             });
+          }
+          if (!result.success) {
+            log.warn("[AutoSync] Sync had errors:", result.errors);
           }
         })
         .catch((err) =>
