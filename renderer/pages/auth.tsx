@@ -117,33 +117,22 @@ export default function AuthPage() {
       <Head>
         <title>{isLogin ? "Login" : "Sign Up"} - SnapFlow</title>
       </Head>
-      <div className="h-screen bg-gray-950 flex flex-col overflow-hidden">
-        {/* Native drag region */}
-        <div
-          className="h-11 flex-shrink-0 bg-gray-950"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        />
+      <div className="min-h-screen w-full bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 relative flex flex-col overflow-y-auto">
+        {/* Background gradient overlay */}
+        <div className="fixed inset-0 bg-gradient-to-br from-blue-900/10 via-transparent to-purple-900/10 pointer-events-none" />
 
         {/* Auth Content */}
-        <div className="flex-1 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="relative bg-gray-900 rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-gray-800">
-            <div className="text-center mb-6">
-              <div className="inline-flex items-center justify-center w-12 h-12 bg-blue-600 rounded-2xl mb-3">
-                <svg
-                  className="w-6 h-6 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 10V3L4 14h7v7l9-11h-7z"
-                  />
-                </svg>
+        <div className="my-auto relative z-10 w-full max-w-sm self-center px-4 py-8">
+          <div className="mb-8 flex justify-center text-center">
+            <div className="mb-6">
+              <div className="w-24 h-24 flex items-center justify-center mx-auto">
+                <img
+                  src="/images/logo.png"
+                  alt="SnapFlow Logo"
+                  className="w-full h-full object-contain drop-shadow-xl"
+                />
               </div>
-              <h1 className="text-3xl font-bold text-gray-100 mb-1">
+              <h1 className="text-3xl font-bold text-gray-100 mt-3 mb-1">
                 SnapFlow
               </h1>
               <p className="text-gray-400 text-xs">
@@ -152,7 +141,9 @@ export default function AuthPage() {
                   : "Create your account to get started."}
               </p>
             </div>
+          </div>
 
+          <div className="bg-gray-900/80 backdrop-blur-sm rounded-2xl shadow-2xl p-6 border border-gray-800/60 text-left">
             {error && (
               <div className="mb-4 p-4 bg-red-500/20 border border-red-500/30 text-red-400 rounded-lg text-sm flex items-start">
                 <svg

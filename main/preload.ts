@@ -176,6 +176,14 @@ const api = {
     ipcRenderer.invoke("recording:set-default-source", source),
   clearDefaultRecordingSource: () =>
     ipcRenderer.invoke("recording:clear-default-source"),
+  getRecordingSourcesWithDefault: () =>
+    ipcRenderer.invoke("recording:get-sources-with-default"),
+  onShowRecordingPicker: (callback: (payload: unknown) => void) => {
+    const handler = (_event: IpcRendererEvent, payload: unknown) =>
+      callback(payload);
+    ipcRenderer.on("recording:show-picker", handler);
+    return () => ipcRenderer.removeListener("recording:show-picker", handler);
+  },
 
   // Clipboard methods
   pasteBug: (snapId: string) =>

@@ -1,5 +1,11 @@
 import { create } from "zustand";
-import type { User, Issue, Connector, Workspace } from "../types";
+import type {
+  User,
+  Issue,
+  Connector,
+  Workspace,
+  ShowPickerPayload,
+} from "../types";
 
 interface AppState {
   // User state
@@ -27,6 +33,12 @@ interface AppState {
   // UI state
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
+
+  // Recording picker state (global so modal works on any page)
+  pickerPayload: ShowPickerPayload | null;
+  showRecordingPicker: boolean;
+  setPickerPayload: (payload: ShowPickerPayload | null) => void;
+  setShowRecordingPicker: (show: boolean) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -72,4 +84,10 @@ export const useStore = create<AppState>((set) => ({
   // UI state
   isLoading: false,
   setIsLoading: (loading) => set({ isLoading: loading }),
+
+  // Recording picker state
+  pickerPayload: null,
+  showRecordingPicker: false,
+  setPickerPayload: (pickerPayload) => set({ pickerPayload }),
+  setShowRecordingPicker: (showRecordingPicker) => set({ showRecordingPicker }),
 }));

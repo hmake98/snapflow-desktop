@@ -27,17 +27,8 @@ import {
 import { WorkspaceSwitcher } from "../components/ui/WorkspaceSwitcher";
 import { useStore } from "../store/useStore";
 import { LocalImage } from "../components/ui/LocalImage";
-import { WindowPickerModal } from "../components/WindowPickerModal";
 import { ProfileDropdown } from "../components/ui/ProfileDropdown";
 import type { Issue } from "../types";
-
-interface RecordingSource {
-  id: string;
-  name: string;
-  type: "screen" | "window";
-  thumbnail: string;
-  displayBounds?: { x: number; y: number; width: number; height: number };
-}
 
 // ─── Profile Dropdown ─────────────────────────────────────────────────────────
 
@@ -80,27 +71,8 @@ export default function HomePage() {
 
   const [isPastingBug, setIsPastingBug] = useState(false);
 
-  // Window picker modal state
-  const [showWindowPicker, setShowWindowPicker] = useState(false);
-  const [recordingSources, setRecordingSources] = useState<RecordingSource[]>(
-    []
-  );
-
   useEffect(() => {
     loadData();
-
-    // Listen for window picker show request from main process
-    const unsubscribe = window.ipc.on(
-      "recording:show-picker",
-      (sources: unknown) => {
-        setRecordingSources(sources as RecordingSource[]);
-        setShowWindowPicker(true);
-      }
-    );
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
   }, []);
 
   // Reload snaps when workspace changes
@@ -2388,35 +2360,7 @@ export default function HomePage() {
           </DialogContent>
         </Dialog>
 
-        {/* Window Picker Modal for Recording */}
-        <WindowPickerModal
-          isOpen={showWindowPicker}
-          sources={recordingSources}
-          onSelect={async (source, setAsDefault) => {
-            const result = await window.api.startRecordingWithSource({
-              sourceId: source.id,
-              sourceName: source.name,
-              displayBounds: source.displayBounds || null,
-              setAsDefault,
-            });
-
-            if (result.success) {
-              setShowWindowPicker(false);
-              window.api.showNotification(
-                "Recording Started",
-                "Click the tray icon to stop recording"
-              );
-            } else {
-              window.api.showNotification(
-                "Recording Failed",
-                result.error || "Could not start recording"
-              );
-            }
-          }}
-          onCancel={() => {
-            setShowWindowPicker(false);
-          }}
-        />
+        {/* Recording picker is now in _app.tsx (global, works from any page) */}
       </div>
     </>
   );

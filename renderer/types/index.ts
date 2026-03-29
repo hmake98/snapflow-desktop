@@ -1,5 +1,23 @@
 export type UserRole = "owner" | "admin" | "pm" | "qa" | "dev" | "client";
 
+export interface RecordingSource {
+  id: string;
+  name: string;
+  type: "screen" | "window";
+  thumbnail: string;
+  resolution?: string;
+  displayBounds?: { x: number; y: number; width: number; height: number };
+}
+
+export interface SourcesWithDefaultPayload {
+  sources: RecordingSource[];
+  validatedDefault: RecordingSource | null;
+  defaultWasInvalid: boolean;
+  invalidSourceName: string | null;
+}
+
+export type ShowPickerPayload = SourcesWithDefaultPayload;
+
 export interface User {
   id: string;
   name: string;

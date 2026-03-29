@@ -10,6 +10,7 @@ import {
   ZohoConnectorManager,
   UpdatesSection,
   CloudSyncIndicator,
+  RecordingSection,
 } from "../components/settings";
 import { useStore } from "../store/useStore";
 import { ProfileDropdown } from "../components/ui/ProfileDropdown";
@@ -32,34 +33,6 @@ export default function SettingsPage() {
   useEffect(() => {
     loadUser();
   }, []);
-
-  // Load default recording source when recording tab is active
-  useEffect(() => {
-    if (activeTab === "recording") {
-      loadDefaultRecordingSource();
-    }
-  }, [activeTab]);
-
-  const loadDefaultRecordingSource = async () => {
-    try {
-      const result = await window.api.getDefaultRecordingSource?.();
-      const displayEl = document.getElementById("default-source-display");
-      if (displayEl) {
-        if (result?.success && result?.data) {
-          displayEl.textContent = `📹 ${result.data.name || "Unknown"} (${result.data.type === "screen" ? "Screen" : "Window"})`;
-        } else {
-          displayEl.textContent =
-            "No default source set. Next recording will show the source picker.";
-        }
-      }
-    } catch (error) {
-      console.error("Failed to load default recording source:", error);
-      const displayEl = document.getElementById("default-source-display");
-      if (displayEl) {
-        displayEl.textContent = "Unable to load default source";
-      }
-    }
-  };
 
   // Set active tab from query parameter
   useEffect(() => {
@@ -402,108 +375,7 @@ export default function SettingsPage() {
               </>
             )}
 
-            {activeTab === "recording" && (
-              <>
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-100 mb-2">
-                    Recording Settings
-                  </h2>
-                  <p className="text-sm text-gray-400 mb-6">
-                    Configure your default recording source
-                  </p>
-                </div>
-
-                {/* Default Recording Source */}
-                <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 border border-gray-700/50 rounded-2xl p-6 hover:border-gray-600/50 transition-all duration-300 backdrop-blur-sm">
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Default Recording Source
-                      </label>
-                      <p className="text-sm text-gray-400 mb-3">
-                        Your currently saved default recording source. Select
-                        "Start Recording with Selection" from the tray menu to
-                        change it.
-                      </p>
-                      <div className="bg-gray-900/50 border border-gray-700/50 rounded-lg p-4">
-                        <p
-                          className="text-sm text-gray-300"
-                          id="default-source-display"
-                        >
-                          Loading...
-                        </p>
-                      </div>
-                    </div>
-
-                    <div>
-                      <Button
-                        variant="secondary"
-                        onClick={async () => {
-                          try {
-                            const result =
-                              await window.api.clearDefaultRecordingSource?.();
-                            if (result?.success) {
-                              const displayEl = document.getElementById(
-                                "default-source-display"
-                              );
-                              if (displayEl) {
-                                displayEl.textContent =
-                                  "No default source set. Next recording will show the source picker.";
-                              }
-                            }
-                          } catch (error) {
-                            console.error(
-                              "Failed to clear default source:",
-                              error
-                            );
-                          }
-                        }}
-                      >
-                        Clear Default Source
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Recording Tips */}
-                <div className="pt-6 border-t border-gray-800 mt-6">
-                  <h3 className="text-lg font-semibold text-gray-100 mb-4">
-                    Recording Tips
-                  </h3>
-                  <ul className="space-y-2 text-sm text-gray-400">
-                    <li className="flex items-start space-x-2">
-                      <span className="text-blue-400 mt-1">•</span>
-                      <span>
-                        <strong>Ctrl+Shift+R:</strong> Record using your default
-                        source (or show picker if not set)
-                      </span>
-                    </li>
-                    <li className="flex items-start space-x-2">
-                      <span className="text-blue-400 mt-1">•</span>
-                      <span>
-                        <strong>Start Recording with Selection:</strong> Always
-                        shows the source picker to choose a specific screen or
-                        window
-                      </span>
-                    </li>
-                    <li className="flex items-start space-x-2">
-                      <span className="text-blue-400 mt-1">•</span>
-                      <span>
-                        <strong>Full Screen:</strong> Records your primary
-                        display at full resolution
-                      </span>
-                    </li>
-                    <li className="flex items-start space-x-2">
-                      <span className="text-blue-400 mt-1">•</span>
-                      <span>
-                        <strong>Active Windows:</strong> Select any open window
-                        to record just that application
-                      </span>
-                    </li>
-                  </ul>
-                </div>
-              </>
-            )}
+            {activeTab === "recording" && <RecordingSection />}
           </div>
         </main>
       </div>

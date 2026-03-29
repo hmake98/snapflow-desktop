@@ -7,7 +7,15 @@ export interface RecordingSource {
   name: string;
   type: "screen" | "window";
   thumbnail: string;
+  resolution?: string;
   displayBounds?: { x: number; y: number; width: number; height: number };
+}
+
+export interface SourcesWithDefaultPayload {
+  sources: RecordingSource[];
+  validatedDefault: RecordingSource | null;
+  defaultWasInvalid: boolean;
+  invalidSourceName: string | null;
 }
 
 /**
@@ -57,6 +65,8 @@ export class WindowPickerService {
         (win) => `window:${win.id}:0`
       );
 
+      const primaryBounds = primaryDisplay.bounds;
+
       // Start with "Full Screen" quick option as the ONLY screen option
       const recordingSources: RecordingSource[] = [
         {
@@ -67,7 +77,8 @@ export class WindowPickerService {
             sources
               .find((s) => s.id.startsWith("screen:"))
               ?.thumbnail.toDataURL() || "",
-          displayBounds: primaryDisplay.bounds,
+          resolution: `${primaryBounds.width} × ${primaryBounds.height}`,
+          displayBounds: primaryBounds,
         },
       ];
 
@@ -105,11 +116,16 @@ export class WindowPickerService {
       });
 
       for (const source of windowSources) {
+        const size = source.thumbnail.getSize();
         recordingSources.push({
           id: source.id,
           name: source.name,
           type: "window",
           thumbnail: source.thumbnail.toDataURL(),
+          resolution:
+            size.width > 0 && size.height > 0
+              ? `${size.width} × ${size.height}`
+              : undefined,
         });
       }
 
@@ -133,6 +149,7 @@ export class WindowPickerService {
                 : `Display ${display.id}`,
             type: "screen",
             thumbnail: "", // Empty thumbnail for fallback
+            resolution: `${display.bounds.width} × ${display.bounds.height}`,
             displayBounds: display.bounds,
           });
         }
@@ -150,28 +167,128 @@ export class WindowPickerService {
   }
 
   /**
-   * Get sources for the window picker
-   * No longer opens a separate window - sources are sent to main window via IPC
+   * Validate whether a saved default source is still active.
+   * Uses name-based fallback for windows since IDs change on app restart.
+   */
+  async validateDefaultSource(saved: {
+    id: string;
+    name: string;
+    type: string;
+  }): Promise<{ valid: true; source: RecordingSource } | { valid: false }> {
+    try {
+      const sources = await this.getSources();
+
+      // Full-screen special case: both "full-screen" and "screen:*" IDs map to our
+      // synthetic Full Screen entry. This handles legacy saves that used "screen:1:0".
+      if (saved.id === "full-screen" || saved.id.startsWith("screen:")) {
+        const fs = sources.find((s) => s.id === "full-screen");
+        if (fs) return { valid: true, source: fs };
+        return { valid: false };
+      }
+
+      // Exact ID match
+      const exact = sources.find((s) => s.id === saved.id);
+      if (exact) return { valid: true, source: exact };
+
+      // Name-based fallback for windows (IDs change on app restart)
+      if (saved.type === "window") {
+        const byName = sources.find(
+          (s) => s.type === "window" && s.name === saved.name
+        );
+        if (byName) {
+          log.info(
+            `[WindowPicker] Matched default source by name: "${saved.name}" (ID changed from ${saved.id} to ${byName.id})`
+          );
+          return { valid: true, source: byName };
+        }
+      }
+
+      log.info(
+        `[WindowPicker] Default source not found: "${saved.name}" (${saved.id})`
+      );
+      return { valid: false };
+    } catch (error) {
+      log.error("[WindowPicker] Error validating default source:", error);
+      return { valid: false };
+    }
+  }
+
+  /**
+   * Get all sources plus validate and resolve the saved default in a single call.
+   * Avoids double-fetching by reusing the already-fetched sources list.
+   */
+  async getSourcesWithDefault(
+    savedDefault: { id: string; name: string; type: string } | null
+  ): Promise<SourcesWithDefaultPayload> {
+    const sources = await this.getSources();
+
+    if (!savedDefault) {
+      return {
+        sources,
+        validatedDefault: null,
+        defaultWasInvalid: false,
+        invalidSourceName: null,
+      };
+    }
+
+    let validatedDefault: RecordingSource | null;
+
+    // Full-screen special case: both "full-screen" synthetic ID and any "screen:*" ID
+    // map to the single "Full Screen" entry in our sources list.
+    // This handles both new saves (id="full-screen") and old saves (id="screen:1:0")
+    if (
+      savedDefault.id === "full-screen" ||
+      savedDefault.id.startsWith("screen:")
+    ) {
+      validatedDefault = sources.find((s) => s.id === "full-screen") ?? null;
+    } else {
+      // Exact ID match first
+      validatedDefault = sources.find((s) => s.id === savedDefault.id) ?? null;
+
+      // Name-based fallback for windows
+      if (!validatedDefault && savedDefault.type === "window") {
+        validatedDefault =
+          sources.find(
+            (s) => s.type === "window" && s.name === savedDefault.name
+          ) ?? null;
+        if (validatedDefault) {
+          log.info(
+            `[WindowPicker] Default source matched by name: "${savedDefault.name}" (new ID: ${validatedDefault.id})`
+          );
+        }
+      }
+    }
+
+    const defaultWasInvalid = !validatedDefault;
+    if (defaultWasInvalid) {
+      log.warn(
+        `[WindowPicker] Saved default source is no longer active: "${savedDefault.name}" (${savedDefault.id})`
+      );
+    }
+
+    return {
+      sources,
+      validatedDefault,
+      defaultWasInvalid,
+      invalidSourceName: defaultWasInvalid ? savedDefault.name : null,
+    };
+  }
+
+  /**
+   * Send picker sources to main window via IPC.
+   * Accepts a pre-fetched payload to avoid redundant getSources() calls.
    */
   async showPickerInMainWindow(
-    mainWindow: BrowserWindow | null
+    mainWindow: BrowserWindow | null,
+    payload: SourcesWithDefaultPayload
   ): Promise<void> {
     if (!mainWindow || mainWindow.isDestroyed()) {
       log.error("[WindowPicker] Main window not available");
       throw new Error("Main window not available");
     }
 
-    try {
-      log.info("[WindowPicker] Getting sources for main window picker");
-      const sources = await this.getSources();
-
-      // Send sources to main window to show picker modal
-      mainWindow.webContents.send("recording:show-picker", sources);
-      log.info("[WindowPicker] Sent picker request to main window");
-    } catch (error) {
-      log.error("[WindowPicker] Failed to show picker in main window:", error);
-      throw error;
-    }
+    mainWindow.webContents.send("recording:show-picker", payload);
+    log.info("[WindowPicker] Sent picker payload to main window");
   }
 
   /**

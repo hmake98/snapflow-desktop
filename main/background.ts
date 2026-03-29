@@ -21,6 +21,7 @@ import { githubService } from "./services/github";
 import { recorderService } from "./services/recorder";
 import { overlayService } from "./services/overlay";
 import { windowPickerService } from "./services/window-picker";
+import type { SourcesWithDefaultPayload } from "./services/window-picker";
 import { clipboardService } from "./services/clipboard";
 import { recordingSettingsService } from "./services/settings";
 import { storageManager } from "./utils/storage";
@@ -463,7 +464,7 @@ function updateTrayMenu() {
     menuItems.push({
       label: "Start Recording with Selection",
       click: async () => {
-        await handleStartRecordingWithSelection();
+        await handleStartRecordingFlowWithSelection();
       },
     });
   }
@@ -868,42 +869,96 @@ async function _createRecordingControlWindow(bounds: {
   });
 }
 
+// Guard flag to prevent concurrent recording flow starts
+let isStartingRecordingFlow = false;
+
 // Recording workflow functions
 async function handleStartRecordingFlow() {
+  if (isStartingRecordingFlow || recorderService.getState() !== "idle") {
+    log.warn(
+      "[Recording] Recording flow already in progress, ignoring duplicate trigger"
+    );
+    return;
+  }
+  isStartingRecordingFlow = true;
   try {
     log.info("[Recording] Starting recording flow");
 
-    const defaultSource = recordingSettingsService.getDefaultSource();
+    const savedDefault = recordingSettingsService.getDefaultSource();
 
-    if (defaultSource) {
-      // Use default source, start immediately
-      log.info(
-        "[Recording] Using default source:",
-        defaultSource.name,
-        defaultSource.id
-      );
-      await handleStartRecordingWithSource(
-        defaultSource.id,
-        defaultSource.displayBounds ?? null
-      );
+    if (savedDefault) {
+      // Validate that the saved default source is still active
+      const payload =
+        await windowPickerService.getSourcesWithDefault(savedDefault);
+
+      if (payload.validatedDefault) {
+        // Default is live — start immediately without showing picker
+        log.info(
+          "[Recording] Default source valid, starting immediately:",
+          payload.validatedDefault.name
+        );
+        await handleStartRecordingWithSource(
+          payload.validatedDefault.id,
+          payload.validatedDefault.displayBounds ?? null
+        );
+        return;
+      } else {
+        // Default is gone — clear it and show picker with notification
+        log.warn(
+          "[Recording] Default source no longer active, clearing:",
+          savedDefault.name
+        );
+        recordingSettingsService.clearDefaultSource();
+        await handleStartRecordingWithSelection(payload);
+      }
     } else {
-      // No default, show picker modal in main window
-      log.info("[Recording] No default source, showing picker in main window");
-      await handleStartRecordingWithSelection();
+      // No default saved — fetch sources and show picker
+      log.info("[Recording] No default source, showing picker");
+      const payload = await windowPickerService.getSourcesWithDefault(null);
+      await handleStartRecordingWithSelection(payload);
     }
   } catch (error) {
     log.error("[Recording] Failed to start recording:", error);
     dialog.showErrorBox("Recording Error", "Failed to start recording");
     recorderService.setState("idle");
     updateTrayMenu();
+  } finally {
+    isStartingRecordingFlow = false;
   }
 }
 
 /**
- * Always show the picker for user to select a screen/window
- * Used when user explicitly chooses "Start recording with selection" from menu
+ * Fetch sources and show the picker — used when tray menu explicitly requests selection
  */
-async function handleStartRecordingWithSelection() {
+async function handleStartRecordingFlowWithSelection() {
+  if (isStartingRecordingFlow || recorderService.getState() !== "idle") {
+    log.warn("[Recording] Recording flow already in progress, ignoring");
+    return;
+  }
+  isStartingRecordingFlow = true;
+  try {
+    const savedDefault = recordingSettingsService.getDefaultSource();
+    const payload = await windowPickerService.getSourcesWithDefault(
+      savedDefault ?? null
+    );
+    await handleStartRecordingWithSelection(payload);
+  } catch (error) {
+    log.error("[Recording] Failed to show selection picker:", error);
+    recorderService.setState("idle");
+    recordingState = "idle";
+    updateTrayMenu();
+  } finally {
+    isStartingRecordingFlow = false;
+  }
+}
+
+/**
+ * Show the picker modal in the main window with pre-fetched payload.
+ * Navigates to /home first to ensure the modal component is mounted.
+ */
+async function handleStartRecordingWithSelection(
+  payload: SourcesWithDefaultPayload
+) {
   try {
     log.info("[Recording] Starting recording with selection");
     recorderService.setState("selecting");
@@ -914,13 +969,13 @@ async function handleStartRecordingWithSelection() {
       app.dock?.show();
     }
 
-    // Show main window with picker modal
+    // Show main window — picker modal is mounted globally in _app.tsx
     mainWindow?.show();
     mainWindow?.focus();
 
-    // Show window picker modal in the main window
+    // Send picker payload to renderer
     try {
-      await windowPickerService.showPickerInMainWindow(mainWindow);
+      await windowPickerService.showPickerInMainWindow(mainWindow, payload);
     } catch (error) {
       log.error("[Recording] Failed to show picker:", error);
       recorderService.setState("idle");
@@ -1023,6 +1078,12 @@ async function handleStartRecordingWithSource(
       await overlayService.show(bounds, process.argv[2]);
     }
 
+    // Restore dock icon after overlay is shown — setVisibleOnAllWorkspaces on the
+    // overlay window can cause macOS to hide the dock icon as a side effect.
+    if (process.platform === "darwin") {
+      app.dock?.show();
+    }
+
     log.info("[Recording] Recording started successfully");
   } catch (error) {
     log.error("[Recording] Failed to start recording with source:", error);
@@ -1073,6 +1134,11 @@ async function handleRecordingAreaSelected(bounds: {
 
     // Show red border overlay
     await overlayService.show(recordingBounds, process.argv[2]);
+
+    // Restore dock icon after overlay — setVisibleOnAllWorkspaces can hide it
+    if (process.platform === "darwin") {
+      app.dock?.show();
+    }
 
     log.info("[Recording] Recording started. Click tray icon to stop.");
   } catch (error) {
@@ -1157,6 +1223,7 @@ async function handleCancelRecording() {
   // Reset state
   recordingState = "idle";
   recordingBounds = null;
+  recorderService.setState("idle");
   trayIconManager?.setState("normal");
   updateTrayMenu();
 
@@ -3160,9 +3227,37 @@ function setupIPCHandlers() {
           );
         }
 
+        // Defensive check: verify the window source is still live before starting
+        // Screen sources (full-screen, screen:*) are always considered live
+        if (!actualSourceId.startsWith("screen")) {
+          const freshSources = await windowPickerService.getSources();
+          const stillLive = freshSources.find(
+            (s) =>
+              s.id === actualSourceId ||
+              (s.type === "window" && s.name === sourceName)
+          );
+          if (!stillLive) {
+            log.warn(
+              "[Recording] Selected window is no longer active:",
+              sourceName
+            );
+            return {
+              success: false,
+              error: `"${sourceName}" is no longer active. Please refresh and select another source.`,
+            };
+          }
+          // Update actualSourceId in case it was matched by name with a new ID
+          if (stillLive.id !== actualSourceId) {
+            log.info(
+              `[Recording] Source ID updated via name match: ${actualSourceId} → ${stillLive.id}`
+            );
+            actualSourceId = stillLive.id;
+          }
+        }
+
         if (setAsDefault) {
           recordingSettingsService.setDefaultSource({
-            id: actualSourceId,
+            id: sourceId === "full-screen" ? "full-screen" : actualSourceId,
             name: sourceName,
             type: actualSourceId.startsWith("screen") ? "screen" : "window",
             displayBounds: actualBounds,
@@ -3222,6 +3317,23 @@ function setupIPCHandlers() {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
       log.error("[Recording] Clear default source error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // Get all active recording sources plus validated default in a single call
+  ipcMain.handle("recording:get-sources-with-default", async () => {
+    log.info("[IPC] Getting recording sources with default");
+    try {
+      const savedDefault = recordingSettingsService.getDefaultSource();
+      const payload = await windowPickerService.getSourcesWithDefault(
+        savedDefault ?? null
+      );
+      return { success: true, data: payload };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("[Recording] Get sources with default error:", error);
       return { success: false, error: errorMessage };
     }
   });

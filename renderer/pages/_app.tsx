@@ -3,13 +3,37 @@ import type { AppProps } from "next/app";
 import { useRouter } from "next/router";
 import { TooltipProvider } from "../components/ui/Tooltip";
 import { SplashScreen } from "../components/ui/SplashScreen";
+import { WindowPickerModal } from "../components/WindowPickerModal";
+import { useStore } from "../store/useStore";
+import type { ShowPickerPayload } from "../types";
 
 import "../styles/globals.css";
 
+// Overlay/utility routes that don't need auth checks.
+// Checked synchronously so these windows never flash the splash screen.
+const OVERLAY_ROUTES = [
+  "/area-capture",
+  "/window-capture",
+  "/recording-area-selector",
+  "/recording-control",
+  "/recording-overlay",
+  "/auth",
+  "/500",
+];
+
 function MyApp({ Component, pageProps }: AppProps) {
   const router = useRouter();
-  const [authChecked, setAuthChecked] = React.useState(false);
-  const [hasInitialized, setHasInitialized] = React.useState(false);
+  // Use router.pathname (consistent between SSR and client) to avoid hydration mismatch.
+  // Initialize synchronously for overlay routes so they never flash the splash screen.
+  const isOverlay = OVERLAY_ROUTES.some((r) => router.pathname.includes(r));
+  const [authChecked, setAuthChecked] = React.useState(isOverlay);
+  const [hasInitialized, setHasInitialized] = React.useState(isOverlay);
+  const {
+    setPickerPayload,
+    setShowRecordingPicker,
+    pickerPayload,
+    showRecordingPicker,
+  } = useStore();
 
   useEffect(() => {
     // Setup OAuth callback listener
@@ -19,9 +43,19 @@ function MyApp({ Component, pageProps }: AppProps) {
       router.push(route);
     });
 
+    // Listen for recording picker — mounted here so it works on any page
+    const unsubscribePicker = window.ipc.on(
+      "recording:show-picker",
+      (payload: unknown) => {
+        setPickerPayload(payload as ShowPickerPayload);
+        setShowRecordingPicker(true);
+      }
+    );
+
     console.log("[App] onNavigate listener set up");
     return () => {
       unsubscribe();
+      if (unsubscribePicker) unsubscribePicker();
     };
   }, []);
 
@@ -156,6 +190,33 @@ function MyApp({ Component, pageProps }: AppProps) {
   return (
     <TooltipProvider delayDuration={300}>
       {!authChecked ? <SplashScreen /> : <Component {...pageProps} />}
+      {/* Recording picker modal — mounted globally so it works from any page */}
+      <WindowPickerModal
+        isOpen={showRecordingPicker}
+        initialPayload={pickerPayload}
+        onSelect={async (source, setAsDefault) => {
+          const result = await window.api.startRecordingWithSource({
+            sourceId: source.id,
+            sourceName: source.name,
+            displayBounds: source.displayBounds || null,
+            setAsDefault,
+          });
+          if (result.success) {
+            setShowRecordingPicker(false);
+            setPickerPayload(null);
+            window.api.showNotification(
+              "Recording Started",
+              "Click the tray icon to stop recording"
+            );
+          }
+          return result;
+        }}
+        onCancel={() => {
+          setShowRecordingPicker(false);
+          setPickerPayload(null);
+          window.api.cancelRecording();
+        }}
+      />
     </TooltipProvider>
   );
 }

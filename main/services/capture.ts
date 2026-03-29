@@ -681,9 +681,20 @@ export class CaptureService extends EventEmitter {
           .output(this.recordingOutputPath);
       }
 
-      // Handle errors
+      // Handle errors — clear the process reference so stopRecording's
+      // poll loop can detect that FFmpeg has exited.
       ffmpegCmd.on("error", (err) => {
-        log.error("[Recording] FFmpeg error:", err);
+        const msg = err?.message ?? "";
+        // SIGINT/SIGKILL are expected during graceful stop — log at info level
+        if (
+          msg.includes("SIGINT") ||
+          msg.includes("SIGKILL") ||
+          msg.includes("killed with signal")
+        ) {
+          log.info("[Recording] FFmpeg stopped via signal:", msg);
+        } else {
+          log.error("[Recording] FFmpeg error:", err);
+        }
         this.ffmpegProcess = null;
       });
 
@@ -736,41 +747,56 @@ export class CaptureService extends EventEmitter {
       // Save the output path before clearing it
       const outputPath = this.recordingOutputPath;
 
-      // Stop the FFmpeg process gracefully
-      log.info("[Recording] Sending stop signal to FFmpeg...");
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(
-          () => reject(new Error("FFmpeg stop timeout")),
-          15000
-        );
+      // Stop the FFmpeg process gracefully.
+      // Note: this.ffmpegProcess is a FfmpegCommand (not a ChildProcess), so
+      // it has no .stdin or .killed property. We use kill('SIGINT') which tells
+      // FFmpeg to stop encoding and finalize the output file — equivalent to
+      // pressing Ctrl+C. The existing "error" event handler sets
+      // this.ffmpegProcess = null, which the check interval uses to confirm exit.
+      log.info("[Recording] Sending SIGINT to FFmpeg for graceful stop...");
+      await new Promise<void>((resolve) => {
+        let resolved = false;
+        const done = () => {
+          if (resolved) return;
+          resolved = true;
+          clearInterval(checkInterval);
+          clearTimeout(forceKillTimeout);
+          clearTimeout(resolveTimeout);
+          resolve();
+        };
 
-        // Try to send quit command first (graceful shutdown)
-        if (this.ffmpegProcess) {
+        // Force kill after 8 seconds if FFmpeg hasn't stopped
+        const forceKillTimeout = setTimeout(() => {
+          log.warn("[Recording] FFmpeg did not stop within 8s, force killing");
           try {
-            // Send 'q' to FFmpeg to gracefully stop encoding
-            if (this.ffmpegProcess.stdin) {
-              this.ffmpegProcess.stdin.write("q\n");
-              log.info("[Recording] Sent quit command to FFmpeg");
-            } else {
-              log.warn("[Recording] FFmpeg stdin not available, using SIGTERM");
-              this.ffmpegProcess.kill("SIGTERM");
-            }
+            this.ffmpegProcess?.kill("SIGKILL");
           } catch (_e) {
-            log.warn(
-              "[Recording] Could not send quit command, killing with SIGTERM"
-            );
-            this.ffmpegProcess?.kill("SIGTERM");
+            /* ignore */
+          }
+          // Give it 500ms after SIGKILL to let the error handler fire
+          setTimeout(done, 500);
+        }, 8000);
+
+        // Safety resolve after 9 seconds regardless
+        const resolveTimeout = setTimeout(done, 9000);
+
+        // Poll: the existing error handler sets this.ffmpegProcess = null on stop
+        const checkInterval = setInterval(() => {
+          if (!this.ffmpegProcess) done();
+        }, 100);
+
+        // Send SIGINT — FFmpeg finalizes WebM index and exits cleanly
+        try {
+          this.ffmpegProcess?.kill("SIGINT");
+          log.info("[Recording] SIGINT sent to FFmpeg");
+        } catch (e) {
+          log.warn("[Recording] Failed to send SIGINT, trying SIGKILL:", e);
+          try {
+            this.ffmpegProcess?.kill("SIGKILL");
+          } catch (_e) {
+            /* ignore */
           }
         }
-
-        // Wait for process to finish
-        const checkInterval = setInterval(() => {
-          if (!this.ffmpegProcess || this.ffmpegProcess.killed) {
-            clearInterval(checkInterval);
-            clearTimeout(timeout);
-            resolve();
-          }
-        }, 100);
       });
 
       log.info("[Recording] FFmpeg process stopped");

@@ -13,7 +13,11 @@
       "Bash(grep -E \"\\(Packaging|packaging|See \\\\`dist\\)\")",
       "Bash(SKIP_CODE_SIGNATURE_VERIFICATION=true npm run build:pack)",
       "Bash(npm list update-electron-app)",
-      "Bash(node -e \"const ffmpegStatic = require\\(''ffmpeg-static''\\); console.log\\(''ffmpeg-static path:'', ffmpegStatic\\); console.log\\(''exists:'', require\\(''fs''\\).existsSync\\(ffmpegStatic\\)\\);\")"
+      "Bash(node -e \"const ffmpegStatic = require\\(''ffmpeg-static''\\); console.log\\(''ffmpeg-static path:'', ffmpegStatic\\); console.log\\(''exists:'', require\\(''fs''\\).existsSync\\(ffmpegStatic\\)\\);\")",
+      "Bash(find /Users/hmake98/Documents/snapflow-desktop -path */renderer/* -type f -name *.ts* -o -path */src/* -type f -name *.ts*)",
+      "Bash(find /Users/hmake98/Documents/snapflow-desktop -path */store* -o -path */zustand*)",
+      "Bash(grep -E \"\\\\.ts$\")",
+      "Bash(find /Users/hmake98/Documents/snapflow-desktop/renderer/public -name logo*)"
     ]
   }
 }
