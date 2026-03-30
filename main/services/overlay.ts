@@ -54,6 +54,10 @@ export class OverlayService {
       this.overlayWindow.setVisibleOnAllWorkspaces(true, {
         visibleOnFullScreen: true,
       });
+      // Prevent the overlay border from appearing in screen recordings.
+      // setContentProtection(true) makes this window invisible to capture APIs
+      // (desktopCapturer, screenshots) while remaining visible on screen.
+      this.overlayWindow.setContentProtection(true);
 
       // Load the overlay page
       if (isProd) {

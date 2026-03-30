@@ -82,43 +82,7 @@ export default function HomePage() {
     }
   }, [activeWorkspace?.id]);
 
-  // Listen for auto-sync completion and refresh issues
-  useEffect(() => {
-    const unsubscribe = window.api.onAutoSyncCompleted(async (data) => {
-      console.log("[Home] Auto-sync completed, reloading issues...", data);
-      const issuesResult = await window.api.listIssues(
-        data.userId,
-        activeWorkspace?.id
-      );
-      if (issuesResult.success) {
-        setIssues(issuesResult.data || []);
-      } else {
-        console.error(
-          "[Home] Failed to reload issues after auto-sync:",
-          issuesResult.error
-        );
-      }
-    });
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, [setIssues, activeWorkspace?.id]);
-
-  // Safety-net: re-fetch issues after short delays to catch any auto-sync
-  // that completed before or during the initial render (especially for screenshots
-  // where the annotate page calls createIssue then immediately navigates here).
-  useEffect(() => {
-    const t1 = setTimeout(() => loadSnapsForWorkspace(activeWorkspace?.id || workspaceId), 3000);
-    const t2 = setTimeout(() => loadSnapsForWorkspace(activeWorkspace?.id || workspaceId), 8000);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const loadSnapsForWorkspace = async (wsId: string) => {
+  const loadSnapsForWorkspace = async (wsId?: string) => {
     try {
       const userResult = await window.api.getUser();
       if (userResult.success && userResult.data) {
@@ -127,13 +91,53 @@ export default function HomePage() {
           wsId
         );
         if (issuesResult.success) {
-          setIssues(issuesResult.data || []);
+          const fresh = issuesResult.data || [];
+          setIssues(fresh);
+          // Keep the open preview modal in sync — cloudFileUrl and syncStatus
+          // are set asynchronously after upload, so the modal's snapshot
+          // may be stale even though the issues list has been refreshed.
+          setPreviewIssue((prev) => {
+            if (!prev) return null;
+            const updated = fresh.find((i) => i.id === prev.id);
+            return updated ?? prev;
+          });
         }
       }
     } catch (error) {
       console.error("Failed to reload snaps for workspace:", error);
     }
   };
+
+  // Listen for auto-sync completion and refresh issues
+  useEffect(() => {
+    const unsubscribe = window.api.onAutoSyncCompleted(async (data) => {
+      console.log("[Home] Auto-sync completed, reloading issues...", data);
+      // Re-fetch fresh data — don't rely on stale closure values since this
+      // event can fire before activeWorkspace has finished loading.
+      await loadSnapsForWorkspace(activeWorkspace?.id);
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [setIssues, activeWorkspace?.id]);
+
+  // Safety-net: re-fetch after short delays to catch any auto-sync that
+  // completed before or during initial render (e.g. annotate → home navigation).
+  useEffect(() => {
+    const t1 = setTimeout(
+      () => loadSnapsForWorkspace(activeWorkspace?.id || workspaceId),
+      3000
+    );
+    const t2 = setTimeout(
+      () => loadSnapsForWorkspace(activeWorkspace?.id || workspaceId),
+      8000
+    );
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, []);
 
   const loadData = async () => {
     try {
@@ -2169,7 +2173,10 @@ export default function HomePage() {
                           </Button>
                         </div>
                         <p className="text-xs text-gray-500 mt-1.5">
-                          Anyone with this link can view this screenshot
+                          Anyone with this link can view this{" "}
+                          {previewIssue.type === "recording"
+                            ? "recording"
+                            : "screenshot"}
                         </p>
                       </div>
                     )}

@@ -2650,8 +2650,9 @@ function setupIPCHandlers() {
         );
 
         // Trigger auto-sync to cloud (fire-and-forget)
+        // Pass workspaceId directly to avoid async DB lookup and potential mismatch
         syncService
-          .syncAllToCloud(userId)
+          .syncAllToCloud(userId, workspaceId)
           .then((result) => {
             log.info("[AutoSync] Sync completed. Result:", {
               success: result.success,
@@ -2779,7 +2780,7 @@ function setupIPCHandlers() {
 
       // Trigger auto-sync to cloud (fire-and-forget)
       syncService
-        .syncAllToCloud(issue.userId)
+        .syncAllToCloud(issue.userId, issue.workspaceId)
         .then((result) => {
           // Always notify renderer so the UI reflects updated syncStatus.
           if (mainWindow && mainWindow.webContents) {

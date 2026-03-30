@@ -622,13 +622,16 @@ export class CaptureService extends EventEmitter {
       const platform = process.platform;
 
       if (platform === "darwin") {
-        // macOS: use AVFoundation screen capture (full screen)
-        // AVFoundation has compatibility issues with filters, so we capture full screen
-        // Region capture can be implemented as a post-processing step if needed
+        // macOS: use AVFoundation screen capture (full screen).
+        // We use the device NAME "Capture screen 0" instead of a numeric index.
+        // Numeric indices (e.g. "1") are assigned dynamically and shift when
+        // external cameras (iPhone Continuity Camera, USB cameras) are connected,
+        // causing the wrong device to be recorded.  The name "Capture screen 0"
+        // always refers to the primary display regardless of connected cameras.
         log.info("[Recording] Capturing full screen on macOS (AVFoundation)");
 
         ffmpegCmd = ffmpeg()
-          .input("1") // macOS screen 1 (primary display)
+          .input("Capture screen 0:none") // primary display, no audio
           .inputFormat("avfoundation")
           .inputOptions(["-framerate 30"])
           .videoCodec("libvpx-vp9")
@@ -897,7 +900,10 @@ export class CaptureService extends EventEmitter {
       });
 
       // Verify the file was actually written
-      if (!fs.existsSync(thumbnailPath) || fs.statSync(thumbnailPath).size === 0) {
+      if (
+        !fs.existsSync(thumbnailPath) ||
+        fs.statSync(thumbnailPath).size === 0
+      ) {
         throw new Error("FFmpeg wrote an empty or missing thumbnail file");
       }
 
