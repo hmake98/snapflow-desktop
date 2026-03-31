@@ -132,9 +132,9 @@ export function WorkspaceSwitcher() {
             ) : (
               (() => {
                 // Group workspaces by tenantId to detect multi-org membership
-                const tenantIds = [
-                  ...new Set(workspaces.map((w) => w.tenantId)),
-                ];
+                const tenantIds = Array.from(
+                  new Set(workspaces.map((w) => w.tenantId))
+                );
                 const isMultiOrg = tenantIds.length > 1;
 
                 return (

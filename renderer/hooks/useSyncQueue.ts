@@ -79,7 +79,7 @@ export function useSyncQueue(
   const syncIssue = useCallback(
     async (issueId: string, connectorId: string): Promise<boolean> => {
       if (!isOnline) {
-        updateIssue(issueId, { syncStatus: "pending" });
+        updateIssue(issueId, { syncStatus: "syncing" });
         addToSyncQueue({ type: "syncIssue", params: { issueId, connectorId } });
         window.api.showNotification(
           "Queued",
@@ -121,7 +121,7 @@ export function useSyncQueue(
   const syncIssueToZoho = useCallback(
     async (issueId: string, connectorId: string): Promise<boolean> => {
       if (!isOnline) {
-        updateIssue(issueId, { syncStatus: "pending" });
+        updateIssue(issueId, { syncStatus: "syncing" });
         addToSyncQueue({
           type: "syncIssueToZoho",
           params: { issueId, connectorId },

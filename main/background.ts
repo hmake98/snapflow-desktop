@@ -1311,7 +1311,7 @@ const handleOAuthCallback = async (url: string) => {
     //      Multiple pending invites are processed one at a time in creation order.
     //   2. Already owns a tenant or is already a workspace member → /home
     //   3. Brand-new user with no affiliation → /onboarding
-    const session = authService.getSession();
+    const session = await authService.getSession();
     let navigateTo = "/onboarding";
     try {
       const currentUserId = sessionManager.getUserId();
@@ -2389,7 +2389,7 @@ function setupIPCHandlers() {
       await workspaceService.addMember(workspaceId, userId, role);
 
       // Mark this invite as accepted in pending_invites
-      const userEmail = authService.getSession()?.user?.email;
+      const userEmail = (await authService.getSession())?.user?.email;
       if (userEmail) {
         const adminClient = getSupabaseAdmin();
         const updateClient = adminClient ?? supabase;
