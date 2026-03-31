@@ -7,6 +7,15 @@ import type {
   ShowPickerPayload,
 } from "../types";
 
+export type QueuedSyncType = "syncIssue" | "syncToCloud" | "syncIssueToZoho";
+
+export interface QueuedSync {
+  id: string;
+  type: QueuedSyncType;
+  params: Record<string, string>;
+  addedAt: string;
+}
+
 interface AppState {
   // User state
   user: User | null;
@@ -33,6 +42,17 @@ interface AppState {
   // UI state
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
+
+  // Network / offline state
+  isOnline: boolean;
+  setIsOnline: (online: boolean) => void;
+
+  // Sync queue (operations queued while offline)
+  syncQueue: QueuedSync[];
+  addToSyncQueue: (item: Omit<QueuedSync, "id" | "addedAt">) => void;
+  removeFromSyncQueue: (id: string) => void;
+  clearSyncQueue: () => void;
+  processSyncQueue: () => void;
 
   // Recording picker state (global so modal works on any page)
   pickerPayload: ShowPickerPayload | null;
@@ -84,6 +104,34 @@ export const useStore = create<AppState>((set) => ({
   // UI state
   isLoading: false,
   setIsLoading: (loading) => set({ isLoading: loading }),
+
+  // Network / offline state
+  isOnline: true,
+  setIsOnline: (isOnline) => set({ isOnline }),
+
+  // Sync queue
+  syncQueue: [],
+  addToSyncQueue: (item) =>
+    set((state) => ({
+      syncQueue: [
+        ...state.syncQueue,
+        {
+          ...item,
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          addedAt: new Date().toISOString(),
+        },
+      ],
+    })),
+  removeFromSyncQueue: (id) =>
+    set((state) => ({
+      syncQueue: state.syncQueue.filter((q) => q.id !== id),
+    })),
+  clearSyncQueue: () => set({ syncQueue: [] }),
+  processSyncQueue: () => {
+    // Actual processing is handled by the useSyncQueue hook in home.tsx
+    // This is a no-op placeholder; the hook subscribes to isOnline changes
+    // and processes the queue. Kept here so useNetworkStatus can call it.
+  },
 
   // Recording picker state
   pickerPayload: null,

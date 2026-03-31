@@ -27,7 +27,7 @@ import { recordingSettingsService } from "./services/settings";
 import { storageManager } from "./utils/storage";
 import { sessionManager } from "./utils/session";
 import { TrayIconManager } from "./utils/tray-icon-manager";
-import { getSupabase } from "./utils/supabase";
+import { getSupabase, getSupabaseAdmin } from "./utils/supabase";
 import { secureConfig } from "./utils/secure-config";
 import fs from "fs";
 import type { Workspace } from "../renderer/types";
@@ -1304,84 +1304,87 @@ const handleOAuthCallback = async (url: string) => {
 
     // User is now set via setSession (implicit flow) or auth listener (PKCE flow)
 
-    // Check for pending workspace invite in user metadata (from Supabase admin invite)
-    // Admin API uses app_metadata, OTP uses user_metadata
+    // Determine where to navigate.
+    // Priority order:
+    //   1. Pending invite in pending_invites table (not yet accepted, not yet a member) → /join-workspace
+    //      This must come FIRST — even tenant owners can be invited to another org's workspace.
+    //      Multiple pending invites are processed one at a time in creation order.
+    //   2. Already owns a tenant or is already a workspace member → /home
+    //   3. Brand-new user with no affiliation → /onboarding
     const session = authService.getSession();
-    let invitedWorkspaceId: string | undefined;
-    let invitedRole: string | undefined;
-    if (session?.user) {
-      invitedWorkspaceId =
-        (session.user as any).user_metadata?.invited_to_workspace ||
-        (session.user as any).app_metadata?.invited_to_workspace;
-      invitedRole =
-        (session.user as any).user_metadata?.invited_role ||
-        (session.user as any).app_metadata?.invited_role ||
-        "dev";
-      if (invitedWorkspaceId) {
-        log.info(
-          "[OAuth] User has pending invite to workspace:",
-          invitedWorkspaceId
-        );
-      }
-    }
-
-    // Determine where to navigate: invited users (already workspace members) go to /home,
-    // new users who need to set up their org go to /onboarding,
-    // users with pending invites go to /join-workspace.
     let navigateTo = "/onboarding";
     try {
       const currentUserId = sessionManager.getUserId();
+      const userEmail = session?.user?.email;
       if (currentUserId) {
-        const existingTenant =
-          await tenantService.getTenantByOwner(currentUserId);
-        if (existingTenant) {
-          // User owns a tenant — they've completed onboarding already
-          log.info("[OAuth] User owns a tenant, navigating to /home");
-          navigateTo = "/home";
-        } else {
-          // Check if user has a pending invite (metadata present, not yet a member)
-          if (invitedWorkspaceId) {
-            const supabase = getSupabase();
-            if (supabase) {
+        const supabase = getSupabase();
+
+        // ── Priority 1: Pending workspace invite (from pending_invites table) ─
+        // Query all unaccepted invites ordered by creation time so we process
+        // them one at a time. Metadata-based invites (legacy / OTP fallback)
+        // are also still written into this table via inviteByEmail.
+        let foundPendingInvite = false;
+        if (userEmail && supabase) {
+          const { data: pendingInvites } = await supabase
+            .from("pending_invites")
+            .select("workspace_id, role")
+            .eq("email", userEmail)
+            .is("accepted_at", null)
+            .order("created_at", { ascending: true });
+
+          if (pendingInvites && pendingInvites.length > 0) {
+            // Find the first invite the user hasn't joined yet
+            for (const invite of pendingInvites) {
               const { data: existingMember } = await supabase
                 .from("workspace_members")
                 .select("id")
                 .eq("user_id", currentUserId)
-                .eq("workspace_id", invitedWorkspaceId)
-                .limit(1)
+                .eq("workspace_id", invite.workspace_id)
                 .maybeSingle();
 
               if (!existingMember) {
-                // Pending invite — user not yet added to workspace
                 log.info(
-                  "[OAuth] User has pending invite, navigating to /join-workspace"
+                  "[OAuth] Pending invite found, navigating to /join-workspace:",
+                  invite.workspace_id
                 );
-                navigateTo = `/join-workspace?workspaceId=${invitedWorkspaceId}&role=${invitedRole}`;
-              } else {
-                // Already a member (invite was previously accepted)
-                log.info(
-                  "[OAuth] Invited user already accepted, navigating to /home"
-                );
-                navigateTo = "/home";
+                navigateTo = `/join-workspace?workspaceId=${invite.workspace_id}&role=${invite.role}`;
+                foundPendingInvite = true;
+                break;
               }
             }
-          } else {
-            // No pending invite, check if user is a member of any workspace (invited user from before)
-            const supabase = getSupabase();
-            if (supabase) {
-              const { data: memberData } = await supabase
-                .from("workspace_members")
-                .select("workspace_id")
-                .eq("user_id", currentUserId)
-                .limit(1)
-                .maybeSingle();
-              if (memberData?.workspace_id) {
-                log.info(
-                  "[OAuth] User has workspace membership, navigating to /home"
-                );
-                navigateTo = "/home";
-              }
+            if (!foundPendingInvite) {
+              // All pending invites already accepted
+              log.info(
+                "[OAuth] All pending invites already accepted, navigating to /home"
+              );
+              navigateTo = "/home";
+              foundPendingInvite = true; // skip further checks
             }
+          }
+        }
+
+        if (!foundPendingInvite) {
+          // ── Priority 2: Existing tenant owner ───────────────────────────────
+          const existingTenant =
+            await tenantService.getTenantByOwner(currentUserId);
+          if (existingTenant) {
+            log.info("[OAuth] User owns a tenant, navigating to /home");
+            navigateTo = "/home";
+          } else if (supabase) {
+            // ── Priority 3: Existing workspace member (invited user, no owned tenant) ──
+            const { data: memberData } = await supabase
+              .from("workspace_members")
+              .select("workspace_id")
+              .eq("user_id", currentUserId)
+              .limit(1)
+              .maybeSingle();
+            if (memberData?.workspace_id) {
+              log.info(
+                "[OAuth] User has workspace membership, navigating to /home"
+              );
+              navigateTo = "/home";
+            }
+            // else: new user, stays at /onboarding
           }
         }
       }
@@ -2385,19 +2388,71 @@ function setupIPCHandlers() {
       // Add user to workspace as member
       await workspaceService.addMember(workspaceId, userId, role);
 
-      // Initialize onboarding progress if not exists
-      let progress = await onboardingService.getProgress(userId);
-      if (!progress) {
-        await onboardingService.initializeProgress(userId);
+      // Mark this invite as accepted in pending_invites
+      const userEmail = authService.getSession()?.user?.email;
+      if (userEmail) {
+        const adminClient = getSupabaseAdmin();
+        const updateClient = adminClient ?? supabase;
+        await updateClient
+          .from("pending_invites")
+          .update({ accepted_at: new Date().toISOString() })
+          .eq("email", userEmail)
+          .eq("workspace_id", workspaceId);
+        log.info(
+          `[workspace:join] Marked pending_invite accepted for ${userEmail} / ${workspaceId}`
+        );
       }
 
-      // Set to connector step (step 4) for member onboarding
-      await onboardingService.setStep(userId, 4);
+      // Determine whether this user already has completed onboarding.
+      // If they own a tenant or previously completed onboarding they should go
+      // straight to /home — not through the member-mode onboarding flow.
+      const existingTenant = await tenantService.getTenantByOwner(userId);
+      let progress = await onboardingService.getProgress(userId);
+      const alreadyOnboarded =
+        !!existingTenant || progress?.isComplete === true;
+
+      if (!alreadyOnboarded) {
+        // First-time user: initialize progress and send to connector step
+        if (!progress) {
+          await onboardingService.initializeProgress(userId);
+        }
+        await onboardingService.setStep(userId, 4);
+      }
+
+      // Check whether there are more unaccepted invites for this user so the
+      // renderer can navigate directly to the next join-workspace page.
+      let nextPendingInvite: { workspaceId: string; role: string } | null =
+        null;
+      if (userEmail) {
+        const { data: remaining } = await supabase
+          .from("pending_invites")
+          .select("workspace_id, role")
+          .eq("email", userEmail)
+          .is("accepted_at", null)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (remaining) {
+          // Verify not already a member (invite could be stale)
+          const { data: alreadyMember } = await supabase
+            .from("workspace_members")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("workspace_id", remaining.workspace_id)
+            .maybeSingle();
+          if (!alreadyMember) {
+            nextPendingInvite = {
+              workspaceId: remaining.workspace_id,
+              role: remaining.role,
+            };
+          }
+        }
+      }
 
       log.info(
-        `[workspace:join] User ${userId} joined workspace ${workspaceId}`
+        `[workspace:join] User ${userId} joined workspace ${workspaceId}, alreadyOnboarded=${alreadyOnboarded}, nextPendingInvite=${nextPendingInvite?.workspaceId ?? "none"}`
       );
-      return { success: true };
+      return { success: true, alreadyOnboarded, nextPendingInvite };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";

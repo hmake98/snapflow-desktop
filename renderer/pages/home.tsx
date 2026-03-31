@@ -28,6 +28,8 @@ import { WorkspaceSwitcher } from "../components/ui/WorkspaceSwitcher";
 import { useStore } from "../store/useStore";
 import { LocalImage } from "../components/ui/LocalImage";
 import { ProfileDropdown } from "../components/ui/ProfileDropdown";
+import { OfflineBanner } from "../components/ui/OfflineBanner";
+import { useSyncQueue } from "../hooks/useSyncQueue";
 import type { Issue } from "../types";
 
 // ─── Profile Dropdown ─────────────────────────────────────────────────────────
@@ -46,6 +48,9 @@ export default function HomePage() {
     activeWorkspace,
     setActiveWorkspace,
   } = useStore();
+
+  const syncQueue = useSyncQueue(() => loadData());
+
   const [loading, setLoading] = useState(true);
   const [workspaceId, setWorkspaceId] = useState<string>("");
   const [filter, setFilter] = useState<"all" | "screenshot" | "recording">(
@@ -193,16 +198,15 @@ export default function HomePage() {
   };
 
   const handleSync = async (issue: Issue, connectorId: string) => {
+    const shouldProceed = await syncQueue.syncIssue(issue.id, connectorId);
+    if (!shouldProceed) return;
     try {
-      // Optimistic update
       updateIssue(issue.id, { syncStatus: "syncing" });
-
       const result = await window.api.syncIssue(issue.id, connectorId);
-
       if (result.success) {
         const message = result.data?.message || "Successfully synced to GitHub";
         window.api.showNotification("Synced to GitHub", message);
-        loadData(); // Reload to get updated sync status
+        loadData();
       } else {
         window.api.showNotification(
           "GitHub Sync Failed",
@@ -221,6 +225,8 @@ export default function HomePage() {
 
   const _handleCloudSync = async (issue: Issue) => {
     if (!user) return;
+    const shouldProceed = await syncQueue.syncToCloud(user.id, workspaceId);
+    if (!shouldProceed) return;
     updateIssue(issue.id, { syncStatus: "syncing" });
     try {
       const result = await window.api.syncToCloud(user.id, workspaceId);
@@ -1085,6 +1091,11 @@ export default function HomePage() {
   };
 
   const handleZohoSync = async (issue: Issue, connectorId: string) => {
+    const shouldProceed = await syncQueue.syncIssueToZoho(
+      issue.id,
+      connectorId
+    );
+    if (!shouldProceed) return;
     updateIssue(issue.id, { syncStatus: "syncing" });
     try {
       const result = await window.api.syncIssueToZoho(issue.id, connectorId);
@@ -1206,6 +1217,9 @@ export default function HomePage() {
             />
           </div>
         </header>
+
+        {/* Offline / queued sync indicator */}
+        <OfflineBanner />
 
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

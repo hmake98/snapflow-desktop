@@ -450,6 +450,13 @@ export class WorkspaceService {
             "[Workspace Service] ✓ Invite sent via admin API to:",
             email
           );
+          // Record in pending_invites so multiple simultaneous invites are tracked
+          await this._upsertPendingInvite(
+            adminClient,
+            email,
+            workspaceId,
+            role
+          );
           return;
         }
       } catch (err) {
@@ -483,9 +490,39 @@ export class WorkspaceService {
       }
 
       log.info("[Workspace Service] ✓ Invite sent via OTP to:", email);
+      // Record in pending_invites (use admin client if available, else regular)
+      const client = getSupabaseAdmin() ?? supabase;
+      await this._upsertPendingInvite(client, email, workspaceId, role);
     } catch (err) {
       log.error("[Workspace Service] ✗ OTP invite failed:", err);
       throw err;
+    }
+  }
+
+  private async _upsertPendingInvite(
+    client: import("@supabase/supabase-js").SupabaseClient | null,
+    email: string,
+    workspaceId: string,
+    role: UserRole
+  ): Promise<void> {
+    if (!client) return;
+    try {
+      const { error } = await client
+        .from("pending_invites")
+        .upsert(
+          { email, workspace_id: workspaceId, role, accepted_at: null },
+          { onConflict: "email,workspace_id", ignoreDuplicates: false }
+        );
+      if (error) {
+        log.warn(
+          "[Workspace Service] Could not upsert pending_invite:",
+          error.message
+        );
+      } else {
+        log.info("[Workspace Service] ✓ pending_invite recorded for:", email);
+      }
+    } catch (err) {
+      log.warn("[Workspace Service] _upsertPendingInvite threw:", err);
     }
   }
 
@@ -673,11 +710,11 @@ export class WorkspaceService {
 
     if (!memberRows || memberRows.length === 0) return [];
 
-    // Step 2: Fetch workspace details for all workspace_ids
+    // Step 2: Fetch workspace details + parent tenant name in one query
     const workspaceIds = memberRows.map((r) => r.workspace_id as string);
     const { data: wsRows, error: wsError } = await supabase
       .from("workspaces")
-      .select("*")
+      .select("*, tenant:tenant_id(name)")
       .in("id", workspaceIds);
 
     if (wsError) {
@@ -688,12 +725,16 @@ export class WorkspaceService {
       return [];
     }
 
-    // Step 3: Merge role into each workspace
+    // Step 3: Merge role and tenant name into each workspace
     return (wsRows || []).map((ws) => {
       const membership = memberRows.find((r) => r.workspace_id === ws.id);
+      const tenantName =
+        (ws as Record<string, unknown> & { tenant?: { name?: string } }).tenant
+          ?.name ?? undefined;
       return {
         ...this.mapSupabaseWorkspace(ws as Record<string, unknown>),
         role: (membership?.role ?? "dev") as UserRole,
+        tenantName,
       };
     });
   }

@@ -66,6 +66,7 @@ export interface WorkspaceMemberWithUser extends WorkspaceMember {
 
 export interface WorkspaceWithRole extends Workspace {
   role: UserRole;
+  tenantName?: string;
 }
 
 export interface WorkspaceWithMembers extends Workspace {

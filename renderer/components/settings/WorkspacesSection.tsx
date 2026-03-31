@@ -308,6 +308,8 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
   // Tenant editing
   const [editingTenant, setEditingTenant] = useState(false);
   const [tenantName, setTenantName] = useState(tenant.name);
+  const [tenantDisplayName, setTenantDisplayName] = useState(tenant.name);
+  const [tenantDisplaySlug, setTenantDisplaySlug] = useState(tenant.slug);
   const [savingTenant, setSavingTenant] = useState(false);
 
   const loadWorkspaces = useCallback(async () => {
@@ -348,6 +350,8 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
       const r = await window.api.updateTenant(tenant.id, tenantName.trim());
       if (r.success) {
         window.api.showNotification("Saved", "Organization name updated");
+        setTenantDisplayName(r.data?.name ?? tenantName.trim());
+        setTenantDisplaySlug(r.data?.slug ?? tenantDisplaySlug);
         setEditingTenant(false);
       } else {
         window.api.showNotification(
@@ -390,7 +394,7 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
         const r = await window.api.updateWorkspace(
           editTarget.id,
           form.name.trim(),
-          form.description.trim() || undefined
+          form.description.trim()
         );
         if (r.success) {
           window.api.showNotification(
@@ -470,7 +474,7 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => {
-                setTenantName(tenant.name);
+                setTenantName(tenantDisplayName);
                 setEditingTenant(true);
               }}
               leftIcon={
@@ -539,8 +543,12 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
               </svg>
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-100">{tenant.name}</p>
-              <p className="text-xs text-gray-500 font-mono">{tenant.slug}</p>
+              <p className="text-sm font-medium text-gray-100">
+                {tenantDisplayName}
+              </p>
+              <p className="text-xs text-gray-500 font-mono">
+                {tenantDisplaySlug}
+              </p>
             </div>
           </div>
         )}

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Your SnapFlow sign-in link</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0a0e13;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0e13;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;">
+
+          <!-- Logo / Brand -->
+          <tr>
+            <td align="center" style="padding-bottom:32px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:linear-gradient(135deg,#1d4ed8,#3b82f6);border-radius:14px;width:48px;height:48px;text-align:center;vertical-align:middle;">
+                    <span style="font-size:22px;line-height:48px;">&#9889;</span>
+                  </td>
+                  <td style="padding-left:12px;vertical-align:middle;">
+                    <span style="font-size:22px;font-weight:700;color:#f3f4f6;letter-spacing:-0.3px;">SnapFlow</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Card -->
+          <tr>
+            <td style="background-color:#111827;border:1px solid #1f2937;border-radius:16px;padding:40px 36px;">
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+
+                <!-- Heading -->
+                <tr>
+                  <td align="center" style="padding-bottom:8px;">
+                    <div style="background-color:#1e2a3a;border:1px solid #1d4ed8;border-radius:50%;width:52px;height:52px;margin:0 auto 20px;text-align:center;line-height:52px;font-size:24px;">
+                      &#128273;
+                    </div>
+                    <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#f3f4f6;letter-spacing:-0.3px;">
+                      Your sign-in link
+                    </h1>
+                    <p style="margin:0;font-size:15px;color:#9ca3af;line-height:1.5;">
+                      Use the link below to sign in to SnapFlow. No password needed.
+                    </p>
+                  </td>
+                </tr>
+
+                <!-- Divider -->
+                <tr>
+                  <td style="padding:28px 0 24px;">
+                    <div style="height:1px;background-color:#1f2937;"></div>
+                  </td>
+                </tr>
+
+                <!-- Body copy -->
+                <tr>
+                  <td style="padding-bottom:28px;">
+                    <p style="margin:0 0 16px;font-size:15px;color:#d1d5db;line-height:1.6;">
+                      Hi there,
+                    </p>
+                    <p style="margin:0 0 16px;font-size:15px;color:#d1d5db;line-height:1.6;">
+                      We received a request to sign in to your SnapFlow account. Click the button below to open the app and sign in instantly.
+                    </p>
+                    <p style="margin:0;font-size:15px;color:#d1d5db;line-height:1.6;">
+                      This link is valid for <strong style="color:#f3f4f6;">1 hour</strong> and can only be used once.
+                    </p>
+                  </td>
+                </tr>
+
+                <!-- Security notice -->
+                <tr>
+                  <td style="padding-bottom:28px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#1c1f26;border:1px solid #374151;border-radius:10px;padding:14px 16px;">
+                      <tr>
+                        <td>
+                          <table role="presentation" cellpadding="0" cellspacing="0">
+                            <tr>
+                              <td style="width:20px;vertical-align:top;padding-top:2px;font-size:14px;">&#128274;</td>
+                              <td style="padding-left:10px;font-size:13px;color:#9ca3af;line-height:1.5;">
+                                For your security, this link can only be used once and will sign you in to <strong style="color:#d1d5db;">SnapFlow Desktop</strong> directly. Never share this link with anyone.
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- CTA Button -->
+                <tr>
+                  <td align="center" style="padding-bottom:28px;">
+                    <a href="{{ .ConfirmationURL }}"
+                       style="display:inline-block;background:linear-gradient(135deg,#1d4ed8,#3b82f6);color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 36px;border-radius:10px;letter-spacing:0.1px;">
+                      Sign in to SnapFlow
+                    </a>
+                  </td>
+                </tr>
+
+                <!-- Divider -->
+                <tr>
+                  <td style="padding-bottom:20px;">
+                    <div style="height:1px;background-color:#1f2937;"></div>
+                  </td>
+                </tr>
+
+                <!-- Fallback link -->
+                <tr>
+                  <td>
+                    <p style="margin:0 0 8px;font-size:13px;color:#6b7280;line-height:1.5;">
+                      Button not working? Copy and paste this link:
+                    </p>
+                    <p style="margin:0;font-size:12px;color:#4b79c4;word-break:break-all;line-height:1.5;">
+                      {{ .ConfirmationURL }}
+                    </p>
+                  </td>
+                </tr>
+
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="padding-top:28px;">
+              <p style="margin:0 0 6px;font-size:13px;color:#4b5563;">
+                If you didn't request this sign-in link, you can safely ignore this email.
+                Your account is not at risk.
+              </p>
+              <p style="margin:0;font-size:12px;color:#374151;">
+                &copy; 2026 SnapFlow &nbsp;&bull;&nbsp; Screenshot &amp; Recording Tool
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

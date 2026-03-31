@@ -5,6 +5,7 @@ import { TooltipProvider } from "../components/ui/Tooltip";
 import { SplashScreen } from "../components/ui/SplashScreen";
 import { WindowPickerModal } from "../components/WindowPickerModal";
 import { useStore } from "../store/useStore";
+import { useNetworkStatus } from "../hooks/useNetworkStatus";
 import type { ShowPickerPayload } from "../types";
 
 import "../styles/globals.css";
@@ -23,6 +24,7 @@ const OVERLAY_ROUTES = [
 
 function MyApp({ Component, pageProps }: AppProps) {
   const router = useRouter();
+  useNetworkStatus();
   // Use router.pathname (consistent between SSR and client) to avoid hydration mismatch.
   // Initialize synchronously for overlay routes so they never flash the splash screen.
   const isOverlay = OVERLAY_ROUTES.some((r) => router.pathname.includes(r));

@@ -79,11 +79,28 @@ export default function JoinWorkspacePage() {
 
       window.api.showNotification(
         "Workspace Joined",
-        "Successfully joined workspace!"
+        `You've joined ${workspace.name}!`
       );
 
-      // Navigate to member onboarding
-      await router.push("/onboarding?mode=member");
+      // Set this workspace as active so onboarding/home loads the right context
+      window.api.setActiveWorkspace(workspace.id);
+
+      // If there are more unaccepted invites, go to the next one immediately
+      const next = result.data?.nextPendingInvite;
+      if (next) {
+        await router.push(
+          `/join-workspace?workspaceId=${next.workspaceId}&role=${next.role}`
+        );
+        return;
+      }
+
+      // Existing users (tenant owners or previously onboarded) go straight to home.
+      // New users go through the member onboarding flow to set up connectors.
+      if (result.data?.alreadyOnboarded) {
+        await router.push("/home");
+      } else {
+        await router.push("/onboarding?mode=member");
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "An error occurred";
       setError(message);
@@ -94,10 +111,15 @@ export default function JoinWorkspacePage() {
 
   const handleCancel = async () => {
     try {
-      // Logout user
-      await window.api.logout();
-      // Navigate to auth page
-      await router.push("/auth");
+      // Check if user already has their own tenant — if so, go home instead of logging out.
+      // A new user who was only invited and cancels should be logged out.
+      const tenantResult = await window.api.getUserTenant();
+      if (tenantResult.success && tenantResult.data) {
+        await router.push("/home");
+      } else {
+        await window.api.logout();
+        await router.push("/auth");
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "An error occurred";
       window.api.showNotification("Error", message);

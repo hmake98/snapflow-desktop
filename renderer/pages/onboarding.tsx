@@ -29,15 +29,7 @@ export default function OnboardingPage() {
   const [tenantName, setTenantName] = useState("");
   const [tenantSlug, setTenantSlug] = useState("");
 
-  // Step 2: Invite form
-  const [invites, setInvites] = useState<
-    Array<{ id: string; email: string; role: Exclude<UserRole, "owner"> }>
-  >([]);
-  const [newInviteEmail, setNewInviteEmail] = useState("");
-  const [newInviteRole, setNewInviteRole] =
-    useState<Exclude<UserRole, "owner">>("dev");
-  const [invitesSending, setInvitesSending] = useState(false);
-  const [showInviteForm, setShowInviteForm] = useState(false);
+  // Step 2 (invite) removed — invites are managed from Settings
 
   // Step 3: Workspace form
   const [workspaceName, setWorkspaceName] = useState("");
@@ -126,7 +118,9 @@ export default function OnboardingPage() {
         setIsMemberMode(isMember);
 
         // For member mode, start at step 4 (connectors)
-        const initialStep = isMember ? 4 : status.currentStep;
+        // Step 2 (invite) has been removed; skip over it if persisted
+        let initialStep = isMember ? 4 : status.currentStep;
+        if (initialStep === 2) initialStep = 3;
         setStep(initialStep);
         setTenant(status.tenant || null);
         setWorkspace(status.workspace || null);
@@ -240,81 +234,13 @@ export default function OnboardingPage() {
         "Organization Created",
         "Organization created successfully!"
       );
-      // Proceed to step 2 (invite team)
-      await updateStep(2);
+      // Proceed to step 3 (create workspace) — invite step removed
+      await updateStep(3);
     } catch (err) {
       console.error("Error creating tenant:", err);
       setError("Failed to create organization");
     } finally {
       setSaving(false);
-    }
-  }
-
-  // Handle adding invite row
-  function handleAddInvite() {
-    setInvites([
-      ...invites,
-      { id: Date.now().toString(), email: "", role: "dev" },
-    ]);
-  }
-
-  // Handle removing invite row
-  function handleRemoveInvite(id: string) {
-    setInvites(invites.filter((inv) => inv.id !== id));
-  }
-
-  // Handle proceeding to next step (invites will be sent after workspace creation)
-  async function handleProceedFromInvites() {
-    await updateStep(3);
-  }
-
-  // Handle sending invites (called from handleCreateWorkspace after workspace is created)
-  async function sendQueuedInvites(workspaceId: string) {
-    if (invites.length === 0) {
-      return; // Nothing to send
-    }
-
-    const validInvites = invites.filter((inv) => inv.email.trim());
-    if (validInvites.length === 0) {
-      return; // No valid emails
-    }
-
-    setInvitesSending(true);
-
-    let successCount = 0;
-    let failureCount = 0;
-
-    for (const invite of validInvites) {
-      try {
-        const result = await window.api.inviteTeamMember(
-          workspaceId,
-          invite.email,
-          invite.role
-        );
-
-        if (result.success) {
-          successCount++;
-        } else {
-          failureCount++;
-        }
-      } catch (err) {
-        failureCount++;
-        console.error("Error inviting member:", err);
-      }
-    }
-
-    setInvitesSending(false);
-
-    if (failureCount > 0) {
-      window.api.showNotification(
-        "Invites Partially Sent",
-        `Sent ${successCount} invite(s), ${failureCount} failed. You can retry from Settings.`
-      );
-    } else if (successCount > 0) {
-      window.api.showNotification(
-        "Invites Sent",
-        `Sent ${successCount} invite(s) successfully!`
-      );
     }
   }
 
@@ -352,11 +278,6 @@ export default function OnboardingPage() {
         "Workspace Created",
         "Workspace created successfully!"
       );
-
-      // Send any queued invites for this workspace
-      if (invites.length > 0) {
-        await sendQueuedInvites(newWorkspace.id);
-      }
 
       await updateStep(4);
     } catch (err) {
@@ -702,7 +623,8 @@ export default function OnboardingPage() {
                 {!isMemberMode && (
                   <Button
                     onClick={() => {
-                      const prev = Math.max(1, step - 1);
+                      // Step 2 (invite) removed — step 3 goes back to step 1
+                      const prev = step === 3 ? 1 : Math.max(1, step - 1);
                       updateStep(prev);
                     }}
                     variant="outline"
@@ -715,11 +637,12 @@ export default function OnboardingPage() {
                 <span className="text-sm text-gray-400 flex-1 text-center">
                   {isMemberMode
                     ? `Step ${step === 4 ? 1 : 2} of 2`
-                    : `Step ${step === 1 ? 1 : step === 2 ? 2 : step === 3 ? 3 : 4} of 5`}
+                    : `Step ${step === 1 ? 1 : step === 3 ? 2 : step === 4 ? 3 : 4} of 4`}
                 </span>
                 <Button
                   onClick={() => {
-                    const next = Math.min(isMemberMode ? 5 : 5, step + 1);
+                    // Skip step 2 when advancing manually
+                    const next = step === 1 ? 3 : Math.min(5, step + 1);
                     updateStep(next);
                   }}
                   variant="outline"
@@ -774,131 +697,6 @@ export default function OnboardingPage() {
                     className="w-full"
                   >
                     {saving ? "Creating..." : "Next"}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 2: Invite Team (owner mode only) */}
-            {step === 2 && !isMemberMode && (
-              <div className="bg-gray-900 rounded-xl p-8 border border-gray-800">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-bold text-gray-100">
-                    Invite Your Team
-                  </h2>
-                  <span className="text-xs font-medium text-gray-500 bg-gray-800 px-2 py-1 rounded">
-                    Optional
-                  </span>
-                </div>
-                <p className="text-gray-400 mb-6">
-                  Add team members now, or do it later from Settings
-                </p>
-
-                {/* Invite list */}
-                {invites.length > 0 && (
-                  <div className="mb-6 space-y-2">
-                    {invites.map((invite) => (
-                      <div
-                        key={invite.id}
-                        className="flex items-center gap-3 p-3 bg-gray-800/50 rounded-lg border border-gray-700"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-gray-300 truncate">
-                            {invite.email || "(empty)"}
-                          </p>
-                          <p className="text-xs text-gray-500 capitalize">
-                            {invite.role}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => handleRemoveInvite(invite.id)}
-                          className="text-gray-500 hover:text-gray-300 text-sm font-medium"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Add invite form */}
-                {showInviteForm && (
-                  <div className="space-y-3 mb-6 p-4 bg-gray-800/30 rounded-lg border border-gray-700">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Email Address
-                      </label>
-                      <input
-                        type="email"
-                        placeholder="team@example.com"
-                        value={newInviteEmail}
-                        onChange={(e) => setNewInviteEmail(e.target.value)}
-                        className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Role
-                      </label>
-                      <select
-                        value={newInviteRole}
-                        onChange={(e) =>
-                          setNewInviteRole(
-                            e.target.value as Exclude<UserRole, "owner">
-                          )
-                        }
-                        className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-gray-100 focus:outline-none focus:border-blue-500"
-                      >
-                        <option value="dev">Developer</option>
-                        <option value="qa">QA</option>
-                        <option value="pm">Product Manager</option>
-                        <option value="admin">Admin</option>
-                      </select>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={() => {
-                          if (newInviteEmail.trim()) {
-                            handleAddInvite();
-                            setNewInviteEmail("");
-                            setNewInviteRole(
-                              "dev" as Exclude<UserRole, "owner">
-                            );
-                          }
-                        }}
-                        className="flex-1 bg-blue-600 hover:bg-blue-500 text-white"
-                        disabled={!newInviteEmail.trim()}
-                      >
-                        Add Invite
-                      </Button>
-                      <Button
-                        onClick={() => setShowInviteForm(false)}
-                        variant="outline"
-                        className="flex-1"
-                      >
-                        Done
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Action buttons */}
-                <div className="flex gap-3">
-                  {!showInviteForm && (
-                    <Button
-                      onClick={() => setShowInviteForm(true)}
-                      variant="outline"
-                      className="flex-1"
-                    >
-                      + Add Member
-                    </Button>
-                  )}
-                  <Button
-                    onClick={handleProceedFromInvites}
-                    className="flex-1 bg-blue-600 hover:bg-blue-500 text-white"
-                    disabled={invitesSending}
-                  >
-                    {invites.length === 0 ? "Skip for Now" : "Continue"}
                   </Button>
                 </div>
               </div>
