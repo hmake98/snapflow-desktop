@@ -142,6 +142,12 @@ interface CaptureOptions {
     width: number;
     height: number;
   };
+  /**
+   * Virtual desktop origin of the overlay window (top-left corner in screen
+   * coordinates). Provided when the overlay spans multiple displays so the
+   * region capture can map selection coords back to the correct display.
+   */
+  originOffset?: { x: number; y: number };
 }
 
 export class CaptureService extends EventEmitter {
@@ -261,28 +267,90 @@ export class CaptureService extends EventEmitter {
 
       // Handle region capture
       if (options.mode === "region" && options.bounds) {
-        log.info("[Capture] Region mode - cropping to bounds:", options.bounds);
+        log.info(
+          "[Capture] Region mode - bounds:",
+          options.bounds,
+          "originOffset:",
+          options.originOffset
+        );
+
+        // The bounds are in physical pixels relative to the overlay window origin.
+        // Convert back to logical screen coordinates so we can find the display.
+        const originX = options.originOffset?.x ?? 0;
+        const originY = options.originOffset?.y ?? 0;
+
+        // Identify which display the centre of the selection falls on.
+        const allDisplays = screen.getAllDisplays();
+
+        // Selection centre in logical screen coordinates (undo scale + origin)
+        // We use the primary display's scale factor as a best-guess for the
+        // overlay's devicePixelRatio; the renderer sends physical pixels.
+        const primaryScale = screen.getPrimaryDisplay().scaleFactor || 1;
+        const selCentreScreenX =
+          originX +
+          (options.bounds.x + options.bounds.width / 2) / primaryScale;
+        const selCentreScreenY =
+          originY +
+          (options.bounds.y + options.bounds.height / 2) / primaryScale;
+
+        const targetDisplay =
+          allDisplays.find(
+            (d) =>
+              selCentreScreenX >= d.bounds.x &&
+              selCentreScreenX < d.bounds.x + d.bounds.width &&
+              selCentreScreenY >= d.bounds.y &&
+              selCentreScreenY < d.bounds.y + d.bounds.height
+          ) ?? screen.getPrimaryDisplay();
+
+        const scaleFactor = targetDisplay.scaleFactor || 1;
+
+        // Re-fetch sources sized to the target display
+        const regionSources = await desktopCapturer.getSources({
+          types: ["screen"],
+          thumbnailSize: {
+            width: Math.floor(targetDisplay.bounds.width * scaleFactor),
+            height: Math.floor(targetDisplay.bounds.height * scaleFactor),
+          },
+          fetchWindowIcons: false,
+        });
+
+        const regionSource =
+          regionSources.find((s) =>
+            s.id.includes(targetDisplay.id.toString())
+          ) || regionSources.find((s) => s.id.startsWith("screen"));
+
+        if (!regionSource) {
+          throw new Error("No source found for region capture");
+        }
+
+        // Convert selection bounds to physical pixels relative to the target display
+        const displayOriginPhysX =
+          (targetDisplay.bounds.x - originX) * scaleFactor;
+        const displayOriginPhysY =
+          (targetDisplay.bounds.y - originY) * scaleFactor;
+
         const cropRect = {
-          x: Math.max(0, Math.floor(options.bounds.x)),
-          y: Math.max(0, Math.floor(options.bounds.y)),
+          x: Math.max(0, Math.floor(options.bounds.x - displayOriginPhysX)),
+          y: Math.max(0, Math.floor(options.bounds.y - displayOriginPhysY)),
           width: Math.floor(options.bounds.width),
           height: Math.floor(options.bounds.height),
         };
 
-        const croppedImage = source.thumbnail.crop(cropRect);
-        const buffer = croppedImage.toPNG();
         log.info(
-          "[Capture] Region screenshot captured, buffer size:",
-          buffer.length,
-          "bytes"
+          "[Capture] Region on display",
+          targetDisplay.id,
+          "cropRect:",
+          cropRect
         );
 
-        // Copy to clipboard
-        clipboard.writeImage(croppedImage);
+        const croppedImage = regionSource.thumbnail.crop(cropRect);
+        const buffer = croppedImage.toPNG();
 
-        const dataUrl = `data:image/png;base64,${buffer.toString("base64")}`;
-        log.info("[Capture] Region dataUrl length:", dataUrl.length);
-        return { dataUrl, buffer };
+        clipboard.writeImage(croppedImage);
+        return {
+          dataUrl: `data:image/png;base64,${buffer.toString("base64")}`,
+          buffer,
+        };
       }
 
       // Fullscreen or window capture

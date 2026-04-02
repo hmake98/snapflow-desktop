@@ -95,6 +95,7 @@ if (protocol && protocol.registerSchemesAsPrivileged) {
 // Global state
 let mainWindow: WindowInstance | null = null;
 let windowCaptureOverlay: typeof BrowserWindow.prototype | null = null;
+let areaCaptureOverlays: (typeof BrowserWindow.prototype)[] = [];
 let recordingControlWindow: typeof BrowserWindow.prototype | null = null;
 let recordingAreaSelector: typeof BrowserWindow.prototype | null = null;
 let tray: typeof Tray.prototype | null = null;
@@ -662,70 +663,72 @@ async function createWindowCaptureOverlay() {
   });
 }
 
+function closeAreaCaptureOverlays() {
+  for (const overlay of areaCaptureOverlays) {
+    if (!overlay.isDestroyed()) overlay.close();
+  }
+  areaCaptureOverlays = [];
+  if (process.platform === "darwin") app.dock?.show();
+}
+
 async function createAreaCaptureOverlay() {
   const { screen } = electron;
+  const displays = screen.getAllDisplays();
 
-  // For now, use primary display - in future, could show overlay on all displays
-  const primaryDisplay = screen.getPrimaryDisplay();
+  // Create one overlay per display — a single spanning window is unreliable
+  // on macOS because Electron constrains BrowserWindows to one screen.
+  for (const display of displays) {
+    const { x, y, width, height } = display.bounds;
+    const scaleFactor = display.scaleFactor || 1;
 
-  // Use bounds (includes menu bar and dock) not workArea (excludes them)
-  const { width, height, x, y } = primaryDisplay.bounds;
-  const scaleFactor = primaryDisplay.scaleFactor || 1;
+    const overlay = new BrowserWindow({
+      width,
+      height,
+      x,
+      y,
+      transparent: true,
+      frame: false,
+      alwaysOnTop: true,
+      resizable: false,
+      movable: false,
+      hasShadow: false,
+      enableLargerThanScreen: true,
+      backgroundColor: "#00000000",
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, "preload.js"),
+      },
+    });
 
-  // Create the overlay window (no need to capture screenshot beforehand)
-  windowCaptureOverlay = new BrowserWindow({
-    width,
-    height,
-    x,
-    y,
-    transparent: true,
-    frame: false,
-    alwaysOnTop: true,
-    resizable: false,
-    movable: false,
-    hasShadow: false,
-    enableLargerThanScreen: true,
-    backgroundColor: "#00000000", // Fully transparent background
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, "preload.js"),
-    },
-  });
+    overlay.setAlwaysOnTop(true, "screen-saver", 1);
+    overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
-  // Set always on top but don't use fullscreen mode (which can break transparency on macOS)
-  windowCaptureOverlay.setAlwaysOnTop(true, "screen-saver", 1);
-  windowCaptureOverlay.setVisibleOnAllWorkspaces(true, {
-    visibleOnFullScreen: true,
-  });
-  // setVisibleOnAllWorkspaces can hide the dock icon on macOS — restore it immediately
-  if (process.platform === "darwin") app.dock?.show();
+    if (isProd) {
+      await overlay.loadURL("app://./area-capture");
+    } else {
+      const port = process.argv[2];
+      await overlay.loadURL(`http://localhost:${port}/area-capture`);
+    }
 
-  // Load the area capture page
-  if (isProd) {
-    await windowCaptureOverlay.loadURL("app://./area-capture");
-  } else {
-    const port = process.argv[2];
-    await windowCaptureOverlay.loadURL(`http://localhost:${port}/area-capture`);
+    overlay.webContents.once("did-finish-load", () => {
+      overlay.webContents.send("area-capture-ready", {
+        displayId: display.id,
+        scaleFactor,
+        // origin of this overlay in screen coordinates
+        originOffset: { x, y },
+      });
+    });
+
+    overlay.on("closed", () => {
+      areaCaptureOverlays = areaCaptureOverlays.filter((w) => w !== overlay);
+      if (process.platform === "darwin") app.dock?.show();
+    });
+
+    areaCaptureOverlays.push(overlay);
   }
 
-  // Send display info once page is loaded
-  windowCaptureOverlay.webContents.once("did-finish-load", async () => {
-    const overlayBounds =
-      windowCaptureOverlay?.getBounds() || primaryDisplay.bounds;
-
-    windowCaptureOverlay?.webContents.send("area-capture-ready", {
-      scaleFactor,
-      displayBounds: primaryDisplay.bounds,
-      overlayBounds,
-    });
-  });
-
-  // Handle window close — restore dock icon hidden by setVisibleOnAllWorkspaces
-  windowCaptureOverlay.on("closed", () => {
-    windowCaptureOverlay = null;
-    if (process.platform === "darwin") app.dock?.show();
-  });
+  if (process.platform === "darwin") app.dock?.show();
 }
 
 async function handleScreenshotCapture(
@@ -3087,7 +3090,7 @@ function setupIPCHandlers() {
   // Legacy capture handler (kept for backward compatibility)
   ipcMain.handle(
     "capture:screenshot",
-    async (_event, { mode, windowId, bounds }) => {
+    async (_event, { mode, windowId, bounds, originOffset }) => {
       try {
         // Close overlay window if it exists (for region and window capture)
         if (windowCaptureOverlay) {
@@ -3103,6 +3106,7 @@ function setupIPCHandlers() {
           mode,
           windowId,
           bounds,
+          originOffset,
         });
 
         // Store screenshot data globally

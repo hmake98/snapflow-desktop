@@ -18,32 +18,17 @@ export default function AreaCapture() {
     null
   );
   const [selection, setSelection] = useState<SelectionBounds | null>(null);
-  const [_scaleFactor, setScaleFactor] = useState(1);
-  const [_displayBounds, setDisplayBounds] = useState<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null>(null);
-  const [_overlayBounds, setOverlayBounds] = useState<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null>(null);
+  const [originOffset, setOriginOffset] = useState<{ x: number; y: number }>({
+    x: 0,
+    y: 0,
+  });
 
   useEffect(() => {
     // Listen for area capture ready event
     const unsubscribe = window.ipc.on(
       "area-capture-ready",
-      (data: {
-        scaleFactor?: number;
-        displayBounds?: { x: number; y: number; width: number; height: number };
-        overlayBounds?: { x: number; y: number; width: number; height: number };
-      }) => {
-        setScaleFactor(data.scaleFactor || 1);
-        setDisplayBounds(data.displayBounds || null);
-        setOverlayBounds(data.overlayBounds || null);
+      (data: { originOffset?: { x: number; y: number } }) => {
+        if (data.originOffset) setOriginOffset(data.originOffset);
       }
     );
 
@@ -123,6 +108,7 @@ export default function AreaCapture() {
           await window.api.captureScreenshot({
             mode: "region",
             bounds: captureParams,
+            originOffset,
           });
         } catch (error) {
           console.error("Failed to capture area:", error);

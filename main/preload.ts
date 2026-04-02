@@ -138,6 +138,7 @@ const api = {
     mode: "fullscreen" | "window" | "region";
     windowId?: string;
     bounds?: { x: number; y: number; width: number; height: number };
+    originOffset?: { x: number; y: number };
   }) => ipcRenderer.invoke("capture:screenshot", options),
   checkCapturePermission: () => ipcRenderer.invoke("capture:check-permission"),
   getAvailableWindows: () => ipcRenderer.invoke("capture:get-windows"),
