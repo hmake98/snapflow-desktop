@@ -1280,26 +1280,19 @@ export default function HomePage() {
                       </svg>
                     ),
                   },
-                  {
-                    id: "recording",
-                    label: "Recordings",
-                    count: issues.filter((i) => i.type === "recording").length,
-                    icon: (
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-                        />
-                      </svg>
-                    ),
-                  },
+                  // Recording filter tab — commented out
+                  // {
+                  //   id: "recording",
+                  //   label: "Recordings",
+                  //   count: issues.filter((i) => i.type === "recording").length,
+                  //   icon: (
+                  //     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  //       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  //         d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  //       />
+                  //     </svg>
+                  //   ),
+                  // },
                 ]}
                 activeFilter={filter}
                 onFilterChange={(filterId) => setFilter(filterId as any)}
@@ -1482,7 +1475,7 @@ export default function HomePage() {
                         className="relative h-40 bg-gray-800 overflow-hidden cursor-pointer"
                         onClick={() => openPreview(issue)}
                       >
-                        {issue.thumbnailPath && issue.type !== "recording" ? (
+                        {issue.thumbnailPath /* && issue.type !== "recording" */ ? (
                           <>
                             <LocalImage
                               src={issue.thumbnailPath}
@@ -1510,6 +1503,8 @@ export default function HomePage() {
                               </div>
                             </div>
                           </>
+                        ) : (
+                          /* issue.type === "recording" && issue.filePath — commented out
                         ) : issue.type === "recording" && issue.filePath ? (
                           <>
                             <video
@@ -1521,19 +1516,14 @@ export default function HomePage() {
                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all duration-300 flex items-center justify-center">
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                                 <div className="bg-white/10 backdrop-blur-sm rounded-full p-4">
-                                  <svg
-                                    className="w-8 h-8 text-white"
-                                    fill="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
+                                  <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
                                     <path d="M8 5v14l11-7z" />
                                   </svg>
                                 </div>
                               </div>
                             </div>
                           </>
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center">
+                        ) : */ <div className="absolute inset-0 flex items-center justify-center">
                             <div className="text-center">
                               <svg
                                 className="w-16 h-16 mx-auto mb-2 text-gray-600"
@@ -1761,44 +1751,46 @@ export default function HomePage() {
               <div className="flex flex-col md:flex-row w-full h-full">
                 {/* Main Image Preview */}
                 <div className="flex-1 bg-gray-950 overflow-auto p-4 min-h-0">
-                  {previewIssue.type === "recording" &&
-                  previewIssue.filePath ? (
+                  {
+                    /* Recording preview — commented out
+                  previewIssue.type === "recording" && previewIssue.filePath ? (
                     <video
                       src={`snapflow://${previewIssue.filePath}`}
                       controls
                       className="w-full h-full"
                       style={{ background: "#000", objectFit: "contain" }}
                     />
-                  ) : previewIssue.filePath ? (
-                    <LocalImage
-                      src={previewIssue.filePath}
-                      alt={previewIssue.title}
-                      className="w-full h-full"
-                      style={{
-                        imageRendering: "crisp-edges" as any,
-                        objectFit: "contain",
-                      }}
-                    />
-                  ) : (
-                    <div className="text-center py-12">
-                      <svg
-                        className="w-20 h-20 mx-auto mb-4 text-gray-600"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                        />
-                      </svg>
-                      <p className="text-gray-500">
-                        Full resolution image not available
-                      </p>
-                    </div>
-                  )}
+                  ) : */ previewIssue.filePath ? (
+                      <LocalImage
+                        src={previewIssue.filePath}
+                        alt={previewIssue.title}
+                        className="w-full h-full"
+                        style={{
+                          imageRendering: "crisp-edges" as any,
+                          objectFit: "contain",
+                        }}
+                      />
+                    ) : (
+                      <div className="text-center py-12">
+                        <svg
+                          className="w-20 h-20 mx-auto mb-4 text-gray-600"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={1.5}
+                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                          />
+                        </svg>
+                        <p className="text-gray-500">
+                          Full resolution image not available
+                        </p>
+                      </div>
+                    )
+                  }
                 </div>
 
                 {/* Right Sidebar - Details */}

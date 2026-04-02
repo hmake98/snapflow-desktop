@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
-import type { Tenant, Workspace, OnboardingStatus, UserRole } from "../types";
+import type { Tenant, Workspace, OnboardingStatus } from "../types";
 import { Button } from "../components/ui/Button";
 
 function slugify(text: string): string {

@@ -4,7 +4,7 @@ import type {
   Issue,
   Connector,
   Workspace,
-  ShowPickerPayload,
+  // ShowPickerPayload,
 } from "../types";
 
 export type QueuedSyncType = "syncIssue" | "syncToCloud" | "syncIssueToZoho";
@@ -54,11 +54,11 @@ interface AppState {
   clearSyncQueue: () => void;
   processSyncQueue: () => void;
 
-  // Recording picker state (global so modal works on any page)
-  pickerPayload: ShowPickerPayload | null;
-  showRecordingPicker: boolean;
-  setPickerPayload: (payload: ShowPickerPayload | null) => void;
-  setShowRecordingPicker: (show: boolean) => void;
+  // Recording picker state — commented out
+  // pickerPayload: ShowPickerPayload | null;
+  // showRecordingPicker: boolean;
+  // setPickerPayload: (payload: ShowPickerPayload | null) => void;
+  // setShowRecordingPicker: (show: boolean) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -133,9 +133,9 @@ export const useStore = create<AppState>((set) => ({
     // and processes the queue. Kept here so useNetworkStatus can call it.
   },
 
-  // Recording picker state
-  pickerPayload: null,
-  showRecordingPicker: false,
-  setPickerPayload: (pickerPayload) => set({ pickerPayload }),
-  setShowRecordingPicker: (showRecordingPicker) => set({ showRecordingPicker }),
+  // Recording picker state — commented out
+  // pickerPayload: null,
+  // showRecordingPicker: false,
+  // setPickerPayload: (pickerPayload) => set({ pickerPayload }),
+  // setShowRecordingPicker: (showRecordingPicker) => set({ showRecordingPicker }),
 }));

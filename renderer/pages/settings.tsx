@@ -10,12 +10,12 @@ import {
   ZohoConnectorManager,
   UpdatesSection,
   CloudSyncIndicator,
-  RecordingSection,
+  // RecordingSection,
 } from "../components/settings";
 import { useStore } from "../store/useStore";
 import { ProfileDropdown } from "../components/ui/ProfileDropdown";
 
-type Tab = "account" | "connectors" | "sync" | "general" | "recording";
+type Tab = "account" | "connectors" | "sync" | "general"; // | "recording";
 
 interface User {
   id: string;
@@ -39,7 +39,9 @@ export default function SettingsPage() {
     if (router.query.tab) {
       const tab = router.query.tab as string;
       if (
-        ["account", "connectors", "sync", "general", "recording"].includes(tab)
+        ["account", "connectors", "sync", "general" /* "recording" */].includes(
+          tab
+        )
       ) {
         setActiveTab(tab as Tab);
       }
@@ -245,6 +247,7 @@ export default function SettingsPage() {
             >
               General
             </Button>
+            {/* Recording tab — commented out
             <Button
               variant={activeTab === "recording" ? "primary" : "ghost"}
               onClick={() => setActiveTab("recording")}
@@ -266,6 +269,7 @@ export default function SettingsPage() {
             >
               Recording
             </Button>
+            */}
           </div>
 
           {/* Tab Content */}
@@ -375,7 +379,7 @@ export default function SettingsPage() {
               </>
             )}
 
-            {activeTab === "recording" && <RecordingSection />}
+            {/* {activeTab === "recording" && <RecordingSection />} */}
           </div>
         </main>
       </div>
