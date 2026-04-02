@@ -38,6 +38,11 @@ function MyApp({ Component, pageProps }: AppProps) {
   // } = useStore();
   useStore();
 
+  // Notify main process of route changes so tray can enable/disable capture actions
+  useEffect(() => {
+    window.ipc.send("route:change", router.pathname);
+  }, [router.pathname]);
+
   useEffect(() => {
     // Setup OAuth callback listener
     const unsubscribe = window.api.onNavigate((route: string) => {

@@ -29,7 +29,6 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const googleSigninTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
-  // Cleanup timeout on unmount
   React.useEffect(() => {
     return () => {
       if (googleSigninTimeoutRef.current) {
@@ -44,7 +43,6 @@ export default function AuthPage() {
     setSuccess("");
     setLoading(true);
 
-    // Set a 30-second timeout for auth operations
     const authTimeout = setTimeout(() => {
       setLoading(false);
       setError("Request timeout. Please check your connection and try again.");
@@ -52,20 +50,15 @@ export default function AuthPage() {
 
     try {
       if (isLogin) {
-        // Login
         const result = await window.api.loginUser(
           formData.email,
           formData.password
         );
-
         clearTimeout(authTimeout);
-
         if (result.success) {
-          // Navigate using Next.js router
           try {
             await router.push("/home");
-          } catch (navError) {
-            console.error("[AUTH] Navigation error:", navError);
+          } catch {
             window.location.href = "/home";
           }
           return;
@@ -74,28 +67,22 @@ export default function AuthPage() {
           setLoading(false);
         }
       } else {
-        // Signup
         if (formData.password !== formData.confirmPassword) {
           clearTimeout(authTimeout);
           setError("Passwords do not match");
           setLoading(false);
           return;
         }
-
         const result = await window.api.createUser(
           formData.name,
           formData.email,
           formData.password
         );
-
         clearTimeout(authTimeout);
-
         if (result.success) {
-          // User is automatically logged in after signup, redirect to home
           try {
             await router.push("/home");
-          } catch (navError) {
-            console.error("[AUTH] Navigation error:", navError);
+          } catch {
             window.location.href = "/home";
           }
           return;
@@ -112,49 +99,192 @@ export default function AuthPage() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    setError("");
+    if (googleSigninTimeoutRef.current) {
+      clearTimeout(googleSigninTimeoutRef.current);
+    }
+    const timeout = setTimeout(() => {
+      setLoading(false);
+      setError(
+        "Google sign-in timeout. Please close the browser window and try again."
+      );
+    }, 120000);
+    googleSigninTimeoutRef.current = timeout;
+    try {
+      const result = await window.api.googleSignIn();
+      if (!result.success) {
+        clearTimeout(timeout);
+        googleSigninTimeoutRef.current = null;
+        setLoading(false);
+        setError(result.error || "Google sign-in failed");
+      }
+    } catch {
+      clearTimeout(timeout);
+      googleSigninTimeoutRef.current = null;
+      setLoading(false);
+      setError("Failed to initiate Google sign-in");
+    }
+  };
+
+  const handleSwitch = () => {
+    setIsLogin(!isLogin);
+    setError("");
+    setSuccess("");
+    setFormData({ name: "", email: "", password: "", confirmPassword: "" });
+  };
+
+  const inputClass =
+    "w-full px-4 py-2.5 bg-gray-800 border border-gray-700 text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-200 hover:border-gray-600 placeholder:text-gray-500 text-sm";
+
   return (
     <>
       <Head>
         <title>{isLogin ? "Login" : "Sign Up"} - SnapFlow</title>
       </Head>
-      <div className="h-screen w-full bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex flex-col overflow-hidden">
-        {/* Background gradient overlay */}
-        <div className="fixed inset-0 bg-gradient-to-br from-blue-900/10 via-transparent to-purple-900/10 pointer-events-none" />
 
-        {/* Native drag region for titlebar (enables drag + double-click to maximize) */}
+      <div className="h-screen w-full overflow-hidden flex flex-col bg-slate-950">
+        {/* Titlebar drag region */}
         <div
-          className="h-11 flex-shrink-0 bg-transparent"
+          className="h-9 flex-shrink-0"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         />
 
-        {/* Auth Content */}
-        <div className="flex-1 overflow-y-auto relative z-10">
-          <div className="w-full max-w-sm mx-auto px-4 py-6">
-            <div className="mb-8 flex justify-center text-center">
-              <div className="mb-6">
-                <div className="w-24 h-24 flex items-center justify-center mx-auto">
-                  <img
-                    src="/images/logo.png"
-                    alt="SnapFlow Logo"
-                    className="w-full h-full object-contain drop-shadow-xl"
-                  />
-                </div>
-                <h1 className="text-3xl font-bold text-gray-100 mt-3 mb-1">
-                  SnapFlow
-                </h1>
-                <p className="text-gray-400 text-xs">
-                  {isLogin
-                    ? "Welcome back! Please login to continue."
-                    : "Create your account to get started."}
-                </p>
+        {/* Two-column body */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* ── Left brand panel ── */}
+          <div className="w-[45%] flex-shrink-0 relative overflow-hidden flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border-r border-gray-800/50">
+            {/* Decorative background glow */}
+            <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-600/5 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="relative z-10 flex flex-col items-center text-center px-12 select-none">
+              {/* Logo */}
+              <div className="w-20 h-20 mb-5">
+                <img
+                  src="/images/logo.png"
+                  alt="SnapFlow"
+                  className="w-full h-full object-contain drop-shadow-2xl"
+                />
+              </div>
+
+              <h1 className="text-3xl font-bold text-gray-100 mb-2 tracking-tight">
+                SnapFlow
+              </h1>
+              <p className="text-sm text-gray-400 leading-relaxed max-w-xs">
+                Capture screenshots, collaborate with your team, and sync to
+                GitHub and Zoho — all in one place.
+              </p>
+
+              {/* Divider */}
+              <div className="w-12 h-px bg-gray-700 my-8" />
+
+              {/* Feature list */}
+              <div className="flex flex-col gap-4 text-left w-full max-w-[260px]">
+                {[
+                  {
+                    icon: (
+                      <svg
+                        className="w-4 h-4 text-blue-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                      </svg>
+                    ),
+                    title: "Screenshot Capture",
+                    desc: "Full screen, area, or specific window",
+                  },
+                  {
+                    icon: (
+                      <svg
+                        className="w-4 h-4 text-blue-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                      </svg>
+                    ),
+                    title: "Team Workspaces",
+                    desc: "Collaborate with roles and permissions",
+                  },
+                  {
+                    icon: (
+                      <svg
+                        className="w-4 h-4 text-blue-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                        />
+                      </svg>
+                    ),
+                    title: "GitHub & Zoho Sync",
+                    desc: "Push issues directly to your tools",
+                  },
+                ].map((feature) => (
+                  <div key={feature.title} className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      {feature.icon}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-200">
+                        {feature.title}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {feature.desc}
+                      </p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
+          </div>
 
-            <div className="bg-gray-900/80 backdrop-blur-sm rounded-2xl shadow-2xl p-6 border border-gray-800/60 text-left">
+          {/* ── Right form panel ── */}
+          <div className="flex-1 flex items-center justify-center overflow-hidden bg-slate-950 px-8">
+            <div className="w-full max-w-md">
+              {/* Form header */}
+              <div className="mb-7">
+                <h2 className="text-2xl font-bold text-gray-100">
+                  {isLogin ? "Welcome back" : "Create your account"}
+                </h2>
+                <p className="text-sm text-gray-400 mt-1.5">
+                  {isLogin
+                    ? "Sign in to continue to SnapFlow."
+                    : "Get started for free — no credit card required."}
+                </p>
+              </div>
+
+              {/* Alerts */}
               {error && (
-                <div className="mb-4 p-4 bg-red-500/20 border border-red-500/30 text-red-400 rounded-lg text-sm flex items-start">
+                <div className="mb-5 p-3.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg text-sm flex items-start gap-2.5">
                   <svg
-                    className="w-5 h-5 mr-2 flex-shrink-0"
+                    className="w-4 h-4 flex-shrink-0 mt-px"
                     fill="currentColor"
                     viewBox="0 0 20 20"
                   >
@@ -167,11 +297,10 @@ export default function AuthPage() {
                   {error}
                 </div>
               )}
-
               {success && (
-                <div className="mb-4 p-4 bg-green-500/20 border border-green-500/30 text-green-400 rounded-lg text-sm flex items-start">
+                <div className="mb-5 p-3.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-lg text-sm flex items-start gap-2.5">
                   <svg
-                    className="w-5 h-5 mr-2 flex-shrink-0"
+                    className="w-4 h-4 flex-shrink-0 mt-px"
                     fill="currentColor"
                     viewBox="0 0 20 20"
                   >
@@ -185,14 +314,15 @@ export default function AuthPage() {
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-3">
+              {/* Form */}
+              <form onSubmit={handleSubmit} className="space-y-4">
                 {!isLogin && (
                   <div>
                     <label
                       htmlFor="name"
-                      className="block text-sm font-medium text-gray-300 mb-1"
+                      className="block text-sm font-medium text-gray-300 mb-1.5"
                     >
-                      Name
+                      Full name
                     </label>
                     <input
                       type="text"
@@ -202,7 +332,7 @@ export default function AuthPage() {
                       onChange={(e) =>
                         setFormData({ ...formData, name: e.target.value })
                       }
-                      className="w-full px-4 py-3 bg-gray-800 border border-gray-700 text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-200 hover:border-gray-600"
+                      className={inputClass}
                       placeholder="John Doe"
                     />
                   </div>
@@ -211,9 +341,9 @@ export default function AuthPage() {
                 <div>
                   <label
                     htmlFor="email"
-                    className="block text-sm font-medium text-gray-300 mb-1"
+                    className="block text-sm font-medium text-gray-300 mb-1.5"
                   >
-                    Email
+                    Email address
                   </label>
                   <input
                     type="email"
@@ -225,7 +355,7 @@ export default function AuthPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, email: e.target.value })
                     }
-                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-200 hover:border-gray-600"
+                    className={inputClass}
                     placeholder="john@example.com"
                   />
                 </div>
@@ -233,7 +363,7 @@ export default function AuthPage() {
                 <div>
                   <label
                     htmlFor="password"
-                    className="block text-sm font-medium text-gray-300 mb-1"
+                    className="block text-sm font-medium text-gray-300 mb-1.5"
                   >
                     Password
                   </label>
@@ -247,7 +377,7 @@ export default function AuthPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, password: e.target.value })
                     }
-                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-200 hover:border-gray-600"
+                    className={inputClass}
                     placeholder="••••••••"
                   />
                 </div>
@@ -256,9 +386,9 @@ export default function AuthPage() {
                   <div>
                     <label
                       htmlFor="confirmPassword"
-                      className="block text-sm font-medium text-gray-300 mb-1"
+                      className="block text-sm font-medium text-gray-300 mb-1.5"
                     >
-                      Confirm Password
+                      Confirm password
                     </label>
                     <input
                       type="password"
@@ -273,7 +403,7 @@ export default function AuthPage() {
                           confirmPassword: e.target.value,
                         })
                       }
-                      className="w-full px-4 py-3 bg-gray-800 border border-gray-700 text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-200 hover:border-gray-600"
+                      className={inputClass}
                       placeholder="••••••••"
                     />
                   </div>
@@ -282,12 +412,12 @@ export default function AuthPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-800 disabled:opacity-50 text-white font-semibold py-2 rounded-lg transition-all duration-200"
+                  className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-800 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-all duration-200 text-sm mt-1"
                 >
                   {loading ? (
-                    <span className="flex items-center justify-center">
+                    <span className="flex items-center justify-center gap-2">
                       <svg
-                        className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                        className="animate-spin h-4 w-4 text-white"
                         fill="none"
                         viewBox="0 0 24 24"
                       >
@@ -298,70 +428,39 @@ export default function AuthPage() {
                           r="10"
                           stroke="currentColor"
                           strokeWidth="4"
-                        ></circle>
+                        />
                         <path
                           className="opacity-75"
                           fill="currentColor"
                           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        ></path>
+                        />
                       </svg>
                       Please wait...
                     </span>
                   ) : isLogin ? (
-                    "Login"
+                    "Sign in"
                   ) : (
-                    "Create Account"
+                    "Create account"
                   )}
                 </button>
               </form>
 
-              <div className="my-4 flex items-center">
-                <div className="flex-1 border-t border-gray-700"></div>
-                <span className="px-3 text-xs text-gray-500">or</span>
-                <div className="flex-1 border-t border-gray-700"></div>
+              {/* Divider */}
+              <div className="my-5 flex items-center gap-3">
+                <div className="flex-1 border-t border-gray-800" />
+                <span className="text-xs text-gray-600">or continue with</span>
+                <div className="flex-1 border-t border-gray-800" />
               </div>
 
+              {/* Google */}
               <button
                 type="button"
-                onClick={async () => {
-                  setLoading(true);
-                  setError("");
-
-                  // Clear any existing timeout
-                  if (googleSigninTimeoutRef.current) {
-                    clearTimeout(googleSigninTimeoutRef.current);
-                  }
-
-                  // Set a 120-second timeout for the OAuth flow
-                  const timeout = setTimeout(() => {
-                    setLoading(false);
-                    setError(
-                      "Google sign-in timeout. Please close the browser window and try again."
-                    );
-                  }, 120000);
-
-                  googleSigninTimeoutRef.current = timeout;
-
-                  try {
-                    const result = await window.api.googleSignIn();
-                    if (!result.success) {
-                      clearTimeout(timeout);
-                      googleSigninTimeoutRef.current = null;
-                      setLoading(false);
-                      setError(result.error || "Google sign-in failed");
-                    }
-                    // The OAuth callback will handle navigation and clear timeout
-                  } catch (_err) {
-                    clearTimeout(timeout);
-                    googleSigninTimeoutRef.current = null;
-                    setLoading(false);
-                    setError("Failed to initiate Google sign-in");
-                  }
-                }}
-                className="w-full flex items-center justify-center gap-3 bg-gray-800 hover:bg-gray-700 active:bg-gray-900 text-gray-100 font-semibold py-2 rounded-lg transition-all duration-200"
+                disabled={loading}
+                onClick={handleGoogleSignIn}
+                className="w-full flex items-center justify-center gap-3 bg-gray-800 hover:bg-gray-700 active:bg-gray-900 disabled:opacity-50 text-gray-100 font-medium py-2.5 rounded-lg transition-all duration-200 text-sm border border-gray-700"
               >
                 <svg
-                  className="w-4 h-4"
+                  className="w-4 h-4 flex-shrink-0"
                   viewBox="0 0 24 24"
                   fill="currentColor"
                 >
@@ -373,26 +472,18 @@ export default function AuthPage() {
                 Sign in with Google
               </button>
 
-              <div className="mt-6 text-center">
+              {/* Switch */}
+              <p className="mt-6 text-center text-sm text-gray-500">
+                {isLogin
+                  ? "Don't have an account?"
+                  : "Already have an account?"}{" "}
                 <button
-                  onClick={() => {
-                    setIsLogin(!isLogin);
-                    setError("");
-                    setSuccess("");
-                    setFormData({
-                      name: "",
-                      email: "",
-                      password: "",
-                      confirmPassword: "",
-                    });
-                  }}
-                  className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors duration-200"
+                  onClick={handleSwitch}
+                  className="text-blue-400 hover:text-blue-300 font-medium transition-colors duration-200"
                 >
-                  {isLogin
-                    ? "Don't have an account? Sign up"
-                    : "Already have an account? Login"}
+                  {isLogin ? "Sign up for free" : "Sign in"}
                 </button>
-              </div>
+              </p>
             </div>
           </div>
         </div>

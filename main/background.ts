@@ -122,6 +122,9 @@ const appSettingsStore = new Store({
 // State tracking for tray actions to prevent race conditions
 let isShowingWindow = false;
 
+// Current renderer route — updated via "route:change" IPC from _app.tsx
+let currentRoute = "";
+
 // Tray icon manager and recording state
 let trayIconManager: TrayIconManager | null = null;
 let recordingState: "idle" | "selecting" | "recording" = "idle";
@@ -388,15 +391,22 @@ function registerGlobalShortcuts() {
 function updateTrayMenu() {
   if (!tray) return;
 
+  // Disable capture actions when user is on auth or onboarding screens
+  const isRestrictedRoute =
+    currentRoute === "/auth" ||
+    currentRoute === "/onboarding" ||
+    currentRoute === "";
+
   // Get available displays
   const displays = captureService.getAvailableDisplays();
   const hasMultipleDisplays = displays.length > 1;
 
-  // Build capture menu items
+  // Build capture menu items (disabled on restricted routes)
   const captureMenuItems: electron.MenuItemConstructorOptions[] = [
     {
       label: "Capture Full Screen",
       accelerator: "Control+Shift+3",
+      enabled: !isRestrictedRoute,
       click: () => {
         handleScreenshotCapture("fullscreen");
       },
@@ -404,6 +414,7 @@ function updateTrayMenu() {
     {
       label: "Capture Area",
       accelerator: "Control+Shift+5",
+      enabled: !isRestrictedRoute,
       click: () => {
         handleScreenshotCapture("region");
       },
@@ -415,6 +426,7 @@ function updateTrayMenu() {
     captureMenuItems.push({ type: "separator" });
     captureMenuItems.push({
       label: "Capture All Screens",
+      enabled: !isRestrictedRoute,
       click: () => {
         handleScreenshotCapture("all-screens");
       },
@@ -423,6 +435,7 @@ function updateTrayMenu() {
     // Add individual screen capture options
     const screenSubmenu = displays.map((display) => ({
       label: display.label,
+      enabled: !isRestrictedRoute,
       click: () => {
         handleScreenshotCapture("specific-screen", display.id.toString());
       },
@@ -430,44 +443,39 @@ function updateTrayMenu() {
 
     captureMenuItems.push({
       label: "Capture Specific Screen",
+      enabled: !isRestrictedRoute,
       submenu: screenSubmenu,
     });
   }
 
-  // Recording menu item
-  const isRecording = recorderService.getState() === "recording";
-  const recordingMenuItem: electron.MenuItemConstructorOptions = isRecording
-    ? {
-        label: "■ Stop Recording",
-        accelerator: "Control+Shift+R",
-        click: async () => {
-          await handleStopRecording();
-        },
-      }
-    : {
-        label: "● Record Screen (Ctrl+Shift+R)",
-        accelerator: "Control+Shift+R",
-        click: async () => {
-          await handleStartRecordingFlow();
-        },
-      };
+  // Recording menu items — commented out
+  // const isRecording = recorderService.getState() === "recording";
+  // const recordingMenuItem: electron.MenuItemConstructorOptions = isRecording
+  //   ? {
+  //       label: "■ Stop Recording",
+  //       accelerator: "Control+Shift+R",
+  //       click: async () => { await handleStopRecording(); },
+  //     }
+  //   : {
+  //       label: "● Record Screen (Ctrl+Shift+R)",
+  //       accelerator: "Control+Shift+R",
+  //       click: async () => { await handleStartRecordingFlow(); },
+  //     };
 
   const menuItems: electron.MenuItemConstructorOptions[] = [];
 
   // Add capture menu items
   menuItems.push(...captureMenuItems);
-  menuItems.push({ type: "separator" });
-  menuItems.push(recordingMenuItem);
 
-  // Add "Start recording with selection" option when not recording
-  if (!isRecording) {
-    menuItems.push({
-      label: "Start Recording with Selection",
-      click: async () => {
-        await handleStartRecordingFlowWithSelection();
-      },
-    });
-  }
+  // Recording items — commented out
+  // menuItems.push({ type: "separator" });
+  // menuItems.push(recordingMenuItem);
+  // if (!isRecording) {
+  //   menuItems.push({
+  //     label: "Start Recording with Selection",
+  //     click: async () => { await handleStartRecordingFlowWithSelection(); },
+  //   });
+  // }
 
   const contextMenu = Menu.buildFromTemplate([
     ...menuItems,
@@ -930,6 +938,7 @@ async function handleStartRecordingFlow() {
 /**
  * Fetch sources and show the picker — used when tray menu explicitly requests selection
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function handleStartRecordingFlowWithSelection() {
   if (isStartingRecordingFlow || recorderService.getState() !== "idle") {
     log.warn("[Recording] Recording flow already in progress, ignoring");
@@ -2014,6 +2023,12 @@ function _stopOAuthCallbackServer() {
 // Setup IPC Handlers function
 function setupIPCHandlers() {
   if (!ipcMain) return;
+
+  // Route tracking — renderer notifies main of current page so tray can update
+  ipcMain.on("route:change", (_event, route: string) => {
+    currentRoute = route;
+    updateTrayMenu();
+  });
 
   // Auth handlers
   ipcMain.handle("user:create", async (_event, { name, email, password }) => {
