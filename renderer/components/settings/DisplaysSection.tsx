@@ -15,41 +15,50 @@ interface Display {
 
 export function DisplaysSection() {
   const [displays, setDisplays] = useState<Display[]>([]);
+  const [defaultScreenId, setDefaultScreenId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<number | null>(null);
 
   useEffect(() => {
-    loadDisplays();
+    loadData();
   }, []);
 
-  const loadDisplays = async () => {
+  const loadData = async () => {
     try {
-      const result = await window.api.getAvailableDisplays();
-      if (result.success) {
-        setDisplays(result.data || []);
-      }
+      const [displaysResult, defaultResult] = await Promise.all([
+        window.api.getAvailableDisplays(),
+        window.api.getDefaultCaptureScreen(),
+      ]);
+      if (displaysResult.success) setDisplays(displaysResult.data || []);
+      if (defaultResult.success) setDefaultScreenId(defaultResult.data ?? null);
     } catch {
-      console.error("Failed to load displays");
+      console.error("Failed to load display settings");
     } finally {
       setLoading(false);
     }
   };
 
-  const testCapture = async (type: "all" | "specific", displayId?: number) => {
+  const handleSetDefault = async (displayId: number) => {
+    setSaving(displayId);
     try {
-      let result;
-      if (type === "all") {
-        result = await window.api.captureAllScreens();
-      } else if (displayId !== undefined) {
-        result = await window.api.captureSpecificScreen(displayId);
-      }
-
-      if (result?.success) {
-        alert("Capture successful! Check your clipboard.");
-      } else {
-        alert(`Capture failed: ${result?.error || "Unknown error"}`);
-      }
+      const result = await window.api.setDefaultCaptureScreen(displayId);
+      if (result.success) setDefaultScreenId(displayId);
     } catch {
-      alert("Capture failed: Network error");
+      console.error("Failed to set default screen");
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const handleClearDefault = async () => {
+    setSaving(-1);
+    try {
+      const result = await window.api.clearDefaultCaptureScreen();
+      if (result.success) setDefaultScreenId(null);
+    } catch {
+      console.error("Failed to clear default screen");
+    } finally {
+      setSaving(null);
     }
   };
 
@@ -87,27 +96,6 @@ export function DisplaysSection() {
             Manage and test multi-screen capture functionality
           </p>
         </div>
-        {displays.length > 1 && (
-          <button
-            onClick={() => testCapture("all")}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center space-x-2"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h2a2 2 0 002-2z"
-              />
-            </svg>
-            <span>Test All Screens</span>
-          </button>
-        )}
       </div>
 
       <div className="bg-gray-800/50 border border-gray-700/50 rounded-lg p-4">
@@ -133,58 +121,115 @@ export function DisplaysSection() {
         </div>
 
         {displays.length === 1 ? (
-          <p className="text-sm text-gray-400">
-            Only one display is currently connected. Multi-screen capture
-            options will appear when additional displays are connected.
-          </p>
-        ) : (
           <div className="space-y-3">
             <p className="text-sm text-gray-400">
-              Multiple displays detected. You can capture all screens at once or
-              capture individual screens from the system tray menu.
+              Only one display is currently connected. Multi-screen capture
+              options will appear when additional displays are connected.
             </p>
+            <div
+              key={displays[0].id}
+              className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg border border-blue-500/40"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="w-3 h-3 rounded-full bg-blue-500" />
+                <div>
+                  <div className="text-sm font-medium text-gray-100">
+                    {displays[0].label}
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    {displays[0].bounds.width} × {displays[0].bounds.height}
+                    {displays[0].scaleFactor !== 1 &&
+                      ` (${displays[0].scaleFactor}x)`}
+                  </div>
+                </div>
+              </div>
+              <span className="text-xs font-medium text-blue-400 bg-blue-500/10 border border-blue-500/30 px-2 py-1 rounded">
+                Default
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-400">
+                Select a default screen for &quot;Capture Current App
+                Screen&quot;. If none is selected, the screen under your cursor
+                is used.
+              </p>
+              {defaultScreenId !== null && (
+                <button
+                  onClick={handleClearDefault}
+                  disabled={saving === -1}
+                  className="ml-4 shrink-0 text-xs text-gray-400 hover:text-gray-200 underline disabled:opacity-50 transition-colors"
+                >
+                  {saving === -1 ? "Clearing..." : "Clear default"}
+                </button>
+              )}
+            </div>
 
             <div className="grid gap-3">
-              {displays.map((display) => (
-                <div
-                  key={display.id}
-                  className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg border border-gray-700/30"
-                >
-                  <div className="flex items-center space-x-3">
-                    <div
-                      className={`w-3 h-3 rounded-full ${display.isPrimary ? "bg-blue-500" : "bg-gray-500"}`}
-                    ></div>
-                    <div>
-                      <div className="text-sm font-medium text-gray-100">
-                        {display.label}
-                      </div>
-                      <div className="text-xs text-gray-400">
-                        {display.bounds.width} × {display.bounds.height}
-                        {display.scaleFactor !== 1 &&
-                          ` (${display.scaleFactor}x)`}
+              {displays.map((display) => {
+                const isDefault = display.id === defaultScreenId;
+                const isSaving = saving === display.id;
+                return (
+                  <div
+                    key={display.id}
+                    className={`flex items-center justify-between p-3 bg-gray-900/50 rounded-lg border transition-colors ${
+                      isDefault ? "border-blue-500/40" : "border-gray-700/30"
+                    }`}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div
+                        className={`w-3 h-3 rounded-full ${
+                          isDefault
+                            ? "bg-blue-500"
+                            : display.isPrimary
+                              ? "bg-gray-400"
+                              : "bg-gray-600"
+                        }`}
+                      />
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm font-medium text-gray-100">
+                            {display.label}
+                          </span>
+                          {isDefault && (
+                            <span className="text-xs font-medium text-blue-400 bg-blue-500/10 border border-blue-500/30 px-1.5 py-0.5 rounded">
+                              Default
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          {display.bounds.width} × {display.bounds.height}
+                          {display.scaleFactor !== 1 &&
+                            ` (${display.scaleFactor}x)`}
+                        </div>
                       </div>
                     </div>
+                    {!isDefault && (
+                      <button
+                        onClick={() => handleSetDefault(display.id)}
+                        disabled={isSaving}
+                        className="text-xs font-medium text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded transition-colors disabled:opacity-50"
+                      >
+                        {isSaving ? "Saving..." : "Set as Default"}
+                      </button>
+                    )}
                   </div>
-                  <button
-                    onClick={() => testCapture("specific", display.id)}
-                    className="bg-gray-700 hover:bg-gray-600 text-gray-200 px-3 py-1.5 rounded text-xs font-medium transition-colors"
-                  >
-                    Test Capture
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
       </div>
 
       <div className="text-xs text-gray-500 space-y-1">
-        <p>• Multi-screen capture is available from the system tray menu</p>
-        <p>• "Capture All Screens" combines all displays into a single image</p>
         <p>
-          • "Capture Specific Screen" allows you to capture individual displays
+          • Set a default screen to always use it for &quot;Capture Current App
+          Screen&quot;
         </p>
-        <p>• All captures are automatically copied to your clipboard</p>
+        <p>• Without a default, the screen under your cursor is captured</p>
+        <p>• Capture options are available from the system tray menu</p>
       </div>
     </div>
   );

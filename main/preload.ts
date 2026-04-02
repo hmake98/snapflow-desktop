@@ -126,6 +126,12 @@ const api = {
   captureSpecificScreen: (displayId: number) =>
     ipcRenderer.invoke("capture:specific-screen", { displayId }),
   getAvailableDisplays: () => ipcRenderer.invoke("capture:get-displays"),
+  getDefaultCaptureScreen: () =>
+    ipcRenderer.invoke("capture:get-default-screen"),
+  setDefaultCaptureScreen: (displayId: number) =>
+    ipcRenderer.invoke("capture:set-default-screen", { displayId }),
+  clearDefaultCaptureScreen: () =>
+    ipcRenderer.invoke("capture:clear-default-screen"),
 
   // Legacy capture methods
   captureScreenshot: (options: {
@@ -290,6 +296,26 @@ const api = {
 
   // Debug methods
   testCapture: () => ipcRenderer.invoke("debug:test-capture"),
+
+  // Debug Collector — Collection Layer
+  collectorStartSession: () => ipcRenderer.invoke("collector:start-session"),
+  collectorStopSession: () => ipcRenderer.invoke("collector:stop-session"),
+  collectorCaptureSnapshot: () =>
+    ipcRenderer.invoke("collector:capture-snapshot"),
+  collectorCaptureScreenshot: () =>
+    ipcRenderer.invoke("collector:capture-screenshot"),
+  collectorGetTimeline: () => ipcRenderer.invoke("collector:get-timeline"),
+  collectorGetSession: () => ipcRenderer.invoke("collector:get-session"),
+  onCollectorSessionStarted: (callback: () => void) => {
+    const sub = () => callback();
+    ipcRenderer.on("collector:session-started", sub);
+    return () => ipcRenderer.removeListener("collector:session-started", sub);
+  },
+  onCollectorSessionStopped: (callback: (session: unknown) => void) => {
+    const sub = (_: IpcRendererEvent, session: unknown) => callback(session);
+    ipcRenderer.on("collector:session-stopped", sub);
+    return () => ipcRenderer.removeListener("collector:session-stopped", sub);
+  },
 
   // Event listeners
   onScreenshotCaptured: (

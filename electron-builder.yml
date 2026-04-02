@@ -9,6 +9,9 @@ publish:
   owner: harsh-simform
   repo: snapflow-desktop
   private: false
+asarUnpack:
+  - node_modules/uiohook-napi/**/*
+
 files:
   - from: .
     filter:

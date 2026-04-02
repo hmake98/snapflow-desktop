@@ -23,7 +23,11 @@ import { overlayService } from "./services/overlay";
 import { windowPickerService } from "./services/window-picker";
 import type { SourcesWithDefaultPayload } from "./services/window-picker";
 import { clipboardService } from "./services/clipboard";
-import { recordingSettingsService } from "./services/settings";
+import { sessionManager as debugCollector } from "./services/debug-collector";
+import {
+  recordingSettingsService,
+  captureScreenSettings,
+} from "./services/settings";
 import { storageManager } from "./utils/storage";
 import { sessionManager } from "./utils/session";
 import { TrayIconManager } from "./utils/tray-icon-manager";
@@ -315,76 +319,65 @@ function createSystemTray() {
 }
 
 function registerGlobalShortcuts() {
-  // Register Ctrl+Shift+5 (Windows/Linux) for Capture Area
-  const captureAreaShortcut = "Control+Shift+5";
-
-  const areaRegistered = globalShortcut.register(
-    captureAreaShortcut,
-    async () => {
-      log.info(`[Shortcuts] ${captureAreaShortcut} pressed - Capture Area`);
-      await handleScreenshotCapture("region");
-    }
-  );
-
-  if (areaRegistered) {
-    log.info(
-      `[Shortcuts] Successfully registered ${captureAreaShortcut} for Capture Area`
-    );
-  } else {
-    log.error(`[Shortcuts] Failed to register ${captureAreaShortcut}`);
-  }
-
-  // Register Ctrl+Shift+3 (Windows/Linux) for Capture Full Screen
-  const captureFullScreenShortcut = "Control+Shift+3";
-
+  // 1 — Capture Full Screen
+  const fullScreenShortcut = "Control+Shift+1";
   const fullScreenRegistered = globalShortcut.register(
-    captureFullScreenShortcut,
+    fullScreenShortcut,
     async () => {
       log.info(
-        `[Shortcuts] ${captureFullScreenShortcut} pressed - Capture Full Screen`
+        `[Shortcuts] ${fullScreenShortcut} pressed - Capture Full Screen`
       );
       await handleScreenshotCapture("fullscreen");
     }
   );
-
-  if (fullScreenRegistered) {
-    log.info(
-      `[Shortcuts] Successfully registered ${captureFullScreenShortcut} for Capture Full Screen`
-    );
-  } else {
-    log.error(`[Shortcuts] Failed to register ${captureFullScreenShortcut}`);
+  if (!fullScreenRegistered) {
+    log.error(`[Shortcuts] Failed to register ${fullScreenShortcut}`);
   }
 
-  // Register Ctrl+Shift+R for Recording
-  const recordingShortcut = "Control+Shift+R";
-
-  const recordingRegistered = globalShortcut.register(
-    recordingShortcut,
+  // 2 — Capture Current App Screen (display the app window is on)
+  const currentScreenShortcut = "Control+Shift+2";
+  const currentScreenRegistered = globalShortcut.register(
+    currentScreenShortcut,
     async () => {
-      log.info(`[Shortcuts] ${recordingShortcut} pressed - Recording toggle`);
-      const state = recorderService.getState();
-      if (state === "recording") {
-        await handleStopRecording();
-      } else if (state === "idle") {
-        await handleStartRecordingFlow();
-      }
+      log.info(
+        `[Shortcuts] ${currentScreenShortcut} pressed - Capture Current App Screen`
+      );
+      await handleCaptureCurrentScreen();
     }
   );
-
-  if (recordingRegistered) {
-    log.info(
-      `[Shortcuts] Successfully registered ${recordingShortcut} for Recording`
-    );
-  } else {
-    log.error(`[Shortcuts] Failed to register ${recordingShortcut}`);
+  if (!currentScreenRegistered) {
+    log.error(`[Shortcuts] Failed to register ${currentScreenShortcut}`);
   }
 
-  // Log registered shortcuts
+  // 3 — Capture Screen Area (region selection overlay)
+  const areaShortcut = "Control+Shift+3";
+  const areaRegistered = globalShortcut.register(areaShortcut, async () => {
+    log.info(`[Shortcuts] ${areaShortcut} pressed - Capture Screen Area`);
+    await handleScreenshotCapture("region");
+  });
+  if (!areaRegistered) {
+    log.error(`[Shortcuts] Failed to register ${areaShortcut}`);
+  }
+
+  // 4 — Capture Session toggle (start / stop)
+  const sessionShortcut = "Control+Shift+4";
+  const sessionRegistered = globalShortcut.register(sessionShortcut, () => {
+    log.info(`[Shortcuts] ${sessionShortcut} pressed - Capture Session toggle`);
+    handleCaptureSessionToggle();
+  });
+  if (!sessionRegistered) {
+    log.error(`[Shortcuts] Failed to register ${sessionShortcut}`);
+  }
+
   log.info(
-    "[Shortcuts] All registered shortcuts:",
-    globalShortcut.isRegistered(captureAreaShortcut),
-    globalShortcut.isRegistered(captureFullScreenShortcut),
-    globalShortcut.isRegistered(recordingShortcut)
+    "[Shortcuts] Registered — Full Screen:",
+    globalShortcut.isRegistered(fullScreenShortcut),
+    "Current Screen:",
+    globalShortcut.isRegistered(currentScreenShortcut),
+    "Area:",
+    globalShortcut.isRegistered(areaShortcut),
+    "Session:",
+    globalShortcut.isRegistered(sessionShortcut)
   );
 }
 
@@ -401,52 +394,47 @@ function updateTrayMenu() {
   const displays = captureService.getAvailableDisplays();
   const hasMultipleDisplays = displays.length > 1;
 
+  // Determine whether a debug session is active for the session menu label
+  const isSessionActive = !!debugCollector.getActiveSession();
+
   // Build capture menu items (disabled on restricted routes)
   const captureMenuItems: electron.MenuItemConstructorOptions[] = [
     {
       label: "Capture Full Screen",
-      accelerator: "Control+Shift+3",
+      accelerator: "Control+Shift+1",
       enabled: !isRestrictedRoute,
       click: () => {
         handleScreenshotCapture("fullscreen");
       },
     },
     {
-      label: "Capture Area",
-      accelerator: "Control+Shift+5",
+      label: "Capture Current App Screen",
+      accelerator: "Control+Shift+2",
+      enabled: !isRestrictedRoute,
+      click: () => {
+        handleCaptureCurrentScreen();
+      },
+    },
+    {
+      label: "Capture Screen Area",
+      accelerator: "Control+Shift+3",
       enabled: !isRestrictedRoute,
       click: () => {
         handleScreenshotCapture("region");
       },
     },
+    { type: "separator" },
+    {
+      label: isSessionActive
+        ? "■ Stop Capture Session"
+        : "● Start Capture Session",
+      accelerator: "Control+Shift+4",
+      enabled: !isRestrictedRoute,
+      click: () => {
+        handleCaptureSessionToggle();
+      },
+    },
   ];
-
-  // Add multi-screen options if multiple displays are available
-  if (hasMultipleDisplays) {
-    captureMenuItems.push({ type: "separator" });
-    captureMenuItems.push({
-      label: "Capture All Screens",
-      enabled: !isRestrictedRoute,
-      click: () => {
-        handleScreenshotCapture("all-screens");
-      },
-    });
-
-    // Add individual screen capture options
-    const screenSubmenu = displays.map((display) => ({
-      label: display.label,
-      enabled: !isRestrictedRoute,
-      click: () => {
-        handleScreenshotCapture("specific-screen", display.id.toString());
-      },
-    }));
-
-    captureMenuItems.push({
-      label: "Capture Specific Screen",
-      enabled: !isRestrictedRoute,
-      submenu: screenSubmenu,
-    });
-  }
 
   // Recording menu items — commented out
   // const isRecording = recorderService.getState() === "recording";
@@ -482,6 +470,7 @@ function updateTrayMenu() {
     { type: "separator" },
     {
       label: "View My Snaps",
+      enabled: !isRestrictedRoute,
       click: async () => {
         try {
           log.info("[Tray] View My Snaps clicked");
@@ -642,6 +631,8 @@ async function createWindowCaptureOverlay() {
   windowCaptureOverlay.setVisibleOnAllWorkspaces(true, {
     visibleOnFullScreen: true,
   });
+  // setVisibleOnAllWorkspaces can hide the dock icon on macOS — restore it immediately
+  if (process.platform === "darwin") app.dock?.show();
 
   // Load the window capture page
   if (isProd) {
@@ -664,9 +655,10 @@ async function createWindowCaptureOverlay() {
     );
   });
 
-  // Handle window close
+  // Handle window close — restore dock icon hidden by setVisibleOnAllWorkspaces
   windowCaptureOverlay.on("closed", () => {
     windowCaptureOverlay = null;
+    if (process.platform === "darwin") app.dock?.show();
   });
 }
 
@@ -706,6 +698,8 @@ async function createAreaCaptureOverlay() {
   windowCaptureOverlay.setVisibleOnAllWorkspaces(true, {
     visibleOnFullScreen: true,
   });
+  // setVisibleOnAllWorkspaces can hide the dock icon on macOS — restore it immediately
+  if (process.platform === "darwin") app.dock?.show();
 
   // Load the area capture page
   if (isProd) {
@@ -727,9 +721,10 @@ async function createAreaCaptureOverlay() {
     });
   });
 
-  // Handle window close
+  // Handle window close — restore dock icon hidden by setVisibleOnAllWorkspaces
   windowCaptureOverlay.on("closed", () => {
     windowCaptureOverlay = null;
+    if (process.platform === "darwin") app.dock?.show();
   });
 }
 
@@ -761,8 +756,22 @@ async function handleScreenshotCapture(
       return;
     }
 
-    // For fullscreen, all-screens, or specific-screen, capture immediately
-    log.info("[Tray] Starting", mode, "capture...");
+    // For fullscreen, auto-upgrade to all-screens when multiple displays are connected
+    let resolvedMode = mode as
+      | "fullscreen"
+      | "window"
+      | "region"
+      | "all-screens"
+      | "specific-screen";
+
+    if (mode === "fullscreen" && screen.getAllDisplays().length > 1) {
+      resolvedMode = "all-screens";
+      log.info(
+        "[Tray] Multiple displays detected — upgrading fullscreen to all-screens"
+      );
+    }
+
+    log.info("[Tray] Starting", resolvedMode, "capture...");
 
     mainWindow?.hide();
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -776,15 +785,9 @@ async function handleScreenshotCapture(
         | "all-screens"
         | "specific-screen";
       screenId?: string;
-    } = {
-      mode: mode as
-        | "fullscreen"
-        | "window"
-        | "region"
-        | "all-screens"
-        | "specific-screen",
-    };
-    if (mode === "specific-screen" && screenId) {
+    } = { mode: resolvedMode };
+
+    if (resolvedMode === "specific-screen" && screenId) {
       captureOptions.screenId = screenId;
     }
 
@@ -812,6 +815,93 @@ async function handleScreenshotCapture(
   } catch (error) {
     log.error("[Tray] Failed to capture screenshot:", error);
   }
+}
+
+/**
+ * Capture the display that currently contains the mouse cursor.
+ * Falls back to fullscreen if the display cannot be identified.
+ */
+async function handleCurrentAppScreenCapture(displayId: number) {
+  mainWindow?.hide();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  const { dataUrl } = await captureService.captureSpecificScreen(
+    displayId,
+    true
+  );
+  pendingScreenshot = { dataUrl, mode: "specific-screen" };
+
+  if (mainWindow && mainWindow.webContents) {
+    mainWindow.webContents.send("navigate", "/annotate");
+  }
+  mainWindow?.show();
+  mainWindow?.focus();
+}
+
+async function handleCaptureCurrentScreen() {
+  try {
+    const allDisplays = screen.getAllDisplays();
+
+    // 1. User-saved preference
+    const savedId = captureScreenSettings.getDefaultScreenId();
+    if (savedId !== null) {
+      const saved = allDisplays.find((d) => d.id === savedId);
+      if (saved) {
+        log.info("[Tray] Capturing user-selected default screen:", savedId);
+        await handleCurrentAppScreenCapture(saved.id);
+        return;
+      }
+      // Saved display no longer connected — clear stale preference
+      log.warn("[Tray] Saved default screen not found, clearing preference");
+      captureScreenSettings.clearDefaultScreenId();
+    }
+
+    // 2. Fallback — display where the cursor currently is
+    const cursorPoint = screen.getCursorScreenPoint();
+    const display = screen.getDisplayNearestPoint(cursorPoint);
+    log.info("[Tray] No default screen set, using cursor screen:", display.id);
+    await handleCurrentAppScreenCapture(display.id);
+  } catch (error) {
+    log.error("[Tray] Failed to capture current app screen:", error);
+    await handleScreenshotCapture("fullscreen");
+  }
+}
+
+/**
+ * Toggle the debug collector session on/off.
+ * When a session starts, background event tracking begins and the tray
+ * label reflects the active state.  Pressing the shortcut again stops
+ * the session and saves the timeline.
+ */
+function handleCaptureSessionToggle() {
+  const active = debugCollector.getActiveSession();
+  if (active) {
+    try {
+      const session = debugCollector.stopSession();
+      log.info(
+        "[Session] Capture session stopped. Events:",
+        session.events.length,
+        "Screenshots:",
+        session.screenshots.length
+      );
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send("collector:session-stopped", session);
+      }
+    } catch (err) {
+      log.error("[Session] Failed to stop capture session:", err);
+    }
+  } else {
+    try {
+      debugCollector.startSession();
+      log.info("[Session] Capture session started");
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send("collector:session-started");
+      }
+    } catch (err) {
+      log.error("[Session] Failed to start capture session:", err);
+    }
+  }
+  updateTrayMenu();
 }
 
 // TODO: Recording feature - temporarily disabled
@@ -3003,6 +3093,7 @@ function setupIPCHandlers() {
         if (windowCaptureOverlay) {
           windowCaptureOverlay.close();
           windowCaptureOverlay = null;
+          if (process.platform === "darwin") app.dock?.show();
           // Wait for the OS compositor to fully remove the overlay from screen
           // before capturing, so it doesn't appear in the screenshot
           await new Promise((resolve) => setTimeout(resolve, 150));
@@ -3040,6 +3131,7 @@ function setupIPCHandlers() {
         if (windowCaptureOverlay) {
           windowCaptureOverlay.close();
           windowCaptureOverlay = null;
+          if (process.platform === "darwin") app.dock?.show();
         }
         mainWindow?.show();
         mainWindow?.focus();
@@ -3122,6 +3214,37 @@ function setupIPCHandlers() {
     }
   });
 
+  // Default capture screen preference
+  ipcMain.handle("capture:get-default-screen", () => {
+    try {
+      const id = captureScreenSettings.getDefaultScreenId();
+      return { success: true, data: id };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle(
+    "capture:set-default-screen",
+    (_event, { displayId }: { displayId: number }) => {
+      try {
+        captureScreenSettings.setDefaultScreenId(displayId);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: (error as Error).message };
+      }
+    }
+  );
+
+  ipcMain.handle("capture:clear-default-screen", () => {
+    try {
+      captureScreenSettings.clearDefaultScreenId();
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
   // Handle window selection from overlay
   ipcMain.handle("capture:select-window", async (_event, { windowId }) => {
     try {
@@ -3131,6 +3254,7 @@ function setupIPCHandlers() {
       if (windowCaptureOverlay) {
         windowCaptureOverlay.close();
         windowCaptureOverlay = null;
+        if (process.platform === "darwin") app.dock?.show();
       }
 
       // Wait a bit for overlay to close
@@ -3181,6 +3305,7 @@ function setupIPCHandlers() {
     if (windowCaptureOverlay) {
       windowCaptureOverlay.close();
       windowCaptureOverlay = null;
+      if (process.platform === "darwin") app.dock?.show();
     }
     mainWindow?.show();
     mainWindow?.focus();
@@ -4309,6 +4434,64 @@ function setupIPCHandlers() {
   });
 
   // Debug handler to test screen capture directly
+  // ------------------------------------------------------------------
+  // Debug Collector — Collection Layer IPC handlers
+  // ------------------------------------------------------------------
+
+  ipcMain.handle("collector:start-session", () => {
+    try {
+      const session = debugCollector.startSession();
+      return { success: true, data: session };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle("collector:stop-session", () => {
+    try {
+      const session = debugCollector.stopSession();
+      return { success: true, data: session };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle("collector:capture-snapshot", async () => {
+    try {
+      const result = await debugCollector.captureSnapshot();
+      return { success: true, data: result };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle("collector:capture-screenshot", async () => {
+    try {
+      const screenshot = await debugCollector.captureScreenshot();
+      return { success: true, data: screenshot };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle("collector:get-timeline", () => {
+    try {
+      const timeline = debugCollector.getSessionTimeline();
+      return { success: true, data: timeline };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle("collector:get-session", () => {
+    try {
+      const session = debugCollector.getActiveSession();
+      return { success: true, data: session };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
   ipcMain.handle("debug:test-capture", async () => {
     try {
       log.info("[Debug] Testing screen capture...");

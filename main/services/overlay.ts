@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron";
+import { BrowserWindow, app } from "electron";
 import path from "path";
 import log from "electron-log";
 
@@ -54,6 +54,8 @@ export class OverlayService {
       this.overlayWindow.setVisibleOnAllWorkspaces(true, {
         visibleOnFullScreen: true,
       });
+      // setVisibleOnAllWorkspaces can hide the dock icon on macOS — restore immediately.
+      if (process.platform === "darwin") app.dock?.show();
       // Prevent the overlay border from appearing in screen recordings.
       // setContentProtection(true) makes this window invisible to capture APIs
       // (desktopCapturer, screenshots) while remaining visible on screen.
@@ -71,9 +73,10 @@ export class OverlayService {
       // Show the overlay window after content loads
       this.overlayWindow.show();
 
-      // Clean up reference when window closes
+      // Clean up reference when window closes and restore dock icon
       this.overlayWindow.on("closed", () => {
         this.overlayWindow = null;
+        if (process.platform === "darwin") app.dock?.show();
       });
 
       log.info("[Overlay] Overlay window created successfully");

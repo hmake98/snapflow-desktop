@@ -12,6 +12,7 @@ const recordingSettingsStore = new Store({
   name: "snapflow-recording-settings",
   defaults: {
     defaultRecordingSource: null,
+    defaultCaptureScreenId: null as number | null,
   },
 });
 
@@ -58,3 +59,24 @@ export class RecordingSettingsService {
 }
 
 export const recordingSettingsService = new RecordingSettingsService();
+
+// ---------------------------------------------------------------------------
+// Default capture screen preference
+// ---------------------------------------------------------------------------
+
+export const captureScreenSettings = {
+  getDefaultScreenId(): number | null {
+    const id = recordingSettingsStore.get("defaultCaptureScreenId");
+    return typeof id === "number" ? id : null;
+  },
+
+  setDefaultScreenId(displayId: number): void {
+    recordingSettingsStore.set("defaultCaptureScreenId", displayId);
+    log.info("[CaptureSettings] Default capture screen set:", displayId);
+  },
+
+  clearDefaultScreenId(): void {
+    recordingSettingsStore.set("defaultCaptureScreenId", null);
+    log.info("[CaptureSettings] Default capture screen cleared");
+  },
+};

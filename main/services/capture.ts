@@ -394,67 +394,127 @@ export class CaptureService extends EventEmitter {
       log.info("[Capture] Found", displays.length, "displays");
 
       if (displays.length === 1) {
-        // If only one display, use regular fullscreen capture
         return this.captureScreenshot({ mode: "fullscreen" });
       }
 
-      // Get sources for all screens
-      const sources = await desktopCapturer.getSources({
-        types: ["screen"],
-        thumbnailSize: { width: 1920, height: 1080 }, // High resolution for quality
-        fetchWindowIcons: false,
-      });
+      // Capture each display individually and collect its bitmap + physical size
+      const captured: Array<{
+        bitmap: Buffer;
+        physicalWidth: number;
+        physicalHeight: number;
+        logicalX: number;
+        logicalY: number;
+      }> = [];
 
-      if (sources.length === 0) {
-        throw new Error("No screen sources available");
+      for (const display of displays) {
+        const physicalWidth = Math.floor(
+          display.bounds.width * (display.scaleFactor || 1)
+        );
+        const physicalHeight = Math.floor(
+          display.bounds.height * (display.scaleFactor || 1)
+        );
+
+        const sources = await desktopCapturer.getSources({
+          types: ["screen"],
+          thumbnailSize: { width: physicalWidth, height: physicalHeight },
+          fetchWindowIcons: false,
+        });
+
+        const source =
+          sources.find((s) => s.id.includes(display.id.toString())) ||
+          sources.find((s) => s.id.startsWith("screen"));
+
+        if (!source) {
+          log.warn("[Capture] No source found for display:", display.id);
+          continue;
+        }
+
+        const img = source.thumbnail;
+        const size = img.getSize();
+        if (size.width === 0 || size.height === 0) {
+          log.warn("[Capture] Empty thumbnail for display:", display.id);
+          continue;
+        }
+
+        captured.push({
+          bitmap: img.toBitmap(),
+          physicalWidth: size.width,
+          physicalHeight: size.height,
+          logicalX: display.bounds.x,
+          logicalY: display.bounds.y,
+        });
       }
 
-      // Calculate combined canvas dimensions
-      let minX = 0,
-        minY = 0,
-        maxX = 0,
-        maxY = 0;
-      displays.forEach((display) => {
-        minX = Math.min(minX, display.bounds.x);
-        minY = Math.min(minY, display.bounds.y);
-        maxX = Math.max(maxX, display.bounds.x + display.bounds.width);
-        maxY = Math.max(maxY, display.bounds.y + display.bounds.height);
-      });
+      if (captured.length === 0) {
+        throw new Error("No screen sources could be captured");
+      }
 
-      const totalWidth = maxX - minX;
-      const totalHeight = maxY - minY;
+      if (captured.length === 1) {
+        // Only one display captured successfully — return it directly
+        const only = captured[0];
+        const img = nativeImage.createFromBitmap(only.bitmap, {
+          width: only.physicalWidth,
+          height: only.physicalHeight,
+        });
+        const buffer = img.toPNG();
+        clipboard.writeImage(img);
+        return {
+          dataUrl: `data:image/png;base64,${buffer.toString("base64")}`,
+          buffer,
+        };
+      }
 
-      log.info("[Capture] Combined dimensions:", {
-        totalWidth,
-        totalHeight,
-        minX,
-        minY,
-      });
-
-      // Create a combined image using the first screen as base and overlaying others
-      // For now, we'll capture the primary display and add a note about multi-screen
-      const primaryDisplay = screen.getPrimaryDisplay();
-      const primarySource = sources.find((s) =>
-        s.id.includes(primaryDisplay.id.toString())
+      // Sort displays left-to-right, top-to-bottom by logical position
+      captured.sort((a, b) =>
+        a.logicalX !== b.logicalX
+          ? a.logicalX - b.logicalX
+          : a.logicalY - b.logicalY
       );
 
-      if (!primarySource) {
-        // Fallback to first available screen
-        const firstSource = sources[0];
-        const buffer = firstSource.thumbnail.toPNG();
-        clipboard.writeImage(firstSource.thumbnail);
+      // Stitch side-by-side: total width = sum, height = tallest
+      const totalWidth = captured.reduce((sum, c) => sum + c.physicalWidth, 0);
+      const totalHeight = Math.max(...captured.map((c) => c.physicalHeight));
+      const CHANNELS = 4; // RGBA
 
-        const dataUrl = `data:image/png;base64,${buffer.toString("base64")}`;
-        return { dataUrl, buffer };
+      log.info(
+        "[Capture] Stitching",
+        captured.length,
+        "displays into",
+        totalWidth,
+        "×",
+        totalHeight
+      );
+
+      const output = Buffer.alloc(totalWidth * totalHeight * CHANNELS, 0);
+
+      let xOffset = 0;
+      for (const { bitmap, physicalWidth, physicalHeight } of captured) {
+        for (let row = 0; row < physicalHeight; row++) {
+          const srcStart = row * physicalWidth * CHANNELS;
+          const dstStart = (row * totalWidth + xOffset) * CHANNELS;
+          bitmap.copy(
+            output,
+            dstStart,
+            srcStart,
+            srcStart + physicalWidth * CHANNELS
+          );
+        }
+        xOffset += physicalWidth;
       }
 
-      const buffer = primarySource.thumbnail.toPNG();
-      clipboard.writeImage(primarySource.thumbnail);
+      const stitched = nativeImage.createFromBitmap(output, {
+        width: totalWidth,
+        height: totalHeight,
+      });
 
-      const dataUrl = `data:image/png;base64,${buffer.toString("base64")}`;
-      log.info("[Capture] All screens capture completed (primary display)");
+      const buffer = stitched.toPNG();
+      clipboard.writeImage(stitched);
 
-      return { dataUrl, buffer };
+      log.info("[Capture] All screens stitched, buffer size:", buffer.length);
+      return {
+        dataUrl: `data:image/png;base64,${buffer.toString("base64")}`,
+        buffer,
+      };
     } catch (error) {
       log.error("[Capture] All screens capture error:", error);
       throw error;
@@ -462,13 +522,21 @@ export class CaptureService extends EventEmitter {
   }
 
   /**
-   * Capture a specific screen by display ID
+   * Capture a specific screen by display ID.
+   * @param cropDock  When true, crops the dock area while keeping the menu bar.
+   *                  Uses display.workArea vs display.bounds to compute the inset.
    */
   async captureSpecificScreen(
-    displayId: number
+    displayId: number,
+    cropDock = false
   ): Promise<{ dataUrl: string; buffer: Buffer }> {
     try {
-      log.info("[Capture] Capturing specific screen:", displayId);
+      log.info(
+        "[Capture] Capturing specific screen:",
+        displayId,
+        "cropDock:",
+        cropDock
+      );
 
       const displays = screen.getAllDisplays();
       const targetDisplay = displays.find((d) => d.id === displayId);
@@ -477,45 +545,70 @@ export class CaptureService extends EventEmitter {
         throw new Error(`Display with ID ${displayId} not found`);
       }
 
+      const scaleFactor = targetDisplay.scaleFactor || 1;
+
       const sources = await desktopCapturer.getSources({
         types: ["screen"],
         thumbnailSize: {
-          width: Math.floor(
-            targetDisplay.bounds.width * (targetDisplay.scaleFactor || 1)
-          ),
-          height: Math.floor(
-            targetDisplay.bounds.height * (targetDisplay.scaleFactor || 1)
-          ),
+          width: Math.floor(targetDisplay.bounds.width * scaleFactor),
+          height: Math.floor(targetDisplay.bounds.height * scaleFactor),
         },
         fetchWindowIcons: false,
       });
 
-      // Find the source that matches our target display
-      const targetSource = sources.find((s) =>
-        s.id.includes(displayId.toString())
-      );
+      const targetSource =
+        sources.find((s) => s.id.includes(displayId.toString())) ||
+        sources.find((s) => s.id.startsWith("screen"));
 
       if (!targetSource) {
-        // Fallback to first screen source if we can't match by ID
-        const screenSource = sources.find((s) => s.id.startsWith("screen"));
-        if (!screenSource) {
-          throw new Error("No screen source found");
-        }
-
-        const buffer = screenSource.thumbnail.toPNG();
-        clipboard.writeImage(screenSource.thumbnail);
-
-        const dataUrl = `data:image/png;base64,${buffer.toString("base64")}`;
-        return { dataUrl, buffer };
+        throw new Error("No screen source found");
       }
 
-      const buffer = targetSource.thumbnail.toPNG();
-      clipboard.writeImage(targetSource.thumbnail);
+      let image = targetSource.thumbnail;
 
-      const dataUrl = `data:image/png;base64,${buffer.toString("base64")}`;
+      if (cropDock) {
+        // workArea excludes the dock (and menu bar). We want to keep the menu
+        // bar but remove the dock, so we crop from the very top of the display
+        // down to the bottom of the workArea, and horizontally to the workArea
+        // width (handles side docks too).
+        const { bounds, workArea } = targetDisplay;
+
+        // Logical-pixel insets relative to display bounds
+        const leftInset = workArea.x - bounds.x;
+        const topInset = 0; // keep menu bar — do NOT use workArea.y as top
+        const croppedWidth = workArea.width;
+        const croppedHeight = workArea.y - bounds.y + workArea.height;
+
+        // Convert to physical pixels
+        const cropRect = {
+          x: Math.floor(leftInset * scaleFactor),
+          y: Math.floor(topInset * scaleFactor),
+          width: Math.floor(croppedWidth * scaleFactor),
+          height: Math.floor(croppedHeight * scaleFactor),
+        };
+
+        const imgSize = image.getSize();
+        // Only crop if dimensions are valid and differ from the full image
+        const needsCrop =
+          cropRect.x > 0 ||
+          cropRect.y > 0 ||
+          cropRect.width < imgSize.width ||
+          cropRect.height < imgSize.height;
+
+        if (needsCrop && cropRect.width > 0 && cropRect.height > 0) {
+          log.info("[Capture] Cropping dock — rect:", cropRect);
+          image = image.crop(cropRect);
+        }
+      }
+
+      const buffer = image.toPNG();
+      clipboard.writeImage(image);
+
       log.info("[Capture] Specific screen capture completed");
-
-      return { dataUrl, buffer };
+      return {
+        dataUrl: `data:image/png;base64,${buffer.toString("base64")}`,
+        buffer,
+      };
     } catch (error) {
       log.error("[Capture] Specific screen capture error:", error);
       throw error;
