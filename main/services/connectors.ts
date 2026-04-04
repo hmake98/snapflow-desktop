@@ -546,6 +546,13 @@ export class ConnectorService {
       syncedTo?: Array<{ platform: string; externalId: string; url?: string }>;
       tags?: string[];
       type?: "screenshot" | "recording";
+      sessionData?: {
+        duration: number;
+        screenshotCount: number;
+        eventCount: number;
+        cloudScreenshotUrls?: string[];
+        screenshotPaths?: string[];
+      };
     }
   ): Promise<{ issueNumber: number; url: string; isUpdate: boolean }> {
     const config = connector.config as {
@@ -572,6 +579,16 @@ export class ConnectorService {
         ? parseInt(existingSync.externalId, 10)
         : null;
 
+      // Append session metadata block if this is a session snap
+      if (issue.sessionData) {
+        const sd = issue.sessionData;
+        const durationSec = Math.round(sd.duration / 1000);
+        body += `\n\n---\n**Session Summary**\n`;
+        body += `- Duration: ${durationSec}s\n`;
+        body += `- Screenshots: ${sd.screenshotCount}\n`;
+        body += `- Events captured: ${sd.eventCount}\n`;
+      }
+
       if (issueNumber) {
         log.info(
           "[GitHub] Issue already exists, updating issue #",
@@ -579,23 +596,31 @@ export class ConnectorService {
         );
 
         try {
-          let mediaUrl = issue.cloudFileUrl;
           const isRecording = issue.type === "recording";
 
-          if (!mediaUrl && issue.filePath && !isRecording) {
-            log.info("[GitHub] Attempting to upload screenshot...");
-            mediaUrl = await this.uploadScreenshotToGitHub(
-              connector,
-              issue.filePath,
-              issueNumber
-            );
-          }
-
-          if (mediaUrl) {
-            if (isRecording) {
-              body += `\n\n## Recording\n\n[View Recording](${mediaUrl})`;
-            } else {
-              body += `\n\n## Screenshot\n\n![Screenshot](${mediaUrl})`;
+          // For session snaps: embed all cloud screenshot URLs
+          if (issue.sessionData?.cloudScreenshotUrls?.length) {
+            body += `\n\n## Screenshots\n\n`;
+            issue.sessionData.cloudScreenshotUrls.forEach((url, i) => {
+              body += `**${i + 1}.** ![Screenshot ${i + 1}](${url})\n\n`;
+            });
+          } else {
+            // Single screenshot / recording fallback
+            let mediaUrl = issue.cloudFileUrl;
+            if (!mediaUrl && issue.filePath && !isRecording) {
+              log.info("[GitHub] Attempting to upload screenshot...");
+              mediaUrl = await this.uploadScreenshotToGitHub(
+                connector,
+                issue.filePath,
+                issueNumber
+              );
+            }
+            if (mediaUrl) {
+              if (isRecording) {
+                body += `\n\n## Recording\n\n[View Recording](${mediaUrl})`;
+              } else {
+                body += `\n\n## Screenshot\n\n![Screenshot](${mediaUrl})`;
+              }
             }
           }
 
@@ -663,23 +688,33 @@ export class ConnectorService {
         log.info("[GitHub] Issue created:", issueUrl);
 
         const isRecording = issue.type === "recording";
-        let mediaUrl = issue.cloudFileUrl;
+        let updatedBody = body;
 
-        if (!mediaUrl && issue.filePath && !isRecording) {
-          log.info("[GitHub] Attempting to upload screenshot...");
-          mediaUrl = await this.uploadScreenshotToGitHub(
-            connector,
-            issue.filePath,
-            newIssueNumber
-          );
+        // For session snaps: embed all cloud screenshot URLs
+        if (issue.sessionData?.cloudScreenshotUrls?.length) {
+          updatedBody += `\n\n## Screenshots\n\n`;
+          issue.sessionData.cloudScreenshotUrls.forEach((url, i) => {
+            updatedBody += `**${i + 1}.** ![Screenshot ${i + 1}](${url})\n\n`;
+          });
+        } else {
+          // Single screenshot / recording fallback
+          let mediaUrl = issue.cloudFileUrl;
+          if (!mediaUrl && issue.filePath && !isRecording) {
+            log.info("[GitHub] Attempting to upload screenshot...");
+            mediaUrl = await this.uploadScreenshotToGitHub(
+              connector,
+              issue.filePath,
+              newIssueNumber
+            );
+          }
+          if (mediaUrl) {
+            updatedBody += isRecording
+              ? `\n\n## Recording\n\n[View Recording](${mediaUrl})`
+              : `\n\n## Screenshot\n\n![Screenshot](${mediaUrl})`;
+          }
         }
 
-        if (mediaUrl) {
-          const mediaSection = isRecording
-            ? `\n\n## Recording\n\n[View Recording](${mediaUrl})`
-            : `\n\n## Screenshot\n\n![Screenshot](${mediaUrl})`;
-          const updatedBody = body + mediaSection;
-
+        if (updatedBody !== body) {
           await axios.patch(
             `https://api.github.com/repos/${config.owner}/${config.repo}/issues/${newIssueNumber}`,
             { body: updatedBody },
@@ -691,9 +726,7 @@ export class ConnectorService {
               },
             }
           );
-          log.info(
-            `[GitHub] ${isRecording ? "Recording link" : "Screenshot"} attached to issue`
-          );
+          log.info("[GitHub] Issue body updated with media");
         }
 
         return {
@@ -758,6 +791,13 @@ export class ConnectorService {
       }>;
       tags?: string[];
       type?: "screenshot" | "recording";
+      sessionData?: {
+        duration: number;
+        screenshotCount: number;
+        eventCount: number;
+        cloudScreenshotUrls?: string[];
+        screenshotPaths?: string[];
+      };
     }
   ): Promise<{ bugId: string; url: string; isUpdate: boolean }> {
     const config = connector.config as ZohoConnectorConfig;
@@ -809,6 +849,29 @@ export class ConnectorService {
         }
       }
 
+      // Build description with session metadata and screenshots (Zoho uses HTML)
+      let description = issue.description || "Screenshot captured from SnapFlow";
+      if (issue.sessionData) {
+        const sd = issue.sessionData;
+        const durationSec = Math.round(sd.duration / 1000);
+        description +=
+          `<br/><br/><strong>Session Summary</strong><br/>` +
+          `Duration: ${durationSec}s<br/>` +
+          `Screenshots: ${sd.screenshotCount}<br/>` +
+          `Events captured: ${sd.eventCount}`;
+
+        if (sd.cloudScreenshotUrls?.length) {
+          description += `<br/><br/><strong>Screenshots:</strong><br/>`;
+          sd.cloudScreenshotUrls.forEach((url, i) => {
+            description += `<strong>${i + 1}.</strong> <img src="${url}" style="max-width:600px;max-height:400px;" /><br/>`;
+          });
+        } else if (issue.cloudFileUrl) {
+          description += `<br/><br/><strong>Screenshot:</strong><br/><img src="${issue.cloudFileUrl}" style="max-width:600px;max-height:400px;" />`;
+        }
+      } else if (issue.cloudFileUrl) {
+        description += `<br/><br/><strong>Screenshot:</strong><br/><img src="${issue.cloudFileUrl}" style="max-width:600px;max-height:400px;" />`;
+      }
+
       // Try to create bug with current access token
       let accessToken = config.accessToken;
 
@@ -819,9 +882,7 @@ export class ConnectorService {
           config.projectId,
           {
             title: issue.title,
-            description:
-              issue.description || "Screenshot captured from SnapFlow",
-            imageUrl: issue.cloudFileUrl,
+            description,
           }
         );
 
@@ -858,9 +919,7 @@ export class ConnectorService {
               config.projectId,
               {
                 title: issue.title,
-                description:
-                  issue.description || "Screenshot captured from SnapFlow",
-                imageUrl: issue.cloudFileUrl,
+                description,
               }
             );
 

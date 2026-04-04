@@ -534,6 +534,7 @@ export class SyncService {
           // Upload file to storage and get public URL
           let cloudFileUrl: string | null = null;
           let cloudThumbnailUrl: string | null = null;
+          const cloudScreenshotUrls: string[] = [];
 
           try {
             // Upload main file
@@ -577,6 +578,32 @@ export class SyncService {
                 );
               }
             }
+
+            // For session snaps: upload all screenshots and collect cloud URLs
+            const sessionData = (issue as any).sessionData as {
+              screenshotPaths?: string[];
+              cloudScreenshotUrls?: string[];
+            } | undefined;
+
+            if (sessionData?.screenshotPaths?.length) {
+              log.info(
+                `[Sync] Session snap — uploading ${sessionData.screenshotPaths.length} screenshots`
+              );
+              for (let i = 0; i < sessionData.screenshotPaths.length; i++) {
+                const screenshotPath = sessionData.screenshotPaths[i];
+                const url = await this.uploadFileToStorage(
+                  screenshotPath,
+                  userId,
+                  `${issue.id}_screenshot_${i}`
+                );
+                if (url) {
+                  cloudScreenshotUrls.push(url);
+                  log.info(`[Sync] Session screenshot ${i + 1} uploaded: ${url}`);
+                } else {
+                  log.warn(`[Sync] Session screenshot ${i + 1} upload failed`);
+                }
+              }
+            }
           } catch (uploadError) {
             log.error(
               `[Sync] File upload error for issue ${issue.id}:`,
@@ -592,6 +619,23 @@ export class SyncService {
             .eq("id", issue.id)
             .eq("created_by", userId)
             .single();
+
+          // Build session_data with cloud URLs merged in (if this is a session snap)
+          let sessionDataForDb: unknown = null;
+          const rawSessionData = (issue as any).sessionData as {
+            screenshotPaths?: string[];
+            cloudScreenshotUrls?: string[];
+            [key: string]: unknown;
+          } | undefined;
+          if (rawSessionData) {
+            sessionDataForDb = {
+              ...rawSessionData,
+              cloudScreenshotUrls:
+                cloudScreenshotUrls.length > 0
+                  ? cloudScreenshotUrls
+                  : (rawSessionData.cloudScreenshotUrls ?? []),
+            };
+          }
 
           const issueData = {
             id: issue.id,
@@ -610,6 +654,7 @@ export class SyncService {
             sync_status: "synced",
             synced_to: issue.syncedTo || [],
             tags: issue.tags || [],
+            session_data: sessionDataForDb,
           };
 
           log.info(`[Sync] Preparing to save issue ${issue.id} to database`);
@@ -661,6 +706,13 @@ export class SyncService {
           }
           if (cloudThumbnailUrl) {
             localUpdateData.cloudThumbnailUrl = cloudThumbnailUrl;
+          }
+          // Persist cloudScreenshotUrls back into sessionData locally
+          if (cloudScreenshotUrls.length > 0 && rawSessionData) {
+            localUpdateData.sessionData = {
+              ...rawSessionData,
+              cloudScreenshotUrls,
+            };
           }
 
           log.info(
@@ -881,6 +933,7 @@ export class SyncService {
             syncedTo: cloudIssue.synced_to || [],
             userId: cloudIssue.created_by,
             tags: cloudIssue.tags || [],
+            sessionData: cloudIssue.session_data || undefined,
           };
 
           if (localIssueIds.has(cloudIssue.id)) {

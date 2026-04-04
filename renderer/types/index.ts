@@ -74,6 +74,17 @@ export interface WorkspaceWithMembers extends Workspace {
   currentUserRole?: UserRole;
 }
 
+export interface SessionSnapData {
+  sessionId: string;
+  duration: number;
+  screenshotCount: number;
+  eventCount: number;
+  screenshotPaths: string[];
+  /** Cloud storage URLs for each screenshot, populated after Supabase sync */
+  cloudScreenshotUrls?: string[];
+  timeline: unknown[];
+}
+
 export interface Snap {
   id: string;
   workspaceId: string;
@@ -94,6 +105,7 @@ export interface Snap {
     connectorId?: string;
   }[];
   tags?: string[];
+  sessionData?: SessionSnapData;
   createdAt: string;
   updatedAt: string;
   [key: string]: unknown;

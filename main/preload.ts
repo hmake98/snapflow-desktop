@@ -318,6 +318,30 @@ const api = {
     return () => ipcRenderer.removeListener("collector:session-stopped", sub);
   },
 
+  // Session HUD + session annotate
+  sessionTakeScreenshot: () => ipcRenderer.invoke("session:take-screenshot"),
+  sessionStop: () => ipcRenderer.invoke("session:stop"),
+  getPendingSession: () => ipcRenderer.invoke("session:get-pending"),
+  saveSessionSnap: (
+    title: string,
+    description?: string,
+    workspaceId?: string
+  ) =>
+    ipcRenderer.invoke("session:save-snap", { title, description, workspaceId }),
+
+  // AI: session description generation
+  aiGenerateDescription: (params: {
+    screenshotPaths: string[];
+    typedTexts: string[];
+    shortcuts: string[];
+    clickCount: number;
+    durationMs: number;
+  }) => ipcRenderer.invoke("ai:generate-description", params),
+  aiIsConfigured: () => ipcRenderer.invoke("ai:is-configured"),
+  aiGetKey: () => ipcRenderer.invoke("ai:get-key"),
+  aiSetKey: (key: string) => ipcRenderer.invoke("ai:set-key", { key }),
+  aiClearKey: () => ipcRenderer.invoke("ai:clear-key"),
+
   // Event listeners
   onScreenshotCaptured: (
     callback: (data: { dataUrl: string; mode: string }) => void

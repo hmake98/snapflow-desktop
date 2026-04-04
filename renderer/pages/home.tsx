@@ -53,7 +53,7 @@ export default function HomePage() {
 
   const [loading, setLoading] = useState(true);
   const [workspaceId, setWorkspaceId] = useState<string>("");
-  const [filter, setFilter] = useState<"all" | "screenshot" | "recording">(
+  const [filter, setFilter] = useState<"all" | "screenshot" | "session">(
     "all"
   );
   const [statusFilter, setStatusFilter] = useState<
@@ -396,7 +396,11 @@ export default function HomePage() {
 
   const filteredIssues = issues
     .filter((issue) => {
-      const matchesFilter = filter === "all" || issue.type === filter;
+      const isSession = !!(issue as any).sessionData;
+      const matchesFilter =
+        filter === "all" ||
+        (filter === "session" && isSession) ||
+        (filter === "screenshot" && !isSession && issue.type === "screenshot");
 
       // Determine sync status for filtering
       const isCloudSynced = issue.syncStatus === "synced"; // Synced to Supabase
@@ -1257,7 +1261,9 @@ export default function HomePage() {
                   {
                     id: "screenshot",
                     label: "Screenshots",
-                    count: issues.filter((i) => i.type === "screenshot").length,
+                    count: issues.filter(
+                      (i) => !(i as any).sessionData && i.type === "screenshot"
+                    ).length,
                     icon: (
                       <svg
                         className="w-4 h-4"
@@ -1280,19 +1286,27 @@ export default function HomePage() {
                       </svg>
                     ),
                   },
-                  // Recording filter tab — commented out
-                  // {
-                  //   id: "recording",
-                  //   label: "Recordings",
-                  //   count: issues.filter((i) => i.type === "recording").length,
-                  //   icon: (
-                  //     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  //       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  //         d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-                  //       />
-                  //     </svg>
-                  //   ),
-                  // },
+                  {
+                    id: "session",
+                    label: "Sessions",
+                    count: issues.filter((i) => !!(i as any).sessionData)
+                      .length,
+                    icon: (
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
+                        />
+                      </svg>
+                    ),
+                  },
                 ]}
                 activeFilter={filter}
                 onFilterChange={(filterId) => setFilter(filterId as any)}
@@ -1475,10 +1489,10 @@ export default function HomePage() {
                         className="relative h-40 bg-gray-800 overflow-hidden cursor-pointer"
                         onClick={() => openPreview(issue)}
                       >
-                        {issue.thumbnailPath /* && issue.type !== "recording" */ ? (
+                        {(issue.thumbnailPath || issue.filePath) ? (
                           <>
                             <LocalImage
-                              src={issue.thumbnailPath}
+                              src={issue.thumbnailPath || issue.filePath}
                               alt={issue.title}
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             />
@@ -1549,13 +1563,17 @@ export default function HomePage() {
                         <div className="absolute top-3 right-3">
                           <Badge
                             variant={
-                              issue.type === "screenshot"
+                              (issue as any).sessionData
+                                ? "info"
+                                : issue.type === "screenshot"
                                 ? "primary"
                                 : "secondary"
                             }
                             className="shadow-lg"
                           >
-                            {issue.type === "screenshot"
+                            {(issue as any).sessionData
+                              ? "🎬 Session"
+                              : issue.type === "screenshot"
                               ? "📸 Screenshot"
                               : "🎥 Recording"}
                           </Badge>
@@ -1750,17 +1768,14 @@ export default function HomePage() {
             {previewIssue && (
               <div className="flex flex-col md:flex-row w-full h-full">
                 {/* Main Image Preview */}
-                <div className="flex-1 bg-gray-950 overflow-auto p-4 min-h-0">
-                  {
-                    /* Recording preview — commented out
-                  previewIssue.type === "recording" && previewIssue.filePath ? (
-                    <video
-                      src={`snapflow://${previewIssue.filePath}`}
-                      controls
-                      className="w-full h-full"
-                      style={{ background: "#000", objectFit: "contain" }}
+                <div className="flex-1 bg-gray-950 overflow-hidden min-h-0 flex flex-col">
+                  {(previewIssue as any).sessionData?.screenshotPaths?.length > 0 ? (
+                    <SessionScreenshotCarousel
+                      paths={(previewIssue as any).sessionData.screenshotPaths}
+                      title={previewIssue.title}
                     />
-                  ) : */ previewIssue.filePath ? (
+                  ) : previewIssue.filePath ? (
+                    <div className="flex-1 overflow-auto p-4">
                       <LocalImage
                         src={previewIssue.filePath}
                         alt={previewIssue.title}
@@ -1770,8 +1785,10 @@ export default function HomePage() {
                           objectFit: "contain",
                         }}
                       />
-                    ) : (
-                      <div className="text-center py-12">
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center p-4">
+                      <div className="text-center">
                         <svg
                           className="w-20 h-20 mx-auto mb-4 text-gray-600"
                           fill="none"
@@ -1789,8 +1806,8 @@ export default function HomePage() {
                           Full resolution image not available
                         </p>
                       </div>
-                    )
-                  }
+                    </div>
+                  )}
                 </div>
 
                 {/* Right Sidebar - Details */}
@@ -1941,18 +1958,30 @@ export default function HomePage() {
                       <label className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5 block">
                         Type
                       </label>
-                      <Badge
-                        variant={
-                          previewIssue.type === "screenshot"
-                            ? "primary"
-                            : "secondary"
-                        }
-                        className="text-xs"
-                      >
-                        {previewIssue.type === "screenshot"
-                          ? "Screenshot"
-                          : "Recording"}
-                      </Badge>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant={
+                            (previewIssue as any).sessionData
+                              ? "info"
+                              : previewIssue.type === "screenshot"
+                              ? "primary"
+                              : "secondary"
+                          }
+                          className="text-xs"
+                        >
+                          {(previewIssue as any).sessionData
+                            ? "🎬 Session"
+                            : previewIssue.type === "screenshot"
+                            ? "📸 Screenshot"
+                            : "🎥 Recording"}
+                        </Badge>
+                        {(previewIssue as any).sessionData && (
+                          <span className="text-xs text-gray-500">
+                            {(previewIssue as any).sessionData.screenshotCount} screenshots ·{" "}
+                            {Math.round((previewIssue as any).sessionData.duration / 1000)}s
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* External Links - Open in Web */}
@@ -2310,5 +2339,90 @@ export default function HomePage() {
         {/* Recording picker is now in _app.tsx (global, works from any page) */}
       </div>
     </>
+  );
+}
+
+// ── Session Screenshot Carousel ──────────────────────────────────────────────
+
+function SessionScreenshotCarousel({
+  paths,
+  title,
+}: {
+  paths: string[];
+  title: string;
+}) {
+  const [activeIdx, setActiveIdx] = React.useState(0);
+
+  const prev = () => setActiveIdx((i) => Math.max(0, i - 1));
+  const next = () => setActiveIdx((i) => Math.min(paths.length - 1, i + 1));
+
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      {/* Main image */}
+      <div className="flex-1 relative flex items-center justify-center p-4 min-h-0 overflow-hidden">
+        <LocalImage
+          key={paths[activeIdx]}
+          src={paths[activeIdx]}
+          alt={`${title} – screenshot ${activeIdx + 1}`}
+          className="max-w-full max-h-full object-contain rounded-lg"
+          style={{ imageRendering: "crisp-edges" as any }}
+        />
+
+        {/* Prev / Next */}
+        {paths.length > 1 && (
+          <>
+            <button
+              onClick={prev}
+              disabled={activeIdx === 0}
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-gray-900/90 border border-gray-700/60 flex items-center justify-center text-gray-300 hover:bg-gray-800 hover:text-white disabled:opacity-25 disabled:pointer-events-none transition-all shadow-lg"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              onClick={next}
+              disabled={activeIdx === paths.length - 1}
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-gray-900/90 border border-gray-700/60 flex items-center justify-center text-gray-300 hover:bg-gray-800 hover:text-white disabled:opacity-25 disabled:pointer-events-none transition-all shadow-lg"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </>
+        )}
+
+        {/* Counter */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gray-900/80 border border-gray-700/50 text-xs text-gray-400 select-none">
+          {activeIdx + 1} / {paths.length}
+        </div>
+      </div>
+
+      {/* Thumbnail strip */}
+      {paths.length > 1 && (
+        <div className="flex-shrink-0 border-t border-gray-800 bg-gray-900/60 px-3 py-2">
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {paths.map((p, i) => (
+              <button
+                key={p}
+                onClick={() => setActiveIdx(i)}
+                className={[
+                  "flex-shrink-0 w-16 h-10 rounded overflow-hidden border-2 transition-all duration-150",
+                  activeIdx === i
+                    ? "border-blue-500 shadow-md shadow-blue-500/20"
+                    : "border-gray-700/40 hover:border-gray-600 opacity-60 hover:opacity-100",
+                ].join(" ")}
+              >
+                <LocalImage
+                  src={p}
+                  alt={`Thumbnail ${i + 1}`}
+                  className="w-full h-full object-cover"
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

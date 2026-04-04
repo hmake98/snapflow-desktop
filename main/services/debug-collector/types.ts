@@ -9,14 +9,20 @@
 // Event
 // ---------------------------------------------------------------------------
 
-export type EventType = "click" | "keypress";
+export type EventType = "click" | "keypress" | "scroll";
 
 export interface EventData {
-  /** Screen coordinate for click events */
+  /** Screen coordinate for click/scroll events */
   x?: number;
   y?: number;
   /** Key name for keypress events (e.g. "Enter", "a", "Backspace") */
   key?: string;
+  /** Mouse button: 1=left, 2=right, 3=middle */
+  button?: number;
+  /** Scroll direction */
+  scrollDirection?: "up" | "down";
+  /** Approximate scroll amount (wheel rotation) */
+  scrollAmount?: number;
 }
 
 export interface DebugEvent {

@@ -28,6 +28,7 @@ import {
   recordingSettingsService,
   captureScreenSettings,
 } from "./services/settings";
+import { aiService, AiService } from "./services/ai";
 import { storageManager } from "./utils/storage";
 import { sessionManager } from "./utils/session";
 import { TrayIconManager } from "./utils/tray-icon-manager";
@@ -102,6 +103,16 @@ let tray: typeof Tray.prototype | null = null;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 let isQuitting = false;
 let pendingScreenshot: { dataUrl: string; mode: string } | null = null;
+let sessionHudWindow: typeof BrowserWindow.prototype | null = null;
+let sessionStatusInterval: ReturnType<typeof setInterval> | null = null;
+let pendingSession: {
+  id: string;
+  start_time: number;
+  end_time: number | null;
+  events: unknown[];
+  screenshots: { id: string; timestamp: number; file_path: string; trigger: string }[];
+  timeline: unknown[];
+} | null = null;
 let pendingZohoTokens: {
   accessToken: string;
   refreshToken: string;
@@ -360,14 +371,37 @@ function registerGlobalShortcuts() {
     log.error(`[Shortcuts] Failed to register ${areaShortcut}`);
   }
 
-  // 4 — Capture Session toggle (start / stop)
-  const sessionShortcut = "Control+Shift+4";
+  // 4 — Capture Session toggle (start / stop) — F9
+  const sessionShortcut = "F9";
   const sessionRegistered = globalShortcut.register(sessionShortcut, () => {
     log.info(`[Shortcuts] ${sessionShortcut} pressed - Capture Session toggle`);
     handleCaptureSessionToggle();
   });
   if (!sessionRegistered) {
     log.error(`[Shortcuts] Failed to register ${sessionShortcut}`);
+  }
+
+  // 5 — In-session screenshot — Ctrl+Shift+S
+  const sessionSnapShortcut = "Control+Shift+S";
+  const sessionSnapRegistered = globalShortcut.register(
+    sessionSnapShortcut,
+    async () => {
+      log.info(
+        `[Shortcuts] ${sessionSnapShortcut} pressed - Session screenshot`
+      );
+      const activeSession = debugCollector.getActiveSession();
+      if (!activeSession) return; // only active during a session
+      try {
+        const shot = await debugCollector.captureScreenshot();
+        log.info("[Session] In-session screenshot captured:", shot.id);
+        // Pulse the HUD screenshot count (status interval will update within 1s)
+      } catch (err) {
+        log.error("[Session] In-session screenshot failed:", err);
+      }
+    }
+  );
+  if (!sessionSnapRegistered) {
+    log.error(`[Shortcuts] Failed to register ${sessionSnapShortcut}`);
   }
 
   log.info(
@@ -378,7 +412,9 @@ function registerGlobalShortcuts() {
     "Area:",
     globalShortcut.isRegistered(areaShortcut),
     "Session:",
-    globalShortcut.isRegistered(sessionShortcut)
+    globalShortcut.isRegistered(sessionShortcut),
+    "Session Snap:",
+    globalShortcut.isRegistered(sessionSnapShortcut)
   );
 }
 
@@ -429,7 +465,7 @@ function updateTrayMenu() {
       label: isSessionActive
         ? "■ Stop Capture Session"
         : "● Start Capture Session",
-      accelerator: "Control+Shift+4",
+      accelerator: "F9",
       enabled: !isRestrictedRoute,
       click: () => {
         handleCaptureSessionToggle();
@@ -671,6 +707,88 @@ function closeAreaCaptureOverlays() {
   if (process.platform === "darwin") app.dock?.show();
 }
 
+async function createSessionHudWindow() {
+  if (sessionHudWindow && !sessionHudWindow.isDestroyed()) return;
+
+  const { screen: electronScreen } = electron;
+  const primaryDisplay = electronScreen.getPrimaryDisplay();
+  const { width, height } = primaryDisplay.workAreaSize;
+  const { x: dx, y: dy } = primaryDisplay.workArea;
+
+  const hudWidth = 292;
+  const hudHeight = 60;
+  const margin = 20;
+
+  sessionHudWindow = new BrowserWindow({
+    width: hudWidth,
+    height: hudHeight,
+    x: dx + width - hudWidth - margin,
+    y: dy + height - hudHeight - margin,
+    transparent: true,
+    frame: false,
+    alwaysOnTop: true,
+    resizable: false,
+    movable: true,
+    hasShadow: false,
+    skipTaskbar: true,
+    show: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, "preload.js"),
+    },
+  });
+
+  sessionHudWindow.setAlwaysOnTop(true, "floating", 3);
+  sessionHudWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  if (process.platform === "darwin") app.dock?.show();
+
+  // Prevent HUD from appearing in screenshots/screen recordings
+  sessionHudWindow.setContentProtection(true);
+
+  if (isProd) {
+    await sessionHudWindow.loadURL("app://./session-hud");
+  } else {
+    const port = process.argv[2];
+    await sessionHudWindow.loadURL(`http://localhost:${port}/session-hud`);
+  }
+
+  sessionHudWindow.once("ready-to-show", () => {
+    sessionHudWindow?.show();
+  });
+
+  sessionHudWindow.on("closed", () => {
+    sessionHudWindow = null;
+    if (sessionStatusInterval) {
+      clearInterval(sessionStatusInterval);
+      sessionStatusInterval = null;
+    }
+  });
+
+  // Push live status to HUD every second
+  sessionStatusInterval = setInterval(() => {
+    const active = debugCollector.getActiveSession();
+    if (!active || !sessionHudWindow || sessionHudWindow.isDestroyed()) return;
+    const elapsed = Date.now() - active.start_time;
+    sessionHudWindow.webContents.send("session:status", {
+      elapsed,
+      screenshots: active.screenshots.length,
+      events: active.events.length,
+    });
+  }, 1000);
+}
+
+function closeSessionHudWindow() {
+  if (sessionStatusInterval) {
+    clearInterval(sessionStatusInterval);
+    sessionStatusInterval = null;
+  }
+  if (sessionHudWindow && !sessionHudWindow.isDestroyed()) {
+    sessionHudWindow.close();
+    sessionHudWindow = null;
+  }
+}
+
 async function createAreaCaptureOverlay() {
   const { screen } = electron;
   const displays = screen.getAllDisplays();
@@ -880,6 +998,14 @@ function handleCaptureSessionToggle() {
   const active = debugCollector.getActiveSession();
   if (active) {
     try {
+      // Build timeline BEFORE stopping (requires active session)
+      let timeline: unknown[] = [];
+      try {
+        timeline = debugCollector.getSessionTimeline();
+      } catch {
+        // ignore — timeline is best-effort
+      }
+
       const session = debugCollector.stopSession();
       log.info(
         "[Session] Capture session stopped. Events:",
@@ -887,11 +1013,28 @@ function handleCaptureSessionToggle() {
         "Screenshots:",
         session.screenshots.length
       );
+
+      closeSessionHudWindow();
+
+      pendingSession = {
+        id: session.id,
+        start_time: session.start_time,
+        end_time: session.end_time,
+        events: session.events,
+        screenshots: session.screenshots,
+        timeline,
+      };
+
+      // Navigate to session review page
+      mainWindow?.show();
+      mainWindow?.focus();
       if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send("navigate", "/annotate-session");
         mainWindow.webContents.send("collector:session-stopped", session);
       }
     } catch (err) {
       log.error("[Session] Failed to stop capture session:", err);
+      closeSessionHudWindow();
     }
   } else {
     try {
@@ -900,6 +1043,10 @@ function handleCaptureSessionToggle() {
       if (mainWindow && mainWindow.webContents) {
         mainWindow.webContents.send("collector:session-started");
       }
+      // Create floating HUD
+      createSessionHudWindow().catch((err) => {
+        log.error("[Session] Failed to create HUD window:", err);
+      });
     } catch (err) {
       log.error("[Session] Failed to start capture session:", err);
     }
@@ -2900,6 +3047,7 @@ function setupIPCHandlers() {
                 syncedTo: issue.syncedTo,
                 tags: issue.tags,
                 type: issue.type,
+                sessionData: (issue as any).sessionData,
               });
               log.info(
                 `[Update] GitHub issue #${githubSync.externalId} updated`
@@ -3092,13 +3240,20 @@ function setupIPCHandlers() {
     "capture:screenshot",
     async (_event, { mode, windowId, bounds, originOffset }) => {
       try {
-        // Close overlay window if it exists (for region and window capture)
+        // Close overlay windows before capturing so they don't appear in the screenshot
+        let hadOverlay = false;
         if (windowCaptureOverlay) {
           windowCaptureOverlay.close();
           windowCaptureOverlay = null;
           if (process.platform === "darwin") app.dock?.show();
-          // Wait for the OS compositor to fully remove the overlay from screen
-          // before capturing, so it doesn't appear in the screenshot
+          hadOverlay = true;
+        }
+        if (areaCaptureOverlays.length > 0) {
+          closeAreaCaptureOverlays();
+          hadOverlay = true;
+        }
+        // Wait for the OS compositor to fully remove overlays from screen
+        if (hadOverlay) {
           await new Promise((resolve) => setTimeout(resolve, 150));
         }
 
@@ -3136,6 +3291,9 @@ function setupIPCHandlers() {
           windowCaptureOverlay.close();
           windowCaptureOverlay = null;
           if (process.platform === "darwin") app.dock?.show();
+        }
+        if (areaCaptureOverlays.length > 0) {
+          closeAreaCaptureOverlays();
         }
         mainWindow?.show();
         mainWindow?.focus();
@@ -3799,10 +3957,11 @@ function setupIPCHandlers() {
         title: issue.title,
         description: issue.description,
         filePath: issue.filePath,
-        cloudFileUrl: issue.cloudFileUrl, // Pass the cloud URL if available
-        syncedTo: issue.syncedTo, // Pass existing sync info to check for duplicates
-        tags: issue.tags, // Pass tags to be mapped to GitHub labels
-        type: issue.type, // Pass type to distinguish screenshots from recordings
+        cloudFileUrl: issue.cloudFileUrl,
+        syncedTo: issue.syncedTo,
+        tags: issue.tags,
+        type: issue.type,
+        sessionData: (issue as any).sessionData,
       });
 
       await issueService.updateSyncStatus(issueId, "synced", {
@@ -3860,6 +4019,7 @@ function setupIPCHandlers() {
           syncedTo: issue.syncedTo,
           tags: issue.tags,
           type: issue.type,
+          sessionData: (issue as any).sessionData,
         });
 
         await issueService.updateSyncStatus(issueId, "synced", {
@@ -4494,6 +4654,127 @@ function setupIPCHandlers() {
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }
+  });
+
+  // Session HUD: take screenshot during active session (called from HUD button)
+  ipcMain.handle("session:take-screenshot", async () => {
+    try {
+      const active = debugCollector.getActiveSession();
+      if (!active) return { success: false, error: "No active session" };
+      const shot = await debugCollector.captureScreenshot();
+      log.info("[Session] HUD-triggered screenshot:", shot.id);
+      return { success: true, data: shot };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // Session HUD: stop session (called from HUD stop button)
+  ipcMain.handle("session:stop", () => {
+    try {
+      handleCaptureSessionToggle();
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // Session annotate page: fetch the finished session data
+  ipcMain.handle("session:get-pending", () => {
+    return { success: true, data: pendingSession };
+  });
+
+  // Session annotate page: save session as a snap
+  ipcMain.handle(
+    "session:save-snap",
+    async (_event, { title, description, workspaceId }) => {
+      try {
+        if (!pendingSession) {
+          return { success: false, error: "No pending session" };
+        }
+
+        const userResult = await authService.getSession();
+        const userId = userResult?.user?.id;
+        if (!userId) {
+          return { success: false, error: "Not authenticated" };
+        }
+
+        const snap = await issueService.createSessionSnap(
+          userId,
+          title,
+          {
+            sessionId: pendingSession.id,
+            duration:
+              (pendingSession.end_time ?? Date.now()) -
+              pendingSession.start_time,
+            screenshotCount: pendingSession.screenshots.length,
+            eventCount: pendingSession.events.length,
+            screenshotPaths: pendingSession.screenshots.map(
+              (s: { file_path: string }) => s.file_path
+            ),
+            timeline: pendingSession.timeline,
+          },
+          description,
+          workspaceId
+        );
+
+        // Clear pending session after save
+        pendingSession = null;
+
+        return { success: true, data: snap };
+      } catch (error) {
+        return { success: false, error: (error as Error).message };
+      }
+    }
+  );
+
+  // ── AI: generate session description from screenshots + activity ──────────
+
+  ipcMain.handle(
+    "ai:generate-description",
+    async (
+      _,
+      params: {
+        screenshotPaths: string[];
+        typedTexts: string[];
+        shortcuts: string[];
+        clickCount: number;
+        durationMs: number;
+      }
+    ) => {
+      try {
+        const description = await aiService.generateSessionDescription(params);
+        return { success: true, data: description };
+      } catch (error) {
+        log.warn("[AI] Failed to generate description:", error);
+        return { success: false, error: AiService.friendlyError(error) };
+      }
+    }
+  );
+
+  ipcMain.handle("ai:is-configured", () => {
+    return { success: true, data: aiService.isConfigured() };
+  });
+
+  ipcMain.handle("ai:get-key", () => {
+    const key = aiService.getStoredApiKey();
+    // Return masked key for display
+    const masked = key ? key.slice(0, 7) + "…" + key.slice(-4) : null;
+    return { success: true, data: masked };
+  });
+
+  ipcMain.handle("ai:set-key", (_, { key }: { key: string }) => {
+    try {
+      aiService.setApiKey(key);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle("ai:clear-key", () => {
+    aiService.clearApiKey();
+    return { success: true };
   });
 
   ipcMain.handle("debug:test-capture", async () => {

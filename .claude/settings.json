@@ -17,7 +17,11 @@
       "Bash(find /Users/hmake98/Documents/snapflow-desktop -path */renderer/* -type f -name *.ts* -o -path */src/* -type f -name *.ts*)",
       "Bash(find /Users/hmake98/Documents/snapflow-desktop -path */store* -o -path */zustand*)",
       "Bash(grep -E \"\\\\.ts$\")",
-      "Bash(find /Users/hmake98/Documents/snapflow-desktop/renderer/public -name logo*)"
+      "Bash(find /Users/hmake98/Documents/snapflow-desktop/renderer/public -name logo*)",
+      "Bash(npm list:*)",
+      "Bash(npx electron-rebuild:*)",
+      "Bash(node -e \"const e = require\\('/Users/hmake98/Documents/snapflow-desktop/node_modules/uiohook-napi'\\); console.log\\(Object.keys\\(e\\)\\); console.log\\('uIOhook defined:', !!e.uIOhook\\);\")",
+      "Bash(npm uninstall:*)"
     ]
   }
 }

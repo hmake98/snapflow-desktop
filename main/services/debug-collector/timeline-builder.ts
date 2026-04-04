@@ -89,11 +89,36 @@ function describeEvent(event: DebugEvent): string {
     case "click": {
       const x = event.data.x ?? 0;
       const y = event.data.y ?? 0;
-      return `User clicked at (${x}, ${y})`;
+      const btn = event.data.button ?? 1;
+      const btnLabel =
+        btn === 2 ? "Right-click" : btn === 3 ? "Middle-click" : "Left-click";
+      return `${btnLabel} at (${x}, ${y})`;
     }
     case "keypress": {
       const key = event.data.key ?? "unknown";
-      return `User pressed ${key}`;
+      const friendlyKeys: Record<string, string> = {
+        Return: "Enter",
+        BackSpace: "Backspace",
+        Delete: "Delete",
+        Escape: "Escape",
+        Tab: "Tab",
+        space: "Space",
+        Up: "↑ Up",
+        Down: "↓ Down",
+        Left: "← Left",
+        Right: "→ Right",
+        ctrl: "Ctrl",
+        alt: "Alt",
+        shift: "Shift",
+        meta: "⌘ Cmd",
+      };
+      return `Key: ${friendlyKeys[key] ?? key}`;
+    }
+    case "scroll": {
+      const dir = event.data.scrollDirection ?? "down";
+      const x = event.data.x ?? 0;
+      const y = event.data.y ?? 0;
+      return `Scroll ${dir} at (${x}, ${y})`;
     }
     default:
       return `Unknown event`;

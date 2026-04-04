@@ -3,6 +3,17 @@ import { generateIssueId } from "../utils/id-generator";
 import { storageManager } from "../utils/storage";
 import log from "electron-log";
 
+interface SessionSnapData {
+  sessionId: string;
+  duration: number; // ms
+  screenshotCount: number;
+  eventCount: number;
+  screenshotPaths: string[];
+  /** Cloud storage URLs for each screenshot, populated after Supabase sync */
+  cloudScreenshotUrls?: string[];
+  timeline: unknown[];
+}
+
 interface Snap {
   id: string;
   title: string;
@@ -23,6 +34,7 @@ interface Snap {
   userId: string;
   workspaceId?: string;
   tags?: string[];
+  sessionData?: SessionSnapData;
   [key: string]: unknown;
 }
 
@@ -37,6 +49,39 @@ const store = new Store<{ snaps: Snap[] }>({
 });
 
 export class SnapService {
+  async createSessionSnap(
+    userId: string,
+    title: string,
+    sessionData: SessionSnapData,
+    description?: string,
+    workspaceId?: string
+  ): Promise<Snap> {
+    log.info("[Snap Service] === CREATE SESSION SNAP START ===");
+    const firstScreenshot = sessionData.screenshotPaths[0] ?? "";
+    const snap: Snap = {
+      id: generateIssueId(),
+      title,
+      description,
+      type: "screenshot",
+      timestamp: new Date().toISOString(),
+      filePath: firstScreenshot,
+      thumbnailPath: firstScreenshot,
+      syncStatus: "local",
+      syncedTo: [],
+      userId,
+      workspaceId,
+      sessionData,
+    };
+
+    const snaps = (store as any).get("snaps");
+    snaps.push(snap);
+    (store as any).set("snaps", snaps);
+    await storageManager.saveMetadata(snap.id, snap);
+
+    log.info("[Snap Service] ✓ Session snap created:", snap.id);
+    return snap;
+  }
+
   async createSnap(
     userId: string,
     title: string,

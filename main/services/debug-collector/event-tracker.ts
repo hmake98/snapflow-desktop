@@ -39,16 +39,20 @@ export class EventTracker extends EventEmitter {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { uIOhook, UiohookKey } = require("uiohook-napi");
+      if (!uIOhook) {
+        log.warn("[EventTracker] uiohook-napi loaded but uIOhook is undefined — native module may need rebuilding (run: npx electron-rebuild -f -w uiohook-napi)");
+        return;
+      }
       this.uiohook = uIOhook;
 
       uIOhook.on("mousedown", (e: { x: number; y: number; button: number }) => {
-        // Only track primary button (1) and secondary button (2) clicks
-        if (e.button !== 1 && e.button !== 2) return;
+        // Track left (1), right (2), and middle (3) clicks
+        if (e.button < 1 || e.button > 3) return;
         this.handleEvent({
           id: randomUUID(),
           type: "click",
           timestamp: Date.now(),
-          data: { x: e.x, y: e.y },
+          data: { x: e.x, y: e.y, button: e.button },
         });
       });
 
@@ -68,6 +72,34 @@ export class EventTracker extends EventEmitter {
             type: "keypress",
             timestamp: Date.now(),
             data: { key: keyName },
+          });
+        }
+      );
+
+      uIOhook.on(
+        "wheel",
+        (e: { x: number; y: number; rotation: number; direction: number }) => {
+          // direction: 3 = down, 4 = up (uiohook-napi convention)
+          const scrollDirection = e.direction === 3 ? "down" : "up";
+          // Throttle: skip scroll events if one was recorded within 500ms
+          const last = this.buffer[this.buffer.length - 1];
+          if (
+            last &&
+            last.type === "scroll" &&
+            Date.now() - last.timestamp < 500
+          ) {
+            return;
+          }
+          this.handleEvent({
+            id: randomUUID(),
+            type: "scroll",
+            timestamp: Date.now(),
+            data: {
+              x: e.x,
+              y: e.y,
+              scrollDirection,
+              scrollAmount: Math.abs(e.rotation ?? 1),
+            },
           });
         }
       );
