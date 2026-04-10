@@ -327,7 +327,11 @@ const api = {
     description?: string,
     workspaceId?: string
   ) =>
-    ipcRenderer.invoke("session:save-snap", { title, description, workspaceId }),
+    ipcRenderer.invoke("session:save-snap", {
+      title,
+      description,
+      workspaceId,
+    }),
 
   // AI: session description generation
   aiGenerateDescription: (params: {
@@ -337,6 +341,8 @@ const api = {
     clickCount: number;
     durationMs: number;
   }) => ipcRenderer.invoke("ai:generate-description", params),
+  aiGenerateDescriptionFromSnap: (snapId: string) =>
+    ipcRenderer.invoke("ai:generate-description-from-snap", { snapId }),
   aiIsConfigured: () => ipcRenderer.invoke("ai:is-configured"),
   aiGetKey: () => ipcRenderer.invoke("ai:get-key"),
   aiSetKey: (key: string) => ipcRenderer.invoke("ai:set-key", { key }),

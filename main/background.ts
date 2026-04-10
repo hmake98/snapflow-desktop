@@ -110,7 +110,12 @@ let pendingSession: {
   start_time: number;
   end_time: number | null;
   events: unknown[];
-  screenshots: { id: string; timestamp: number; file_path: string; trigger: string }[];
+  screenshots: {
+    id: string;
+    timestamp: number;
+    file_path: string;
+    trigger: string;
+  }[];
   timeline: unknown[];
 } | null = null;
 let pendingZohoTokens: {
@@ -740,7 +745,9 @@ async function createSessionHudWindow() {
   });
 
   sessionHudWindow.setAlwaysOnTop(true, "floating", 3);
-  sessionHudWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  sessionHudWindow.setVisibleOnAllWorkspaces(true, {
+    visibleOnFullScreen: true,
+  });
   if (process.platform === "darwin") app.dock?.show();
 
   // Prevent HUD from appearing in screenshots/screen recordings
@@ -4747,6 +4754,100 @@ function setupIPCHandlers() {
         return { success: true, data: description };
       } catch (error) {
         log.warn("[AI] Failed to generate description:", error);
+        return { success: false, error: AiService.friendlyError(error) };
+      }
+    }
+  );
+
+  // ── AI: generate description directly from a saved snap's session data ──────
+  ipcMain.handle(
+    "ai:generate-description-from-snap",
+    async (_, { snapId }: { snapId: string }) => {
+      try {
+        const snap = issueService.getSnapById(snapId);
+        if (!snap) {
+          return { success: false, error: "Snap not found" };
+        }
+
+        const sd = (snap as any).sessionData as
+          | {
+              screenshotPaths?: string[];
+              duration?: number;
+              eventCount?: number;
+              timeline?: Array<{
+                event: {
+                  type: string;
+                  data: { key?: string; button?: number };
+                } | null;
+                screenshot: unknown;
+                description: string;
+              }>;
+            }
+          | undefined;
+
+        if (!sd) {
+          return { success: false, error: "No session data on this snap" };
+        }
+
+        // Reconstruct typed texts, shortcuts, and click count from stored timeline events
+        const MODIFIER_KEYS = new Set(["ctrl", "alt", "shift", "meta"]);
+        const SKIP_KEYS = new Set([
+          "Tab",
+          "Escape",
+          "Up",
+          "Down",
+          "Left",
+          "Right",
+        ]);
+
+        let typingBuffer: string[] = [];
+        const typedTexts: string[] = [];
+        const shortcutSet = new Set<string>();
+        let clickCount = 0;
+
+        for (const entry of sd.timeline ?? []) {
+          const ev = entry.event;
+          if (!ev) continue;
+          if (ev.type === "click") {
+            clickCount++;
+            if (typingBuffer.length > 0) {
+              const text = typingBuffer.join("").trim();
+              if (text.length >= 2) typedTexts.push(text);
+              typingBuffer = [];
+            }
+          } else if (ev.type === "keypress") {
+            const key = ev.data.key ?? "";
+            if (MODIFIER_KEYS.has(key) || SKIP_KEYS.has(key)) continue;
+            if (key.length === 1) {
+              typingBuffer.push(key);
+            } else {
+              if (typingBuffer.length > 0) {
+                const text = typingBuffer.join("").trim();
+                if (text.length >= 2) typedTexts.push(text);
+                typingBuffer = [];
+              }
+              if (key === "Return") shortcutSet.add("Enter");
+              else if (key !== "BackSpace" && key !== "Delete")
+                shortcutSet.add(key);
+            }
+          }
+        }
+        if (typingBuffer.length > 0) {
+          const text = typingBuffer.join("").trim();
+          if (text.length >= 2) typedTexts.push(text);
+        }
+
+        const description = await aiService.generateSessionDescription({
+          screenshotPaths: sd.screenshotPaths ?? [],
+          typedTexts: typedTexts.slice(0, 5),
+          shortcuts: Array.from(shortcutSet).slice(0, 10),
+          clickCount,
+          durationMs: sd.duration ?? 0,
+        });
+
+        return { success: true, data: description };
+      } catch (error) {
+        log.warn("[AI] Failed to generate description from snap:", error);
         return { success: false, error: AiService.friendlyError(error) };
       }
     }

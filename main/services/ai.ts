@@ -11,8 +11,10 @@ import Store from "electron-store";
 import fs from "fs";
 import log from "electron-log";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const aiStore = new Store({ name: "snapflow-ai-settings", defaults: { groqApiKey: null } }) as any;
+const aiStore = new Store({
+  name: "snapflow-ai-settings",
+  defaults: { groqApiKey: null },
+}) as any;
 
 // Vision model available on Groq free tier
 const GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
@@ -28,8 +30,7 @@ export interface GenerateDescriptionParams {
 export class AiService {
   private getApiKey(): string | null {
     return (
-      process.env.GROQ_API_KEY ||
-      (aiStore.get("groqApiKey") as string | null)
+      process.env.GROQ_API_KEY || (aiStore.get("groqApiKey") as string | null)
     );
   }
 
@@ -111,11 +112,17 @@ export class AiService {
 
     const prompt = `${
       imageContent.length > 0
-        ? `These ${imageContent.length} screenshot${imageContent.length !== 1 ? "s" : ""} were captured during a ${durationSec}-second screen recording.`
-        : `This was a ${durationSec}-second screen recording.`
+        ? `These ${imageContent.length} screenshot${imageContent.length !== 1 ? "s" : ""} were captured during a ${durationSec}-second testing or debugging session.`
+        : `This was a ${durationSec}-second testing or debugging session.`
     }${activityContext}
 
-Write 1–2 sentences describing what the user was doing. Be specific about the app, website, or task visible — focus on the actual intent and actions. Write in past tense. Do not mention "session", "screenshot", "recording", or any meta-terms about the capture.`;
+Write a technical description (3–5 sentences) for a QA engineer or developer reviewing this session. Your description must:
+1. Identify the application, page, or feature visible in the screenshots
+2. Describe the sequence of actions performed (what was navigated, searched, typed, or clicked — be specific)
+3. Note any visible errors, warnings, failed states, loading issues, or unexpected UI behavior observed
+4. Provide enough context for a developer to reproduce the scenario or understand what was being tested
+
+Be specific and factual. Write in past tense. Focus on observable facts: actual UI states, error messages, form interactions, and navigation steps visible in the screenshots. Do not speculate beyond what is visible or recorded.`;
 
     log.info(
       "[AI] Generating description — screenshots:",
@@ -145,7 +152,11 @@ Write 1–2 sentences describing what the user was doing. Be specific about the 
   /** Returns a short user-facing message for common API errors. */
   static friendlyError(err: unknown): string {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("429") || msg.includes("quota") || msg.includes("Too Many Requests")) {
+    if (
+      msg.includes("429") ||
+      msg.includes("quota") ||
+      msg.includes("Too Many Requests")
+    ) {
       return "AI quota exceeded — try again in a moment";
     }
     if (msg.includes("404") || msg.includes("not found")) {
@@ -154,7 +165,11 @@ Write 1–2 sentences describing what the user was doing. Be specific about the 
     if (msg.includes("401") || msg.includes("403") || msg.includes("API key")) {
       return "Invalid Groq API key — update GROQ_API_KEY in your .env file";
     }
-    if (msg.includes("network") || msg.includes("fetch") || msg.includes("ENOTFOUND")) {
+    if (
+      msg.includes("network") ||
+      msg.includes("fetch") ||
+      msg.includes("ENOTFOUND")
+    ) {
       return "Network error — check your internet connection";
     }
     return "AI generation failed — edit manually";

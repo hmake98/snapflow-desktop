@@ -31,8 +31,15 @@ import type {
   TimelineEntry,
 } from "./types";
 
+// Minimum ms between auto-captures to prevent burst duplicates
+const MIN_CAPTURE_INTERVAL_MS = 1500;
+// Bytes sampled from the buffer as a quick visual fingerprint
+const FINGERPRINT_BYTES = 2048;
+
 export class SessionManager {
   private activeSession: DebugSession | null = null;
+  private lastCaptureTime = 0;
+  private lastCaptureFingerprint: string | null = null;
 
   // ---------------------------------------------------------------------------
   // Mode 2 — Session capture
@@ -107,12 +114,45 @@ export class SessionManager {
       throw new Error("No active debug session");
     }
 
-    const screenshotId = randomUUID();
     const timestamp = Date.now();
+
+    // Debounce: skip if a capture was taken very recently
+    if (timestamp - this.lastCaptureTime < MIN_CAPTURE_INTERVAL_MS) {
+      log.info(
+        "[SessionManager] Skipping duplicate capture — too soon after last capture"
+      );
+      // Return the last screenshot as a no-op
+      const last =
+        this.activeSession.screenshots[
+          this.activeSession.screenshots.length - 1
+        ];
+      if (last) return last;
+    }
 
     const { buffer } = await captureService.captureScreenshot({
       mode: "fullscreen",
     });
+
+    // Fingerprint check: skip if screen content hasn't changed
+    const fingerprint = Buffer.from(
+      buffer.slice(0, FINGERPRINT_BYTES)
+    ).toString("base64");
+    if (fingerprint === this.lastCaptureFingerprint) {
+      log.info(
+        "[SessionManager] Skipping duplicate capture — screen unchanged"
+      );
+      const last =
+        this.activeSession.screenshots[
+          this.activeSession.screenshots.length - 1
+        ];
+      if (last) return last;
+    }
+
+    this.lastCaptureTime = timestamp;
+    this.lastCaptureFingerprint = fingerprint;
+
+    const screenshotId = randomUUID();
+
     const filePath = await storageManager.saveCapture(
       `debug_${screenshotId}`,
       "capture.png",

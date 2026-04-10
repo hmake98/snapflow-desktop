@@ -50,10 +50,21 @@ interface LoadedScreenshot {
 // ── Grouped activity types ────────────────────────────────────────────────
 
 type GroupedEntry =
-  | { kind: "typed"; text: string; timestamp: number; endTimestamp: number; keyCount: number }
+  | {
+      kind: "typed";
+      text: string;
+      timestamp: number;
+      endTimestamp: number;
+      keyCount: number;
+    }
   | { kind: "click"; button: number; timestamp: number }
   | { kind: "shortcut"; combo: string; timestamp: number }
-  | { kind: "screenshot"; id: string; timestamp: number; trigger: "manual" | "event" };
+  | {
+      kind: "screenshot";
+      id: string;
+      timestamp: number;
+      trigger: "manual" | "event";
+    };
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -112,8 +123,16 @@ function groupTimeline(session: SessionData): GroupedEntry[] {
     | { kind: "shot"; timestamp: number; shot: DebugScreenshot };
 
   const raw: RawItem[] = [
-    ...session.events.map((e) => ({ kind: "event" as const, timestamp: e.timestamp, event: e })),
-    ...session.screenshots.map((s) => ({ kind: "shot" as const, timestamp: s.timestamp, shot: s })),
+    ...session.events.map((e) => ({
+      kind: "event" as const,
+      timestamp: e.timestamp,
+      event: e,
+    })),
+    ...session.screenshots.map((s) => ({
+      kind: "shot" as const,
+      timestamp: s.timestamp,
+      shot: s,
+    })),
   ].sort((a, b) => a.timestamp - b.timestamp);
 
   let typingChars: string[] = [];
@@ -166,7 +185,11 @@ function groupTimeline(session: SessionData): GroupedEntry[] {
 
     if (ev.type === "click") {
       flushTyping();
-      groups.push({ kind: "click", button: ev.data.button ?? 1, timestamp: ev.timestamp });
+      groups.push({
+        kind: "click",
+        button: ev.data.button ?? 1,
+        timestamp: ev.timestamp,
+      });
       i++;
       continue;
     }
@@ -185,7 +208,11 @@ function groupTimeline(session: SessionData): GroupedEntry[] {
         ) {
           const nextKey = next.event.data.key ?? "";
           // Shift + single letter → uppercase character in typing buffer
-          if (key === "shift" && nextKey.length === 1 && /^[A-Za-z]$/.test(nextKey)) {
+          if (
+            key === "shift" &&
+            nextKey.length === 1 &&
+            /^[A-Za-z]$/.test(nextKey)
+          ) {
             if (typingStart === null) typingStart = ev.timestamp;
             typingChars.push(nextKey.toUpperCase());
             typingEnd = next.event.timestamp;
@@ -196,7 +223,8 @@ function groupTimeline(session: SessionData): GroupedEntry[] {
           // Any other modifier + key → keyboard shortcut
           flushTyping();
           const modLabel = MODIFIER_LABELS[key] ?? key.toUpperCase();
-          const keyLabel = nextKey.length === 1 ? nextKey.toUpperCase() : nextKey;
+          const keyLabel =
+            nextKey.length === 1 ? nextKey.toUpperCase() : nextKey;
           groups.push({
             kind: "shortcut",
             combo: `${modLabel}+${keyLabel}`,
@@ -224,7 +252,11 @@ function groupTimeline(session: SessionData): GroupedEntry[] {
       // ── Enter / Return → flush typing, show as action ──────────────────
       if (key === "Return" || key === "Enter") {
         flushTyping();
-        groups.push({ kind: "shortcut", combo: "Enter", timestamp: ev.timestamp });
+        groups.push({
+          kind: "shortcut",
+          combo: "Enter",
+          timestamp: ev.timestamp,
+        });
         i++;
         continue;
       }
@@ -232,7 +264,11 @@ function groupTimeline(session: SessionData): GroupedEntry[] {
       // ── Escape → show as action ─────────────────────────────────────────
       if (key === "Escape") {
         flushTyping();
-        groups.push({ kind: "shortcut", combo: "Escape", timestamp: ev.timestamp });
+        groups.push({
+          kind: "shortcut",
+          combo: "Escape",
+          timestamp: ev.timestamp,
+        });
         i++;
         continue;
       }
@@ -240,7 +276,10 @@ function groupTimeline(session: SessionData): GroupedEntry[] {
       // ── Tab, arrows, function keys → drop (navigation noise) ───────────
       if (
         key === "Tab" ||
-        key === "Up" || key === "Down" || key === "Left" || key === "Right" ||
+        key === "Up" ||
+        key === "Down" ||
+        key === "Left" ||
+        key === "Right" ||
         /^F\d{1,2}$/.test(key)
       ) {
         i++;
@@ -279,13 +318,17 @@ function groupTimeline(session: SessionData): GroupedEntry[] {
   return groups;
 }
 
-function generateDescription(_session: SessionData, groups: GroupedEntry[]): string {
+function generateDescription(
+  _session: SessionData,
+  groups: GroupedEntry[]
+): string {
   const typedGroups = groups.filter(
     (g): g is Extract<GroupedEntry, { kind: "typed" }> =>
       g.kind === "typed" && g.text.trim().length >= 2
   );
   const shortcuts = groups.filter(
-    (g): g is Extract<GroupedEntry, { kind: "shortcut" }> => g.kind === "shortcut"
+    (g): g is Extract<GroupedEntry, { kind: "shortcut" }> =>
+      g.kind === "shortcut"
   );
 
   const parts: string[] = [];
@@ -295,11 +338,19 @@ function generateDescription(_session: SessionData, groups: GroupedEntry[]): str
     const text = typedGroups[0].text.slice(0, 80);
     const ellipsis = typedGroups[0].text.length > 80 ? "…" : "";
     const pressedEnter = shortcuts.some((s) => s.combo === "Enter");
-    parts.push(pressedEnter ? `Typed "${text}${ellipsis}" and submitted` : `Typed "${text}${ellipsis}"`);
+    parts.push(
+      pressedEnter
+        ? `Typed "${text}${ellipsis}" and submitted`
+        : `Typed "${text}${ellipsis}"`
+    );
   } else if (typedGroups.length > 1) {
-    const previews = typedGroups.map((g) => `"${g.text.slice(0, 40)}${g.text.length > 40 ? "…" : ""}"`);
+    const previews = typedGroups.map(
+      (g) => `"${g.text.slice(0, 40)}${g.text.length > 40 ? "…" : ""}"`
+    );
     const pressedEnter = shortcuts.some((s) => s.combo === "Enter");
-    parts.push(`Typed ${previews.join(", ")}${pressedEnter ? " and submitted" : ""}`);
+    parts.push(
+      `Typed ${previews.join(", ")}${pressedEnter ? " and submitted" : ""}`
+    );
   }
 
   // Notable shortcuts only (skip Enter — handled above, skip Tab/Escape noise)
@@ -328,7 +379,6 @@ export default function AnnotateSessionPage() {
 
   const [session, setSession] = useState<SessionData | null>(null);
   const [screenshots, setScreenshots] = useState<LoadedScreenshot[]>([]);
-  const [selectedIdx, setSelectedIdx] = useState(0);
   const [groupedEntries, setGroupedEntries] = useState<GroupedEntry[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -370,7 +420,11 @@ export default function AnnotateSessionPage() {
         try {
           const imgResult = await window.api.readImageFile(s.file_path);
           if (imgResult?.success && imgResult.data) {
-            loaded.push({ id: s.id, dataUrl: imgResult.data, timestamp: s.timestamp });
+            loaded.push({
+              id: s.id,
+              dataUrl: imgResult.data,
+              timestamp: s.timestamp,
+            });
           }
         } catch {
           // skip unreadable screenshots
@@ -400,10 +454,16 @@ export default function AnnotateSessionPage() {
 
     try {
       const typedTexts = entryGroups
-        .filter((g): g is Extract<GroupedEntry, { kind: "typed" }> => g.kind === "typed")
+        .filter(
+          (g): g is Extract<GroupedEntry, { kind: "typed" }> =>
+            g.kind === "typed"
+        )
         .map((g) => g.text);
       const shortcuts = entryGroups
-        .filter((g): g is Extract<GroupedEntry, { kind: "shortcut" }> => g.kind === "shortcut")
+        .filter(
+          (g): g is Extract<GroupedEntry, { kind: "shortcut" }> =>
+            g.kind === "shortcut"
+        )
         .map((g) => g.combo);
       const clickCount = entryGroups.filter((g) => g.kind === "click").length;
 
@@ -412,7 +472,8 @@ export default function AnnotateSessionPage() {
         typedTexts,
         shortcuts,
         clickCount,
-        durationMs: (sessionData.end_time ?? Date.now()) - sessionData.start_time,
+        durationMs:
+          (sessionData.end_time ?? Date.now()) - sessionData.start_time,
       });
 
       if (result?.success && result.data) {
@@ -466,7 +527,11 @@ export default function AnnotateSessionPage() {
     return (
       <div className="h-screen bg-gray-950 flex flex-col items-center justify-center gap-4">
         <p className="text-sm text-red-400">{error ?? "No session found."}</p>
-        <Button variant="secondary" size="sm" onClick={() => router.push("/home")}>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => router.push("/home")}
+        >
           Go Home
         </Button>
       </div>
@@ -483,6 +548,12 @@ export default function AnnotateSessionPage() {
       (g.kind === "click" && g.button !== 1)
   ).length;
 
+  const sessionDate = new Date(session.start_time).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
   return (
     <>
       <Head>
@@ -490,7 +561,6 @@ export default function AnnotateSessionPage() {
       </Head>
 
       <div className="h-screen bg-gray-950 flex flex-col overflow-hidden">
-
         {/* ── Header ── */}
         <div
           className="bg-gray-900 border-b border-gray-800 flex-shrink-0"
@@ -507,29 +577,94 @@ export default function AnnotateSessionPage() {
               } as React.CSSProperties
             }
           >
-            <div className="flex flex-col justify-center min-w-0">
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 bg-blue-600/20 border border-blue-500/30 rounded flex items-center justify-center flex-shrink-0">
-                  <svg className="w-3 h-3 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.069A1 1 0 0121 8.82V15.18a1 1 0 01-1.447.894L15 14M3 8.5A1.5 1.5 0 014.5 7h8A1.5 1.5 0 0114 8.5v7A1.5 1.5 0 0112.5 17h-8A1.5 1.5 0 013 15.5v-7z" />
-                  </svg>
-                </div>
-                <h1 className="text-sm font-semibold text-gray-100">Review Session</h1>
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-6 h-6 bg-blue-600/20 border border-blue-500/30 rounded flex items-center justify-center flex-shrink-0">
+                <svg
+                  className="w-3.5 h-3.5 text-blue-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 10l4.553-2.069A1 1 0 0121 8.82V15.18a1 1 0 01-1.447.894L15 14M3 8.5A1.5 1.5 0 014.5 7h8A1.5 1.5 0 0114 8.5v7A1.5 1.5 0 0112.5 17h-8A1.5 1.5 0 013 15.5v-7z"
+                  />
+                </svg>
               </div>
-              <div className="flex items-center gap-3 mt-0.5">
-                <StatPill icon="⏱" value={duration} />
-                <StatPill
-                  icon="📸"
-                  value={`${session.screenshots.length} screenshot${session.screenshots.length !== 1 ? "s" : ""}`}
-                />
-                {meaningfulCount > 0 && (
-                  <StatPill icon="⚡" value={`${meaningfulCount} action${meaningfulCount !== 1 ? "s" : ""}`} />
-                )}
+              <div className="flex items-center gap-2 min-w-0">
+                <h1 className="text-sm font-semibold text-gray-100 flex-shrink-0">
+                  Review Session
+                </h1>
+                <span className="text-gray-700 text-sm">·</span>
+                <div className="flex items-center gap-3 text-[11px] text-gray-500 min-w-0">
+                  <StatPill
+                    icon={
+                      <svg
+                        className="w-3 h-3"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                    }
+                    value={duration}
+                  />
+                  <StatPill
+                    icon={
+                      <svg
+                        className="w-3 h-3"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                        />
+                      </svg>
+                    }
+                    value={`${session.screenshots.length} screenshot${session.screenshots.length !== 1 ? "s" : ""}`}
+                  />
+                  {meaningfulCount > 0 && (
+                    <StatPill
+                      icon={
+                        <svg
+                          className="w-3 h-3"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M13 10V3L4 14h7v7l9-11h-7z"
+                          />
+                        </svg>
+                      }
+                      value={`${meaningfulCount} action${meaningfulCount !== 1 ? "s" : ""}`}
+                    />
+                  )}
+                </div>
               </div>
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
-              <Button variant="ghost" size="sm" onClick={() => router.push("/home")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push("/home")}
+              >
                 Discard
               </Button>
               <Button
@@ -545,183 +680,249 @@ export default function AnnotateSessionPage() {
           </div>
         </div>
 
-        {/* ── Body ── */}
+        {/* ── Body: two-column ── */}
         <div className="flex flex-1 overflow-hidden min-h-0">
-
-          {/* Left: screenshot gallery */}
-          <div className="w-[176px] flex-shrink-0 border-r border-gray-800 bg-gray-900/50 overflow-y-auto flex flex-col">
-            <div className="px-3 pt-3 pb-2">
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-                Screenshots ({screenshots.length})
+          {/* Left: session metadata + form */}
+          <div className="w-[380px] flex-shrink-0 border-r border-gray-800 bg-gray-900/30 flex flex-col overflow-hidden">
+            {/* Session meta */}
+            <div className="px-5 pt-4 pb-3 border-b border-gray-800/60 flex-shrink-0">
+              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2.5">
+                Session Info
               </p>
-            </div>
-            <div className="flex flex-col gap-2 px-3 pb-3">
-              {screenshots.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-8 gap-2">
-                  <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center">
-                    <span className="text-xl">📷</span>
-                  </div>
-                  <p className="text-xs text-gray-500 text-center">No screenshots captured</p>
-                </div>
-              )}
-              {screenshots.map((s, i) => (
-                <button
-                  key={s.id}
-                  onClick={() => setSelectedIdx(i)}
-                  className={[
-                    "relative rounded-lg overflow-hidden border-2 transition-all duration-150 text-left",
-                    selectedIdx === i
-                      ? "border-blue-500 shadow-lg shadow-blue-500/20"
-                      : "border-gray-700/50 hover:border-gray-600",
-                  ].join(" ")}
-                >
-                  <img src={s.dataUrl} alt={`Screenshot ${i + 1}`} className="w-full block" />
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1">
-                    <p className="text-[10px] text-gray-300 font-medium">#{i + 1}</p>
-                    <p className="text-[9px] text-gray-400">{formatTime(s.timestamp)}</p>
-                  </div>
-                  {selectedIdx === i && (
-                    <div className="absolute inset-0 ring-2 ring-blue-500/40 ring-inset rounded-lg pointer-events-none" />
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Center: screenshot viewer + metadata form */}
-          <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-
-            {/* Screenshot preview */}
-            <div className="flex-1 flex items-center justify-center bg-gray-950 relative overflow-hidden min-h-0 p-4">
-              {screenshots.length > 0 && screenshots[selectedIdx] ? (
-                <>
-                  <img
-                    src={screenshots[selectedIdx].dataUrl}
-                    alt={`Screenshot ${selectedIdx + 1}`}
-                    className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-                  />
-                  {screenshots.length > 1 && (
-                    <>
-                      <button
-                        onClick={() => setSelectedIdx((i) => Math.max(0, i - 1))}
-                        disabled={selectedIdx === 0}
-                        className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-gray-900/80 border border-gray-700/50 flex items-center justify-center text-gray-300 hover:bg-gray-800 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition-all"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => setSelectedIdx((i) => Math.min(screenshots.length - 1, i + 1))}
-                        disabled={selectedIdx === screenshots.length - 1}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-gray-900/80 border border-gray-700/50 flex items-center justify-center text-gray-300 hover:bg-gray-800 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition-all"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </button>
-                    </>
-                  )}
-                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gray-900/80 border border-gray-700/50 text-xs text-gray-400">
-                    {selectedIdx + 1} / {screenshots.length}
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-col items-center gap-3 text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-gray-800/50 border border-gray-700/50 flex items-center justify-center">
-                    <span className="text-3xl">📷</span>
-                  </div>
-                  <p className="text-sm text-gray-500">No screenshots in this session</p>
-                </div>
-              )}
+              <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                <MetaRow
+                  icon={
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                  }
+                  label="Date"
+                  value={sessionDate}
+                />
+                <MetaRow
+                  icon={
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  }
+                  label="Duration"
+                  value={duration}
+                />
+                <MetaRow
+                  icon={
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                  }
+                  label="Screenshots"
+                  value={String(session.screenshots.length)}
+                />
+                <MetaRow
+                  icon={
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                      />
+                    </svg>
+                  }
+                  label="Actions"
+                  value={String(meaningfulCount)}
+                />
+              </div>
             </div>
 
-            {/* Title + description */}
-            <div className="flex-shrink-0 border-t border-gray-800 bg-gray-900/50 px-4 py-3 flex flex-col gap-2">
+            {/* Title + description form */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4 min-h-0">
               {error && (
-                <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5">
+                <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
                   {error}
                 </p>
               )}
-              <input
-                type="text"
-                placeholder="Session title *"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="input text-sm"
-              />
 
-              {/* Description + AI controls */}
-              <div className="relative">
-                <textarea
-                  placeholder="Describe what you were testing (optional)"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={2}
-                  disabled={aiGenerating}
-                  className="input text-sm resize-none leading-relaxed w-full"
+              {/* Title */}
+              <div>
+                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
+                  Title *
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Login flow – forgot password bug"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="input text-sm w-full"
                 />
-                {aiGenerating && (
-                  <div className="absolute inset-0 flex items-center justify-center gap-2 bg-gray-900/80 rounded-lg">
-                    <div className="w-3.5 h-3.5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-                    <span className="text-xs text-gray-400">Analysing with AI…</span>
-                  </div>
-                )}
               </div>
 
-              {/* AI status row */}
-              <div className="flex items-center justify-between">
-                {aiError ? (
+              {/* Description */}
+              <div className="flex flex-col gap-1.5 flex-1 min-h-0">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                    Description
+                  </label>
+                  <button
+                    onClick={() => generateWithAi()}
+                    disabled={aiGenerating}
+                    className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                  >
+                    {aiGenerating ? (
+                      <>
+                        <svg
+                          className="w-3 h-3 animate-spin"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                          />
+                        </svg>
+                        Analysing…
+                      </>
+                    ) : (
+                      <>
+                        <svg
+                          className="w-3 h-3"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M13 10V3L4 14h7v7l9-11h-7z"
+                          />
+                        </svg>
+                        {description ? "Regenerate" : "Generate with AI"}
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="relative flex-1 min-h-0">
+                  <textarea
+                    placeholder="Describe what was being tested, any bugs observed, or the purpose of this session…"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    disabled={aiGenerating}
+                    className="input text-sm resize-none leading-relaxed w-full h-full min-h-[140px]"
+                    style={{ minHeight: "140px" }}
+                  />
+                  {aiGenerating && (
+                    <div className="absolute inset-0 flex items-center justify-center gap-2 bg-gray-900/80 rounded-lg">
+                      <div className="w-3.5 h-3.5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                      <span className="text-xs text-gray-400">
+                        Analysing with AI…
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {aiError && (
                   <p className="text-[11px] text-amber-500/70" title={aiError}>
-                    AI unavailable · edit manually
-                  </p>
-                ) : aiGenerating ? null : (
-                  <p className="text-[11px] text-gray-600">
-                    {description ? "AI-generated · you can edit" : ""}
+                    AI unavailable — edit manually
                   </p>
                 )}
-                <button
-                  onClick={() => generateWithAi()}
-                  disabled={aiGenerating}
-                  className="ml-auto flex items-center gap-1.5 text-[11px] text-blue-400 hover:text-blue-300 disabled:opacity-40 disabled:pointer-events-none transition-colors"
-                >
-                  {aiGenerating ? null : (
-                    <>
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      Regenerate with AI
-                    </>
-                  )}
-                </button>
+                {!aiError && !aiGenerating && description && (
+                  <p className="text-[11px] text-gray-600">
+                    AI-generated · you can edit freely
+                  </p>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Right: activity panel */}
-          <div className="w-[264px] flex-shrink-0 border-l border-gray-800 bg-gray-900/50 flex flex-col overflow-hidden">
-
-            <div className="px-4 pt-3 pb-2 border-b border-gray-800/50 flex-shrink-0">
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-                Activity
-              </p>
-              <p className="text-xs text-gray-600 mt-0.5">
-                {meaningfulCount > 0
-                  ? `${meaningfulCount} action${meaningfulCount !== 1 ? "s" : ""} recorded`
-                  : "No activity recorded"}
-              </p>
+          {/* Right: activity timeline */}
+          <div className="flex-1 bg-gray-900/20 flex flex-col overflow-hidden min-w-0">
+            <div className="px-5 pt-3 pb-2.5 border-b border-gray-800/60 flex-shrink-0 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                  Activity
+                </p>
+                <p className="text-xs text-gray-600 mt-0.5">
+                  {meaningfulCount > 0
+                    ? `${meaningfulCount} action${meaningfulCount !== 1 ? "s" : ""} recorded`
+                    : "No activity recorded"}
+                </p>
+              </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-3 py-3">
+            <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
               {groupedEntries.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-10 gap-2 text-center">
-                  <p className="text-xs text-gray-500">Nothing to show yet</p>
-                  <p className="text-[10px] text-gray-600">Screenshots and typed text appear here</p>
+                <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+                  <div className="w-10 h-10 rounded-xl bg-gray-800/60 border border-gray-700/50 flex items-center justify-center">
+                    <svg
+                      className="w-5 h-5 text-gray-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.5}
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">
+                      No activity recorded
+                    </p>
+                    <p className="text-xs text-gray-600 mt-0.5">
+                      Screenshots and typed text appear here
+                    </p>
+                  </div>
                 </div>
               ) : (
                 <div className="relative">
                   {/* Vertical connector line */}
-                  <div className="absolute left-[9px] top-4 bottom-4 w-px bg-gray-800/80" />
+                  <div className="absolute left-[11px] top-5 bottom-5 w-px bg-gray-800" />
 
                   <div className="flex flex-col gap-0.5">
                     {/* Session start */}
@@ -734,52 +935,67 @@ export default function AnnotateSessionPage() {
 
                     {groupedEntries.map((entry, i) => {
                       if (entry.kind === "screenshot") {
-                        const shotIdx = screenshots.findIndex((s) => s.id === entry.id);
-                        const thumb = shotIdx !== -1 ? screenshots[shotIdx].dataUrl : null;
+                        const shotIdx = screenshots.findIndex(
+                          (s) => s.id === entry.id
+                        );
+                        const thumb =
+                          shotIdx !== -1 ? screenshots[shotIdx].dataUrl : null;
                         return (
                           <ActivityEntry
                             key={i}
-                            color="blue"
-                            label={shotIdx !== -1 ? `Screenshot #${shotIdx + 1}` : "Screenshot"}
+                            color="indigo"
+                            label={
+                              shotIdx !== -1
+                                ? `Screenshot ${shotIdx + 1}`
+                                : "Screenshot"
+                            }
                             thumbnail={thumb}
                             time={formatTime(entry.timestamp)}
-                            relative={formatRelative(entry.timestamp, session.start_time)}
-                            onClick={shotIdx !== -1 ? () => setSelectedIdx(shotIdx) : undefined}
-                            isActive={shotIdx !== -1 && shotIdx === selectedIdx}
+                            relative={formatRelative(
+                              entry.timestamp,
+                              session.start_time
+                            )}
                           />
                         );
                       }
 
                       if (entry.kind === "typed") {
                         const preview =
-                          entry.text.length > 48
-                            ? entry.text.slice(0, 48) + "…"
+                          entry.text.length > 60
+                            ? entry.text.slice(0, 60) + "…"
                             : entry.text;
                         return (
                           <ActivityEntry
                             key={i}
                             color="purple"
-                            label="Typed"
+                            label="Typed text"
                             typedText={preview}
                             sublabel={`${entry.keyCount} keystroke${entry.keyCount !== 1 ? "s" : ""}`}
                             time={formatTime(entry.timestamp)}
-                            relative={formatRelative(entry.timestamp, session.start_time)}
+                            relative={formatRelative(
+                              entry.timestamp,
+                              session.start_time
+                            )}
                           />
                         );
                       }
 
-                      // Left-clicks hidden — no context without accessibility APIs
-                      if (entry.kind === "click" && entry.button === 1) return null;
+                      if (entry.kind === "click" && entry.button === 1)
+                        return null;
 
                       if (entry.kind === "click") {
-                        const label = entry.button === 2 ? "Right-click" : "Middle-click";
+                        const label =
+                          entry.button === 2 ? "Right-click" : "Middle-click";
                         return (
                           <ActivityEntry
                             key={i}
                             color="orange"
                             label={label}
                             time={formatTime(entry.timestamp)}
-                            relative={formatRelative(entry.timestamp, session.start_time)}
+                            relative={formatRelative(
+                              entry.timestamp,
+                              session.start_time
+                            )}
                           />
                         );
                       }
@@ -792,7 +1008,10 @@ export default function AnnotateSessionPage() {
                             label={entry.combo}
                             isShortcut
                             time={formatTime(entry.timestamp)}
-                            relative={formatRelative(entry.timestamp, session.start_time)}
+                            relative={formatRelative(
+                              entry.timestamp,
+                              session.start_time
+                            )}
                           />
                         );
                       }
@@ -800,13 +1019,15 @@ export default function AnnotateSessionPage() {
                       return null;
                     })}
 
-                    {/* Session end */}
                     {session.end_time && (
                       <ActivityEntry
                         color="green"
                         label="Session ended"
                         time={formatTime(session.end_time)}
-                        relative={formatRelative(session.end_time, session.start_time)}
+                        relative={formatRelative(
+                          session.end_time,
+                          session.start_time
+                        )}
                       />
                     )}
                   </div>
@@ -822,17 +1043,38 @@ export default function AnnotateSessionPage() {
 
 // ── Sub-components ────────────────────────────────────────────────────────
 
-function StatPill({ icon, value }: { icon: string; value: string }) {
+function StatPill({ icon, value }: { icon: React.ReactNode; value: string }) {
   return (
-    <span className="flex items-center gap-1 text-[11px] text-gray-400">
-      <span>{icon}</span>
+    <span className="flex items-center gap-1 text-[11px] text-gray-500">
+      <span className="text-gray-600">{icon}</span>
       <span>{value}</span>
     </span>
   );
 }
 
+function MetaRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      <span className="text-gray-600 flex-shrink-0">{icon}</span>
+      <span className="text-[11px] text-gray-500 flex-shrink-0">{label}</span>
+      <span className="text-[11px] text-gray-300 font-medium truncate">
+        {value}
+      </span>
+    </div>
+  );
+}
+
 const DOT_COLORS = {
   blue: "bg-blue-500",
+  indigo: "bg-indigo-400",
   orange: "bg-orange-500",
   purple: "bg-purple-500",
   green: "bg-green-500",
@@ -847,9 +1089,6 @@ function ActivityEntry({
   thumbnail,
   time,
   relative,
-  onClick,
-  badge,
-  isActive,
   isShortcut,
 }: {
   color: keyof typeof DOT_COLORS;
@@ -859,22 +1098,10 @@ function ActivityEntry({
   thumbnail?: string | null;
   time: string;
   relative: string;
-  onClick?: () => void;
-  badge?: string;
-  isActive?: boolean;
   isShortcut?: boolean;
 }) {
   return (
-    <div
-      className={[
-        "flex gap-2.5 py-1.5 px-1.5 rounded-lg transition-all duration-150 relative",
-        onClick ? "cursor-pointer hover:bg-gray-800/60" : "",
-        isActive ? "bg-gray-800/60" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      onClick={onClick}
-    >
+    <div className="flex gap-3 py-1.5 px-2 rounded-lg">
       {/* Dot */}
       <div className="flex flex-col items-center pt-[5px] flex-shrink-0">
         <div
@@ -883,35 +1110,32 @@ function ActivityEntry({
       </div>
 
       {/* Content */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-1.5">
+      <div className="flex-1 min-w-0 pb-1">
+        <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0 flex-1">
             {isShortcut ? (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-gray-800 border border-gray-700/60 text-[11px] font-mono text-gray-300 flex-shrink-0">
                 {label}
               </span>
             ) : (
-              <p className="text-xs text-gray-200 font-medium leading-snug truncate">{label}</p>
-            )}
-            {badge && (
-              <span className="flex-shrink-0 text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded px-1 py-0.5 font-medium">
-                {badge}
-              </span>
+              <p className="text-xs text-gray-200 font-medium leading-snug">
+                {label}
+              </p>
             )}
           </div>
-          <p className="text-[10px] text-gray-600 flex-shrink-0 mt-0.5">{relative}</p>
+          <p className="text-[10px] text-gray-600 flex-shrink-0 mt-0.5 tabular-nums">
+            {relative}
+          </p>
         </div>
 
-        {/* Screenshot thumbnail */}
         {thumbnail && (
-          <div className="mt-1.5 rounded-md overflow-hidden border border-gray-700/50">
-            <img src={thumbnail} alt="Screenshot preview" className="w-full block" />
+          <div className="mt-1.5 rounded-md overflow-hidden border border-gray-700/40 max-w-[280px]">
+            <img src={thumbnail} alt="Screenshot" className="w-full block" />
           </div>
         )}
 
-        {/* Typed text block */}
         {typedText && (
-          <div className="mt-1 px-2 py-1 rounded bg-gray-800/60 border border-gray-700/40">
+          <div className="mt-1 px-2 py-1 rounded bg-gray-800/50 border border-gray-700/30">
             <p className="text-[11px] text-gray-300 font-mono leading-relaxed break-all">
               &ldquo;{typedText}&rdquo;
             </p>
@@ -919,7 +1143,7 @@ function ActivityEntry({
         )}
 
         <div className="flex items-center gap-1.5 mt-0.5">
-          <p className="text-[10px] text-gray-600">{time}</p>
+          <p className="text-[10px] text-gray-600 tabular-nums">{time}</p>
           {sublabel && (
             <>
               <span className="text-[9px] text-gray-700">·</span>

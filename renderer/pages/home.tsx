@@ -53,9 +53,7 @@ export default function HomePage() {
 
   const [loading, setLoading] = useState(true);
   const [workspaceId, setWorkspaceId] = useState<string>("");
-  const [filter, setFilter] = useState<"all" | "screenshot" | "session">(
-    "all"
-  );
+  const [filter, setFilter] = useState<"all" | "screenshot" | "session">("all");
   const [statusFilter, setStatusFilter] = useState<
     "all" | "cloud" | "github" | "zoho"
   >("all");
@@ -75,6 +73,11 @@ export default function HomePage() {
   const [itemsPerPage, setItemsPerPage] = useState(12);
 
   const [isPastingBug, setIsPastingBug] = useState(false);
+  const [activeCarouselIdx, setActiveCarouselIdx] = useState(0);
+  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
+  const [generateDescriptionError, setGenerateDescriptionError] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     loadData();
@@ -262,6 +265,8 @@ export default function HomePage() {
     setPreviewDialogOpen(true);
     setIsEditingDescription(false);
     setEditedDescription("");
+    setActiveCarouselIdx(0);
+    setGenerateDescriptionError(null);
   };
 
   const handleDeleteIssue = async () => {
@@ -1489,7 +1494,7 @@ export default function HomePage() {
                         className="relative h-40 bg-gray-800 overflow-hidden cursor-pointer"
                         onClick={() => openPreview(issue)}
                       >
-                        {(issue.thumbnailPath || issue.filePath) ? (
+                        {issue.thumbnailPath || issue.filePath ? (
                           <>
                             <LocalImage
                               src={issue.thumbnailPath || issue.filePath}
@@ -1566,16 +1571,16 @@ export default function HomePage() {
                               (issue as any).sessionData
                                 ? "info"
                                 : issue.type === "screenshot"
-                                ? "primary"
-                                : "secondary"
+                                  ? "primary"
+                                  : "secondary"
                             }
                             className="shadow-lg"
                           >
                             {(issue as any).sessionData
                               ? "🎬 Session"
                               : issue.type === "screenshot"
-                              ? "📸 Screenshot"
-                              : "🎥 Recording"}
+                                ? "📸 Screenshot"
+                                : "🎥 Recording"}
                           </Badge>
                         </div>
                       </div>
@@ -1749,6 +1754,8 @@ export default function HomePage() {
             if (!open) {
               setIsEditingDescription(false);
               setEditedDescription("");
+              setActiveCarouselIdx(0);
+              setGenerateDescriptionError(null);
             }
           }}
         >
@@ -1769,10 +1776,12 @@ export default function HomePage() {
               <div className="flex flex-col md:flex-row w-full h-full">
                 {/* Main Image Preview */}
                 <div className="flex-1 bg-gray-950 overflow-hidden min-h-0 flex flex-col">
-                  {(previewIssue as any).sessionData?.screenshotPaths?.length > 0 ? (
+                  {(previewIssue as any).sessionData?.screenshotPaths?.length >
+                  0 ? (
                     <SessionScreenshotCarousel
                       paths={(previewIssue as any).sessionData.screenshotPaths}
                       title={previewIssue.title}
+                      onIndexChange={setActiveCarouselIdx}
                     />
                   ) : previewIssue.filePath ? (
                     <div className="flex-1 overflow-auto p-4">
@@ -1900,15 +1909,98 @@ export default function HomePage() {
                         <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">
                           Description
                         </label>
-                        {!isEditingDescription && (
-                          <button
-                            onClick={startEditingDescription}
-                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                          >
-                            {previewIssue.description ? "Edit" : "Add"}
-                          </button>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {!isEditingDescription &&
+                            !!(previewIssue as any).sessionData &&
+                            !previewIssue.description && (
+                              <button
+                                disabled={isGeneratingDescription}
+                                onClick={async () => {
+                                  setIsGeneratingDescription(true);
+                                  setGenerateDescriptionError(null);
+                                  try {
+                                    const result =
+                                      await window.api.aiGenerateDescriptionFromSnap(
+                                        previewIssue.id
+                                      );
+                                    if (result?.success && result.data) {
+                                      await handleUpdateDescription(
+                                        previewIssue.id,
+                                        result.data
+                                      );
+                                    } else {
+                                      setGenerateDescriptionError(
+                                        result?.error ?? "AI generation failed."
+                                      );
+                                    }
+                                  } catch {
+                                    setGenerateDescriptionError(
+                                      "Failed to reach AI service."
+                                    );
+                                  } finally {
+                                    setIsGeneratingDescription(false);
+                                  }
+                                }}
+                                className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {isGeneratingDescription ? (
+                                  <>
+                                    <svg
+                                      className="w-3 h-3 animate-spin"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <circle
+                                        className="opacity-25"
+                                        cx="12"
+                                        cy="12"
+                                        r="10"
+                                        stroke="currentColor"
+                                        strokeWidth="4"
+                                      />
+                                      <path
+                                        className="opacity-75"
+                                        fill="currentColor"
+                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                      />
+                                    </svg>
+                                    Generating…
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg
+                                      className="w-3 h-3"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                                      />
+                                    </svg>
+                                    Auto Generate
+                                  </>
+                                )}
+                              </button>
+                            )}
+                          {!isEditingDescription && (
+                            <button
+                              onClick={startEditingDescription}
+                              className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                            >
+                              {previewIssue.description ? "Edit" : "Add"}
+                            </button>
+                          )}
+                        </div>
                       </div>
+                      {generateDescriptionError && (
+                        <p className="text-xs text-red-400 mb-1.5">
+                          {generateDescriptionError}
+                        </p>
+                      )}
                       {isEditingDescription ? (
                         <div className="space-y-2">
                           <textarea
@@ -1964,21 +2056,25 @@ export default function HomePage() {
                             (previewIssue as any).sessionData
                               ? "info"
                               : previewIssue.type === "screenshot"
-                              ? "primary"
-                              : "secondary"
+                                ? "primary"
+                                : "secondary"
                           }
                           className="text-xs"
                         >
                           {(previewIssue as any).sessionData
                             ? "🎬 Session"
                             : previewIssue.type === "screenshot"
-                            ? "📸 Screenshot"
-                            : "🎥 Recording"}
+                              ? "📸 Screenshot"
+                              : "🎥 Recording"}
                         </Badge>
                         {(previewIssue as any).sessionData && (
                           <span className="text-xs text-gray-500">
-                            {(previewIssue as any).sessionData.screenshotCount} screenshots ·{" "}
-                            {Math.round((previewIssue as any).sessionData.duration / 1000)}s
+                            {(previewIssue as any).sessionData.screenshotCount}{" "}
+                            screenshots ·{" "}
+                            {Math.round(
+                              (previewIssue as any).sessionData.duration / 1000
+                            )}
+                            s
                           </span>
                         )}
                       </div>
@@ -2137,84 +2233,99 @@ export default function HomePage() {
                         ID
                       </label>
                       <p className="text-xs text-gray-300 font-mono bg-gray-800/50 px-2.5 py-1.5 rounded-lg break-all">
-                        {previewIssue.id}
+                        {(previewIssue as any).sessionData
+                          ? `${previewIssue.id}-s${activeCarouselIdx + 1}`
+                          : previewIssue.id}
                       </p>
                     </div>
 
                     {/* Shareable URL - Only show if synced to cloud */}
-                    {previewIssue.cloudFileUrl && (
-                      <div>
-                        <label className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5 block">
-                          Shareable Link
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            readOnly
-                            value={previewIssue.cloudFileUrl}
-                            className="flex-1 text-xs text-gray-300 font-mono bg-gray-800/50 px-2.5 py-1.5 rounded-lg border border-gray-700/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                          />
-                          <Button
-                            variant="primary"
-                            size="xs"
-                            onClick={() => {
-                              navigator.clipboard.writeText(
-                                previewIssue.cloudFileUrl!
-                              );
-                              window.api.showNotification(
-                                "Copied",
-                                "Link copied to clipboard"
-                              );
-                            }}
-                            title="Copy to clipboard"
-                          >
-                            <svg
-                              className="w-3.5 h-3.5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
+                    {(() => {
+                      const isSession = !!(previewIssue as any).sessionData;
+                      const cloudUrls = (previewIssue as any).sessionData
+                        ?.cloudScreenshotUrls as string[] | undefined;
+                      const shareableUrl = isSession
+                        ? cloudUrls?.[activeCarouselIdx]
+                        : previewIssue.cloudFileUrl;
+                      if (!shareableUrl) return null;
+                      const screenshotLabel = isSession
+                        ? `screenshot ${activeCarouselIdx + 1}`
+                        : previewIssue.type === "recording"
+                          ? "recording"
+                          : "screenshot";
+                      return (
+                        <div>
+                          <label className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5 block">
+                            Shareable Link
+                            {isSession && cloudUrls && cloudUrls.length > 1 && (
+                              <span className="ml-1.5 normal-case font-normal text-gray-500">
+                                (screenshot {activeCarouselIdx + 1})
+                              </span>
+                            )}
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              readOnly
+                              value={shareableUrl}
+                              className="flex-1 text-xs text-gray-300 font-mono bg-gray-800/50 px-2.5 py-1.5 rounded-lg border border-gray-700/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                            />
+                            <Button
+                              variant="primary"
+                              size="xs"
+                              onClick={() => {
+                                navigator.clipboard.writeText(shareableUrl);
+                                window.api.showNotification(
+                                  "Copied",
+                                  "Link copied to clipboard"
+                                );
+                              }}
+                              title="Copy to clipboard"
                             >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                              />
-                            </svg>
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            onClick={() => {
-                              window.api.openExternalUrl(
-                                previewIssue.cloudFileUrl
-                              );
-                            }}
-                            title="Open in browser"
-                          >
-                            <svg
-                              className="w-3.5 h-3.5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
+                              <svg
+                                className="w-3.5 h-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                                />
+                              </svg>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              onClick={() => {
+                                window.api.openExternalUrl(shareableUrl);
+                              }}
+                              title="Open in browser"
                             >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                              />
-                            </svg>
-                          </Button>
+                              <svg
+                                className="w-3.5 h-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                                />
+                              </svg>
+                            </Button>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1.5">
+                            Anyone with this link can view this{" "}
+                            {screenshotLabel}
+                          </p>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1.5">
-                          Anyone with this link can view this{" "}
-                          {previewIssue.type === "recording"
-                            ? "recording"
-                            : "screenshot"}
-                        </p>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {/* File Path - Collapsible on mobile */}
                     <details className="group">
@@ -2235,7 +2346,9 @@ export default function HomePage() {
                         </svg>
                       </summary>
                       <p className="text-xs text-gray-400 font-mono bg-gray-800/30 px-2.5 py-1.5 rounded-lg break-all mt-1.5">
-                        {previewIssue.filePath}
+                        {(previewIssue as any).sessionData?.screenshotPaths?.[
+                          activeCarouselIdx
+                        ] ?? previewIssue.filePath}
                       </p>
                     </details>
                   </div>
@@ -2347,14 +2460,21 @@ export default function HomePage() {
 function SessionScreenshotCarousel({
   paths,
   title,
+  onIndexChange,
 }: {
   paths: string[];
   title: string;
+  onIndexChange?: (idx: number) => void;
 }) {
   const [activeIdx, setActiveIdx] = React.useState(0);
 
-  const prev = () => setActiveIdx((i) => Math.max(0, i - 1));
-  const next = () => setActiveIdx((i) => Math.min(paths.length - 1, i + 1));
+  const setIdx = (idx: number) => {
+    setActiveIdx(idx);
+    onIndexChange?.(idx);
+  };
+
+  const prev = () => setIdx(Math.max(0, activeIdx - 1));
+  const next = () => setIdx(Math.min(paths.length - 1, activeIdx + 1));
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -2376,8 +2496,18 @@ function SessionScreenshotCarousel({
               disabled={activeIdx === 0}
               className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-gray-900/90 border border-gray-700/60 flex items-center justify-center text-gray-300 hover:bg-gray-800 hover:text-white disabled:opacity-25 disabled:pointer-events-none transition-all shadow-lg"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
+                />
               </svg>
             </button>
             <button
@@ -2385,8 +2515,18 @@ function SessionScreenshotCarousel({
               disabled={activeIdx === paths.length - 1}
               className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-gray-900/90 border border-gray-700/60 flex items-center justify-center text-gray-300 hover:bg-gray-800 hover:text-white disabled:opacity-25 disabled:pointer-events-none transition-all shadow-lg"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
               </svg>
             </button>
           </>
@@ -2405,7 +2545,7 @@ function SessionScreenshotCarousel({
             {paths.map((p, i) => (
               <button
                 key={p}
-                onClick={() => setActiveIdx(i)}
+                onClick={() => setIdx(i)}
                 className={[
                   "flex-shrink-0 w-16 h-10 rounded overflow-hidden border-2 transition-all duration-150",
                   activeIdx === i
