@@ -1,8 +1,21 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { Button } from "../components/ui/Button";
 import { useStore } from "../store/useStore";
+import {
+  Dialog,
+  DialogContent,
+  DialogVisuallyHidden,
+  DialogTitle,
+} from "../components/ui/Dialog";
+import {
+  TimelineLayout,
+  TimelineItem,
+  TimelineTitle,
+  TimelineContent,
+  TimelineDescription,
+} from "../components/ui/Timeline";
 
 // ── Data types (mirrors service layer) ────────────────────────────────────
 
@@ -145,13 +158,21 @@ function groupTimeline(session: SessionData): GroupedEntry[] {
     // Require at least 2 meaningful characters — single chars are almost always
     // accidental keypresses or undetected shortcut components, not real input.
     if (text.length >= 2 && typingStart !== null) {
-      groups.push({
-        kind: "typed",
-        text,
-        timestamp: typingStart,
-        endTimestamp: typingEnd ?? typingStart,
-        keyCount: typingKeyCount,
-      });
+      // Filter out shortcut leakage: repeated single character (e.g., "sss", "SSS")
+      // This happens when modifier key detection misses a chord and the bare key
+      // accumulates in the typing buffer instead of being recognized as a shortcut.
+      const stripped = text.replace(/\s/g, "");
+      const isRepeatedChar =
+        stripped.length >= 2 && new Set(stripped.split("")).size === 1;
+      if (!isRepeatedChar) {
+        groups.push({
+          kind: "typed",
+          text,
+          timestamp: typingStart,
+          endTimestamp: typingEnd ?? typingStart,
+          keyCount: typingKeyCount,
+        });
+      }
     }
     typingChars = [];
     typingStart = null;
@@ -199,42 +220,70 @@ function groupTimeline(session: SessionData): GroupedEntry[] {
 
       // ── Modifier key logic ──────────────────────────────────────────────
       if (MODIFIER_KEYS.has(key)) {
-        const next = i + 1 < raw.length ? raw[i + 1] : null;
-        if (
-          next?.kind === "event" &&
-          next.event.type === "keypress" &&
-          !MODIFIER_KEYS.has(next.event.data.key ?? "") &&
-          next.event.timestamp - ev.timestamp < 500
-        ) {
-          const nextKey = next.event.data.key ?? "";
-          // Shift + single letter → uppercase character in typing buffer
+        // Scan ahead past any consecutive modifier keys (e.g., Ctrl then Shift).
+        // This correctly handles multi-modifier chords like Ctrl+Shift+S where
+        // the original single-lookahead logic would drop `ctrl` (since the next
+        // event is also a modifier) and then misread `shift+s` as uppercase typing.
+        let j = i + 1;
+        const mods: string[] = [key];
+        while (j < raw.length) {
+          const peek = raw[j];
           if (
-            key === "shift" &&
+            peek.kind === "event" &&
+            peek.event.type === "keypress" &&
+            MODIFIER_KEYS.has(peek.event.data.key ?? "") &&
+            peek.event.timestamp - ev.timestamp < 500
+          ) {
+            mods.push(peek.event.data.key ?? "");
+            j++;
+          } else {
+            break;
+          }
+        }
+
+        const actualNext = j < raw.length ? raw[j] : null;
+        if (
+          actualNext?.kind === "event" &&
+          actualNext.event.type === "keypress" &&
+          !MODIFIER_KEYS.has(actualNext.event.data.key ?? "") &&
+          actualNext.event.timestamp - ev.timestamp < 500
+        ) {
+          const nextKey = actualNext.event.data.key ?? "";
+
+          // Pure Shift-only + single letter → uppercase character in typing buffer
+          if (
+            mods.length === 1 &&
+            mods[0] === "shift" &&
             nextKey.length === 1 &&
             /^[A-Za-z]$/.test(nextKey)
           ) {
             if (typingStart === null) typingStart = ev.timestamp;
             typingChars.push(nextKey.toUpperCase());
-            typingEnd = next.event.timestamp;
-            typingKeyCount += 2;
-            i += 2;
+            typingEnd = actualNext.event.timestamp;
+            typingKeyCount += j - i + 1;
+            i = j + 1;
             continue;
           }
-          // Any other modifier + key → keyboard shortcut
+
+          // Any multi-modifier chord or non-letter key → keyboard shortcut
           flushTyping();
-          const modLabel = MODIFIER_LABELS[key] ?? key.toUpperCase();
+          const uniqueMods = Array.from(new Set(mods));
+          const modLabels = uniqueMods.map(
+            (m) => MODIFIER_LABELS[m] ?? m.toUpperCase()
+          );
           const keyLabel =
             nextKey.length === 1 ? nextKey.toUpperCase() : nextKey;
           groups.push({
             kind: "shortcut",
-            combo: `${modLabel}+${keyLabel}`,
-            timestamp: next.event.timestamp,
+            combo: [...modLabels, keyLabel].join("+"),
+            timestamp: actualNext.event.timestamp,
           });
-          i += 2;
+          i = j + 1;
           continue;
         }
-        // Standalone modifier — skip (noise)
-        i++;
+
+        // Standalone modifier(s) with no following key — skip all (noise)
+        i = j;
         continue;
       }
 
@@ -318,58 +367,6 @@ function groupTimeline(session: SessionData): GroupedEntry[] {
   return groups;
 }
 
-function generateDescription(
-  _session: SessionData,
-  groups: GroupedEntry[]
-): string {
-  const typedGroups = groups.filter(
-    (g): g is Extract<GroupedEntry, { kind: "typed" }> =>
-      g.kind === "typed" && g.text.trim().length >= 2
-  );
-  const shortcuts = groups.filter(
-    (g): g is Extract<GroupedEntry, { kind: "shortcut" }> =>
-      g.kind === "shortcut"
-  );
-
-  const parts: string[] = [];
-
-  // Lead with typed content
-  if (typedGroups.length === 1) {
-    const text = typedGroups[0].text.slice(0, 80);
-    const ellipsis = typedGroups[0].text.length > 80 ? "…" : "";
-    const pressedEnter = shortcuts.some((s) => s.combo === "Enter");
-    parts.push(
-      pressedEnter
-        ? `Typed "${text}${ellipsis}" and submitted`
-        : `Typed "${text}${ellipsis}"`
-    );
-  } else if (typedGroups.length > 1) {
-    const previews = typedGroups.map(
-      (g) => `"${g.text.slice(0, 40)}${g.text.length > 40 ? "…" : ""}"`
-    );
-    const pressedEnter = shortcuts.some((s) => s.combo === "Enter");
-    parts.push(
-      `Typed ${previews.join(", ")}${pressedEnter ? " and submitted" : ""}`
-    );
-  }
-
-  // Notable shortcuts only (skip Enter — handled above, skip Tab/Escape noise)
-  const notableShortcuts = Array.from(
-    new Set(
-      shortcuts
-        .map((s) => s.combo)
-        .filter((c) => c !== "Enter" && c !== "Tab" && c !== "Escape")
-    )
-  );
-  if (notableShortcuts.length > 0) {
-    parts.push(`used ${notableShortcuts.join(", ")}`);
-  }
-
-  if (parts.length === 0) return "";
-  if (parts.length === 1) return parts[0] + ".";
-  const last = parts.pop()!;
-  return parts.join(", ") + ` and ${last}.`;
-}
 
 // ── Page component ────────────────────────────────────────────────────────
 
@@ -387,6 +384,31 @@ export default function AnnotateSessionPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+
+  const navigatePreview = useCallback(
+    (dir: 1 | -1) => {
+      if (!session) return;
+      setPreviewIndex((i) => {
+        if (i === null) return null;
+        const next = i + dir;
+        if (next < 0 || next >= session.screenshots.length) return i;
+        return next;
+      });
+    },
+    [session]
+  );
+
+  useEffect(() => {
+    if (previewIndex === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") navigatePreview(1);
+      if (e.key === "ArrowLeft") navigatePreview(-1);
+      if (e.key === "Escape") setPreviewIndex(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [previewIndex, navigatePreview]);
 
   useEffect(() => {
     window.api.maximizeWindow?.().catch(() => {});
@@ -409,11 +431,8 @@ export default function AnnotateSessionPage() {
 
       const start = new Date(data.start_time);
       setTitle(
-        `Session – ${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+        `Session ${start.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}`
       );
-
-      // Set fallback description immediately, then try AI
-      setDescription(generateDescription(data, groups));
 
       const loaded: LoadedScreenshot[] = [];
       for (const s of data.screenshots) {
@@ -539,14 +558,7 @@ export default function AnnotateSessionPage() {
   }
 
   const duration = formatDuration(session.start_time, session.end_time);
-  // Left-clicks are hidden from the timeline (no context without accessibility APIs)
-  const meaningfulCount = groupedEntries.filter(
-    (g) =>
-      g.kind === "typed" ||
-      g.kind === "screenshot" ||
-      g.kind === "shortcut" ||
-      (g.kind === "click" && g.button !== 1)
-  ).length;
+  const screenshotCount = session.screenshots.length;
 
   const sessionDate = new Date(session.start_time).toLocaleDateString("en-US", {
     month: "short",
@@ -560,27 +572,14 @@ export default function AnnotateSessionPage() {
         <title>Review Session – SnapFlow</title>
       </Head>
 
-      <div className="h-screen bg-gray-950 flex flex-col overflow-hidden">
-        {/* ── Header ── */}
-        <div
-          className="bg-gray-900 border-b border-gray-800 flex-shrink-0"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        >
-          <div className="h-2 w-full" />
-          <div
-            className="flex items-center justify-between h-12 gap-4 pb-1"
-            style={
-              {
-                WebkitAppRegion: "no-drag",
-                paddingLeft: "88px",
-                paddingRight: "16px",
-              } as React.CSSProperties
-            }
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-6 h-6 bg-blue-600/20 border border-blue-500/30 rounded flex items-center justify-center flex-shrink-0">
+      <div className="bg-gray-950 flex flex-col overflow-hidden pt-8" style={{ height: "100vh" }}>
+        {/* ── App header bar ── */}
+        <div className="bg-gray-900 border-b border-gray-800 flex-shrink-0 h-11 flex items-center px-4">
+          <div className="flex items-center justify-between w-full gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-5 h-5 bg-blue-600/20 border border-blue-500/30 rounded flex items-center justify-center flex-shrink-0">
                 <svg
-                  className="w-3.5 h-3.5 text-blue-400"
+                  className="w-3 h-3 text-blue-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -593,70 +592,9 @@ export default function AnnotateSessionPage() {
                   />
                 </svg>
               </div>
-              <div className="flex items-center gap-2 min-w-0">
-                <h1 className="text-sm font-semibold text-gray-100 flex-shrink-0">
-                  Review Session
-                </h1>
-                <span className="text-gray-700 text-sm">·</span>
-                <div className="flex items-center gap-3 text-[11px] text-gray-500 min-w-0">
-                  <StatPill
-                    icon={
-                      <svg
-                        className="w-3 h-3"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                    }
-                    value={duration}
-                  />
-                  <StatPill
-                    icon={
-                      <svg
-                        className="w-3 h-3"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                        />
-                      </svg>
-                    }
-                    value={`${session.screenshots.length} screenshot${session.screenshots.length !== 1 ? "s" : ""}`}
-                  />
-                  {meaningfulCount > 0 && (
-                    <StatPill
-                      icon={
-                        <svg
-                          className="w-3 h-3"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M13 10V3L4 14h7v7l9-11h-7z"
-                          />
-                        </svg>
-                      }
-                      value={`${meaningfulCount} action${meaningfulCount !== 1 ? "s" : ""}`}
-                    />
-                  )}
-                </div>
-              </div>
+              <h1 className="text-xs font-semibold text-gray-200">
+                Review Session
+              </h1>
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -683,17 +621,17 @@ export default function AnnotateSessionPage() {
         {/* ── Body: two-column ── */}
         <div className="flex flex-1 overflow-hidden min-h-0">
           {/* Left: session metadata + form */}
-          <div className="w-[380px] flex-shrink-0 border-r border-gray-800 bg-gray-900/30 flex flex-col overflow-hidden">
-            {/* Session meta */}
-            <div className="px-5 pt-4 pb-3 border-b border-gray-800/60 flex-shrink-0">
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2.5">
+          <div className="w-[340px] flex-shrink-0 border-r border-gray-800 bg-gray-900/30 flex flex-col overflow-hidden">
+            {/* Session meta — compact single row */}
+            <div className="px-4 py-2.5 border-b border-gray-800/60 flex-shrink-0">
+              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 Session Info
               </p>
-              <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5">
                 <MetaRow
                   icon={
                     <svg
-                      className="w-3.5 h-3.5"
+                      className="w-3 h-3"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -712,7 +650,7 @@ export default function AnnotateSessionPage() {
                 <MetaRow
                   icon={
                     <svg
-                      className="w-3.5 h-3.5"
+                      className="w-3 h-3"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -731,7 +669,7 @@ export default function AnnotateSessionPage() {
                 <MetaRow
                   icon={
                     <svg
-                      className="w-3.5 h-3.5"
+                      className="w-3 h-3"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -747,30 +685,11 @@ export default function AnnotateSessionPage() {
                   label="Screenshots"
                   value={String(session.screenshots.length)}
                 />
-                <MetaRow
-                  icon={
-                    <svg
-                      className="w-3.5 h-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13 10V3L4 14h7v7l9-11h-7z"
-                      />
-                    </svg>
-                  }
-                  label="Actions"
-                  value={String(meaningfulCount)}
-                />
               </div>
             </div>
 
             {/* Title + description form */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4 min-h-0">
+            <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3 min-h-0">
               {error && (
                 <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
                   {error}
@@ -877,166 +796,200 @@ export default function AnnotateSessionPage() {
             </div>
           </div>
 
-          {/* Right: activity timeline */}
-          <div className="flex-1 bg-gray-900/20 flex flex-col overflow-hidden min-w-0">
-            <div className="px-5 pt-3 pb-2.5 border-b border-gray-800/60 flex-shrink-0 flex items-center justify-between">
+          {/* Right: screenshot timeline */}
+          <div className="flex-1 flex flex-col overflow-hidden min-w-0 bg-gray-950/40">
+            {/* Panel header */}
+            <div className="px-4 pt-3 pb-2.5 border-b border-gray-800/60 flex-shrink-0 flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-                  Activity
+                  Timeline
                 </p>
                 <p className="text-xs text-gray-600 mt-0.5">
-                  {meaningfulCount > 0
-                    ? `${meaningfulCount} action${meaningfulCount !== 1 ? "s" : ""} recorded`
-                    : "No activity recorded"}
+                  {screenshotCount > 0
+                    ? `${screenshotCount} screenshot${screenshotCount !== 1 ? "s" : ""} captured`
+                    : "No screenshots captured"}
                 </p>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
-              {groupedEntries.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+            {/* Steps list */}
+            <div className="flex-1 overflow-y-auto min-h-0 px-3">
+              {session.screenshots.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-8">
                   <div className="w-10 h-10 rounded-xl bg-gray-800/60 border border-gray-700/50 flex items-center justify-center">
-                    <svg
-                      className="w-5 h-5 text-gray-600"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1.5}
-                        d="M13 10V3L4 14h7v7l9-11h-7z"
-                      />
+                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-500">
-                      No activity recorded
-                    </p>
-                    <p className="text-xs text-gray-600 mt-0.5">
-                      Screenshots and typed text appear here
-                    </p>
-                  </div>
+                  <p className="text-sm text-gray-500">No screenshots captured</p>
                 </div>
               ) : (
-                <div className="relative">
-                  {/* Vertical connector line */}
-                  <div className="absolute left-[11px] top-5 bottom-5 w-px bg-gray-800" />
+                <TimelineLayout animate size="sm" iconSize="sm">
+                  {/* Session start marker */}
+                  <TimelineItem
+                    iconColor="primary"
+                    icon={
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 12h14M12 5l7 7-7 7" />
+                      </svg>
+                    }
+                    title="Session started"
+                    description={
+                      <TimelineDescription>{formatTime(session.start_time)}</TimelineDescription>
+                    }
+                  />
 
-                  <div className="flex flex-col gap-0.5">
-                    {/* Session start */}
-                    <ActivityEntry
-                      color="blue"
-                      label="Session started"
-                      time={formatTime(session.start_time)}
-                      relative="+0s"
-                    />
-
-                    {groupedEntries.map((entry, i) => {
-                      if (entry.kind === "screenshot") {
-                        const shotIdx = screenshots.findIndex(
-                          (s) => s.id === entry.id
-                        );
-                        const thumb =
-                          shotIdx !== -1 ? screenshots[shotIdx].dataUrl : null;
-                        return (
-                          <ActivityEntry
-                            key={i}
-                            color="indigo"
-                            label={
-                              shotIdx !== -1
-                                ? `Screenshot ${shotIdx + 1}`
-                                : "Screenshot"
-                            }
-                            thumbnail={thumb}
-                            time={formatTime(entry.timestamp)}
-                            relative={formatRelative(
-                              entry.timestamp,
-                              session.start_time
+                  {/* Screenshot items */}
+                  {session.screenshots.map((shot, idx) => {
+                    const loaded = screenshots.find((s) => s.id === shot.id);
+                    return (
+                      <TimelineItem
+                        key={shot.id}
+                        iconColor="accent"
+                        icon={
+                          <span className="text-[9px] font-bold text-white leading-none">{idx + 1}</span>
+                        }
+                        title={`Screenshot ${idx + 1}`}
+                        description={
+                          <TimelineContent>
+                            <TimelineDescription>
+                              {formatTime(shot.timestamp)}
+                              <span className="ml-2 text-gray-700">{formatRelative(shot.timestamp, session.start_time)}</span>
+                            </TimelineDescription>
+                            {loaded?.dataUrl ? (
+                              <button
+                                onClick={() => setPreviewIndex(idx)}
+                                className="w-full rounded-lg overflow-hidden border border-gray-700/50 hover:border-indigo-500/60 transition-all group relative block cursor-zoom-in mt-1"
+                              >
+                                <img
+                                  src={loaded.dataUrl}
+                                  alt={`Screenshot ${idx + 1}`}
+                                  className="w-full block"
+                                />
+                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition-colors flex items-center justify-center">
+                                  <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 rounded-full p-2.5 shadow-lg">
+                                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                                    </svg>
+                                  </div>
+                                </div>
+                              </button>
+                            ) : (
+                              <div className="w-full h-28 rounded-lg border border-gray-800/60 bg-gray-900/60 flex items-center justify-center mt-1">
+                                <div className="w-4 h-4 border-2 border-gray-700 border-t-gray-500 rounded-full animate-spin" />
+                              </div>
                             )}
-                          />
-                        );
-                      }
-
-                      if (entry.kind === "typed") {
-                        const preview =
-                          entry.text.length > 60
-                            ? entry.text.slice(0, 60) + "…"
-                            : entry.text;
-                        return (
-                          <ActivityEntry
-                            key={i}
-                            color="purple"
-                            label="Typed text"
-                            typedText={preview}
-                            sublabel={`${entry.keyCount} keystroke${entry.keyCount !== 1 ? "s" : ""}`}
-                            time={formatTime(entry.timestamp)}
-                            relative={formatRelative(
-                              entry.timestamp,
-                              session.start_time
-                            )}
-                          />
-                        );
-                      }
-
-                      if (entry.kind === "click" && entry.button === 1)
-                        return null;
-
-                      if (entry.kind === "click") {
-                        const label =
-                          entry.button === 2 ? "Right-click" : "Middle-click";
-                        return (
-                          <ActivityEntry
-                            key={i}
-                            color="orange"
-                            label={label}
-                            time={formatTime(entry.timestamp)}
-                            relative={formatRelative(
-                              entry.timestamp,
-                              session.start_time
-                            )}
-                          />
-                        );
-                      }
-
-                      if (entry.kind === "shortcut") {
-                        return (
-                          <ActivityEntry
-                            key={i}
-                            color="gray"
-                            label={entry.combo}
-                            isShortcut
-                            time={formatTime(entry.timestamp)}
-                            relative={formatRelative(
-                              entry.timestamp,
-                              session.start_time
-                            )}
-                          />
-                        );
-                      }
-
-                      return null;
-                    })}
-
-                    {session.end_time && (
-                      <ActivityEntry
-                        color="green"
-                        label="Session ended"
-                        time={formatTime(session.end_time)}
-                        relative={formatRelative(
-                          session.end_time,
-                          session.start_time
-                        )}
+                          </TimelineContent>
+                        }
                       />
-                    )}
-                  </div>
-                </div>
+                    );
+                  })}
+
+                  {/* Session end marker */}
+                  {session.end_time && (
+                    <TimelineItem
+                      iconColor="secondary"
+                      icon={
+                        <svg className="w-3 h-3 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                      }
+                      title="Session ended"
+                      description={
+                        <TimelineDescription>{formatTime(session.end_time)}</TimelineDescription>
+                      }
+                    />
+                  )}
+                </TimelineLayout>
               )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* ── Screenshot preview dialog ── */}
+      <Dialog
+        open={previewIndex !== null}
+        onOpenChange={(open) => { if (!open) setPreviewIndex(null); }}
+      >
+        <DialogContent
+          className="max-w-5xl w-[90vw] bg-gray-950 border border-gray-800 rounded-xl p-0 overflow-hidden shadow-2xl"
+          hideCloseButton
+        >
+          <DialogVisuallyHidden>
+            <DialogTitle>Screenshot Preview</DialogTitle>
+          </DialogVisuallyHidden>
+
+          {previewIndex !== null && (() => {
+            const shot = session.screenshots[previewIndex];
+            const loaded = screenshots.find((s) => s.id === shot?.id);
+            const total = session.screenshots.length;
+            return (
+              <>
+                {/* Image */}
+                <div className="relative bg-black">
+                  {loaded?.dataUrl ? (
+                    <img
+                      src={loaded.dataUrl}
+                      alt={`Screenshot ${previewIndex + 1}`}
+                      className="w-full block max-h-[80vh] object-contain"
+                    />
+                  ) : (
+                    <div className="h-64 flex items-center justify-center">
+                      <div className="w-6 h-6 border-2 border-gray-700 border-t-gray-400 rounded-full animate-spin" />
+                    </div>
+                  )}
+
+                  {/* Prev button */}
+                  {previewIndex > 0 && (
+                    <button
+                      onClick={() => navigatePreview(-1)}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/60 hover:bg-black/80 border border-white/10 flex items-center justify-center text-white transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                  )}
+
+                  {/* Next button */}
+                  {previewIndex < total - 1 && (
+                    <button
+                      onClick={() => navigatePreview(1)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/60 hover:bg-black/80 border border-white/10 flex items-center justify-center text-white transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+
+                {/* Footer bar */}
+                <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-800 bg-gray-900/80">
+                  <p className="text-xs font-medium text-gray-300">
+                    Screenshot {previewIndex + 1}
+                    <span className="text-gray-600 ml-1">— {formatTime(shot.timestamp)}</span>
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-gray-500 tabular-nums">
+                      {previewIndex + 1} / {total}
+                    </span>
+                    <button
+                      onClick={() => setPreviewIndex(null)}
+                      className="text-gray-500 hover:text-gray-200 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -1068,90 +1021,6 @@ function MetaRow({
       <span className="text-[11px] text-gray-300 font-medium truncate">
         {value}
       </span>
-    </div>
-  );
-}
-
-const DOT_COLORS = {
-  blue: "bg-blue-500",
-  indigo: "bg-indigo-400",
-  orange: "bg-orange-500",
-  purple: "bg-purple-500",
-  green: "bg-green-500",
-  gray: "bg-gray-600",
-};
-
-function ActivityEntry({
-  color,
-  label,
-  sublabel,
-  typedText,
-  thumbnail,
-  time,
-  relative,
-  isShortcut,
-}: {
-  color: keyof typeof DOT_COLORS;
-  label: string;
-  sublabel?: string;
-  typedText?: string;
-  thumbnail?: string | null;
-  time: string;
-  relative: string;
-  isShortcut?: boolean;
-}) {
-  return (
-    <div className="flex gap-3 py-1.5 px-2 rounded-lg">
-      {/* Dot */}
-      <div className="flex flex-col items-center pt-[5px] flex-shrink-0">
-        <div
-          className={`w-2.5 h-2.5 rounded-full border-2 border-gray-950 ${DOT_COLORS[color]} z-10`}
-        />
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 min-w-0 pb-1">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-1.5 min-w-0 flex-1">
-            {isShortcut ? (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-gray-800 border border-gray-700/60 text-[11px] font-mono text-gray-300 flex-shrink-0">
-                {label}
-              </span>
-            ) : (
-              <p className="text-xs text-gray-200 font-medium leading-snug">
-                {label}
-              </p>
-            )}
-          </div>
-          <p className="text-[10px] text-gray-600 flex-shrink-0 mt-0.5 tabular-nums">
-            {relative}
-          </p>
-        </div>
-
-        {thumbnail && (
-          <div className="mt-1.5 rounded-md overflow-hidden border border-gray-700/40 max-w-[280px]">
-            <img src={thumbnail} alt="Screenshot" className="w-full block" />
-          </div>
-        )}
-
-        {typedText && (
-          <div className="mt-1 px-2 py-1 rounded bg-gray-800/50 border border-gray-700/30">
-            <p className="text-[11px] text-gray-300 font-mono leading-relaxed break-all">
-              &ldquo;{typedText}&rdquo;
-            </p>
-          </div>
-        )}
-
-        <div className="flex items-center gap-1.5 mt-0.5">
-          <p className="text-[10px] text-gray-600 tabular-nums">{time}</p>
-          {sublabel && (
-            <>
-              <span className="text-[9px] text-gray-700">·</span>
-              <p className="text-[10px] text-gray-600">{sublabel}</p>
-            </>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

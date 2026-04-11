@@ -1200,31 +1200,18 @@ export default function HomePage() {
       <Head>
         <title>Home - SnapFlow</title>
       </Head>
-      <div className="min-h-screen bg-gray-950">
-        {/* Titlebar */}
-        <header
-          className="bg-gray-950 border-b border-gray-800/40 sticky top-0 z-20 flex items-center justify-between h-11"
-          style={
-            {
-              WebkitAppRegion: "drag",
-              paddingLeft: "84px",
-              paddingRight: "12px",
-            } as React.CSSProperties
-          }
-        >
+      <div className="min-h-screen bg-gray-950 pt-8">
+        {/* App header — sits below the global traffic light bar (pt-8) */}
+        <header className="bg-gray-950 border-b border-gray-800/40 sticky top-8 z-20 flex items-center justify-between h-11 px-4">
           {/* Left: workspace switcher */}
-          <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-            <WorkspaceSwitcher />
-          </div>
+          <WorkspaceSwitcher />
 
           {/* Right: profile */}
-          <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-            <ProfileDropdown
-              user={user}
-              onSettings={() => router.push("/settings")}
-              onLogout={handleLogout}
-            />
-          </div>
+          <ProfileDropdown
+            user={user}
+            onSettings={() => router.push("/settings")}
+            onLogout={handleLogout}
+          />
         </header>
 
         {/* Offline / queued sync indicator */}

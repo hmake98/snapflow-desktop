@@ -132,8 +132,7 @@ export default function JoinWorkspacePage() {
         <title>Join Workspace - SnapFlow</title>
       </Head>
 
-      <div className="h-screen w-screen bg-gradient-to-b from-gray-900 via-gray-950 to-black flex flex-col overflow-hidden">
-        <WindowControls />
+      <div className="w-screen bg-gradient-to-b from-gray-900 via-gray-950 to-black flex flex-col overflow-hidden pt-8" style={{ height: "100vh" }}>
 
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="w-full max-w-md">

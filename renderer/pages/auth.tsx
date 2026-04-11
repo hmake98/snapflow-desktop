@@ -144,12 +144,7 @@ export default function AuthPage() {
         <title>{isLogin ? "Login" : "Sign Up"} - SnapFlow</title>
       </Head>
 
-      <div className="h-screen w-full overflow-hidden flex flex-col bg-slate-950">
-        {/* Titlebar drag region */}
-        <div
-          className="h-9 flex-shrink-0"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        />
+      <div className="w-full overflow-hidden flex flex-col bg-slate-950 pt-8" style={{ height: "100vh" }}>
 
         {/* Two-column body */}
         <div className="flex-1 flex overflow-hidden">

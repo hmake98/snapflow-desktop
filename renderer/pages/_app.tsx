@@ -22,9 +22,24 @@ const OVERLAY_ROUTES = [
   "/500",
 ];
 
+// Routes that are utility/overlay windows — no traffic light bar on these.
+const NO_TITLEBAR_ROUTES = [
+  "/area-capture",
+  "/window-capture",
+  "/area-selector",
+  "/recording-area-selector",
+  "/recording-control",
+  "/recording-overlay",
+  "/session-hud",
+  "/window-picker",
+];
+
 function MyApp({ Component, pageProps }: AppProps) {
   const router = useRouter();
   useNetworkStatus();
+  const showTitleBar = !NO_TITLEBAR_ROUTES.some((r) =>
+    router.pathname.startsWith(r)
+  );
   // Use router.pathname (consistent between SSR and client) to avoid hydration mismatch.
   // Initialize synchronously for overlay routes so they never flash the splash screen.
   const isOverlay = OVERLAY_ROUTES.some((r) => router.pathname.includes(r));
@@ -197,6 +212,12 @@ function MyApp({ Component, pageProps }: AppProps) {
 
   return (
     <TooltipProvider delayDuration={300}>
+      {showTitleBar && (
+        <div
+          className="fixed top-0 left-0 right-0 h-8 bg-gray-950 z-[9999]"
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        />
+      )}
       {!authChecked ? <SplashScreen /> : <Component {...pageProps} />}
       {/* Recording picker modal — commented out
       <WindowPickerModal

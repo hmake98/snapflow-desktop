@@ -84,45 +84,51 @@ export class AiService {
       }
     }
 
-    if (imageContent.length === 0 && params.typedTexts.length === 0) {
-      throw new Error("Not enough session data to generate a description.");
+    if (imageContent.length === 0) {
+      throw new Error("No screenshots available to generate a description.");
     }
 
-    // Build activity context
+    // Build supplementary activity context from keyboard/mouse data.
+    // Screenshots are the primary source — activity data is supplementary only.
     const activityLines: string[] = [];
-    if (params.typedTexts.length > 0) {
+
+    // Only include typed text that looks like real user input (already filtered
+    // upstream, but guard here too: skip short all-same-character strings).
+    const meaningfulTyped = params.typedTexts.filter((t) => {
+      const stripped = t.replace(/\s/g, "");
+      if (stripped.length < 2) return false;
+      if (new Set(stripped.split("")).size === 1) return false; // e.g., "sss"
+      return true;
+    });
+    if (meaningfulTyped.length > 0) {
       activityLines.push(
-        `Text typed: ${params.typedTexts.map((t) => `"${t}"`).join(", ")}`
+        `Text typed by user: ${meaningfulTyped.map((t) => `"${t}"`).join(", ")}`
       );
     }
+
     const meaningfulShortcuts = params.shortcuts.filter(
-      (s) => s !== "Tab" && s !== "Escape"
+      (s) => s !== "Tab" && s !== "Escape" && s !== "Enter"
     );
     if (meaningfulShortcuts.length > 0) {
-      activityLines.push(`Keyboard actions: ${meaningfulShortcuts.join(", ")}`);
-    }
-    if (params.clickCount > 0) {
-      activityLines.push(`Mouse clicks: ${params.clickCount}`);
+      activityLines.push(
+        `Keyboard shortcuts used: ${Array.from(new Set(meaningfulShortcuts)).join(", ")}`
+      );
     }
 
     const activityContext =
       activityLines.length > 0
-        ? `\nUser activity:\n${activityLines.join("\n")}`
+        ? `\n\nSupplementary activity data (use only if consistent with screenshots):\n${activityLines.join("\n")}`
         : "";
 
-    const prompt = `${
-      imageContent.length > 0
-        ? `These ${imageContent.length} screenshot${imageContent.length !== 1 ? "s" : ""} were captured during a ${durationSec}-second testing or debugging session.`
-        : `This was a ${durationSec}-second testing or debugging session.`
-    }${activityContext}
+    const prompt = `The following ${imageContent.length} screenshot${imageContent.length !== 1 ? "s" : ""} were captured during a ${durationSec}-second screen session.${activityContext}
 
-Write a technical description (3–5 sentences) for a QA engineer or developer reviewing this session. Your description must:
-1. Identify the application, page, or feature visible in the screenshots
-2. Describe the sequence of actions performed (what was navigated, searched, typed, or clicked — be specific)
-3. Note any visible errors, warnings, failed states, loading issues, or unexpected UI behavior observed
-4. Provide enough context for a developer to reproduce the scenario or understand what was being tested
+Write a concise technical description (2–4 sentences) for a developer or QA engineer reviewing this session. Base your description primarily on what is visible in the screenshots. Your description must:
+1. Identify the application, page, or feature visible
+2. Describe the sequence of actions or states observed (navigation, interactions, changes visible on screen)
+3. Note any visible errors, warnings, failed states, or unexpected UI behavior
+4. Provide enough context to understand what was being tested or done
 
-Be specific and factual. Write in past tense. Focus on observable facts: actual UI states, error messages, form interactions, and navigation steps visible in the screenshots. Do not speculate beyond what is visible or recorded.`;
+Write in past tense. Be factual and specific — only describe what is observable in the screenshots. Do not speculate or invent details not visible. If nothing significant is observable, say so briefly.`;
 
     log.info(
       "[AI] Generating description — screenshots:",

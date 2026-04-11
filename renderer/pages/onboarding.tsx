@@ -551,12 +551,7 @@ export default function OnboardingPage() {
       <Head>
         <title>SnapFlow - Onboarding</title>
       </Head>
-      <div className="h-screen bg-gray-950 flex flex-col overflow-hidden">
-        {/* Native drag region */}
-        <div
-          className="h-11 flex-shrink-0 bg-gray-950"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        />
+      <div className="bg-gray-950 flex flex-col overflow-hidden pt-8" style={{ height: "100vh" }}>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto">

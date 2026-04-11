@@ -630,53 +630,63 @@ export default function AnnotatePage() {
       <Head>
         <title>Annotate Screenshot - SnapFlow</title>
       </Head>
-      <div className="h-screen bg-gray-950 flex flex-col overflow-hidden">
-        {/* Unified Toolbar */}
-        <div
-          className="bg-gray-900 border-b border-gray-800 flex-shrink-0"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        >
-          <div
-            className="flex items-center h-12 gap-2 overflow-x-auto"
-            style={
-              {
-                WebkitAppRegion: "no-drag",
-                paddingLeft: "84px",
-                paddingRight: "12px",
-              } as React.CSSProperties
-            }
-          >
-            {/* Context label */}
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <div className="w-6 h-6 bg-blue-600/20 border border-blue-500/30 rounded-md flex items-center justify-center">
-                <svg
-                  className="w-3 h-3 text-blue-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                  />
-                </svg>
-              </div>
-              <span className="text-xs font-semibold text-gray-400 hidden sm:block">
-                Annotate
-              </span>
+      <div className="bg-gray-950 flex flex-col overflow-hidden pt-8" style={{ height: "100vh" }}>
+        {/* App header bar */}
+        <div className="bg-gray-900 border-b border-gray-800 flex-shrink-0 h-11 flex items-center px-4">
+          {/* Context label */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <div className="w-5 h-5 bg-blue-600/20 border border-blue-500/30 rounded flex items-center justify-center">
+              <svg
+                className="w-3 h-3 text-blue-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                />
+              </svg>
             </div>
+            <span className="text-xs font-semibold text-gray-300">
+              Annotate
+            </span>
+          </div>
 
-            <div className="w-px h-5 bg-gray-700/80 flex-shrink-0" />
+          <div className="flex-1" />
 
+          {/* Save / Cancel */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <Button
+              variant="ghost"
+              onClick={handleCancel}
+              className="h-7 px-3 text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleSave}
+              disabled={saving}
+              className="h-7 px-3 text-xs font-semibold"
+            >
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </div>
+
+        {/* Annotation Tools Bar */}
+        <div className="bg-gray-900/60 border-b border-gray-800/60 flex-shrink-0">
+          <div className="flex items-center h-10 gap-2 overflow-x-auto px-3">
             {/* Color swatches */}
             <div className="flex items-center gap-1 flex-shrink-0">
               {colorPresets.slice(0, 6).map((preset) => (
                 <button
                   key={preset.value}
                   onClick={() => setColor(preset.value)}
-                  className={`w-5 h-5 rounded transition-all flex-shrink-0 ring-offset-1 ring-offset-gray-900 ${
+                  className={`w-[18px] h-[18px] rounded transition-all flex-shrink-0 ring-offset-1 ring-offset-gray-900 ${
                     color === preset.value
                       ? "ring-2 ring-blue-400 scale-110"
                       : "hover:scale-110 opacity-80 hover:opacity-100"
@@ -690,7 +700,7 @@ export default function AnnotatePage() {
                   <button
                     key={preset.value}
                     onClick={() => setColor(preset.value)}
-                    className={`w-5 h-5 rounded transition-all flex-shrink-0 ring-offset-1 ring-offset-gray-900 ${
+                    className={`w-[18px] h-[18px] rounded transition-all flex-shrink-0 ring-offset-1 ring-offset-gray-900 ${
                       color === preset.value
                         ? "ring-2 ring-blue-400 scale-110"
                         : "hover:scale-110 opacity-80 hover:opacity-100"
@@ -700,23 +710,23 @@ export default function AnnotatePage() {
                   />
                 ))}
               </div>
-              <div className="w-px h-4 bg-gray-700 mx-0.5 flex-shrink-0" />
+              <div className="w-px h-3.5 bg-gray-700 mx-0.5 flex-shrink-0" />
               <input
                 type="color"
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
-                className="w-5 h-5 rounded border border-gray-700 cursor-pointer bg-transparent flex-shrink-0"
+                className="w-[18px] h-[18px] rounded border border-gray-700 cursor-pointer bg-transparent flex-shrink-0"
                 title="Custom color"
               />
             </div>
 
-            <div className="w-px h-5 bg-gray-700/80 flex-shrink-0" />
+            <div className="w-px h-4 bg-gray-700/80 flex-shrink-0" />
 
             {/* Stroke width */}
             <select
               value={strokeWidth}
               onChange={(e) => setStrokeWidth(Number(e.target.value))}
-              className="h-7 px-2 rounded-md border border-gray-700 bg-gray-800 text-gray-200 text-xs cursor-pointer hover:border-gray-600 focus:border-blue-500 outline-none flex-shrink-0"
+              className="h-6 px-1.5 rounded border border-gray-700 bg-gray-800 text-gray-300 text-xs cursor-pointer hover:border-gray-600 focus:border-blue-500 outline-none flex-shrink-0"
               title="Stroke width"
             >
               <option value={1}>1px</option>
@@ -729,11 +739,11 @@ export default function AnnotatePage() {
             {/* Fill (rect / circle only) */}
             {(tool === "rectangle" || tool === "circle") && (
               <>
-                <div className="w-px h-5 bg-gray-700/80 flex-shrink-0" />
+                <div className="w-px h-4 bg-gray-700/80 flex-shrink-0" />
                 <select
                   value={fillOpacity}
                   onChange={(e) => setFillOpacity(Number(e.target.value))}
-                  className="h-7 px-2 rounded-md border border-gray-700 bg-gray-800 text-gray-200 text-xs cursor-pointer hover:border-gray-600 focus:border-blue-500 outline-none flex-shrink-0"
+                  className="h-6 px-1.5 rounded border border-gray-700 bg-gray-800 text-gray-300 text-xs cursor-pointer hover:border-gray-600 focus:border-blue-500 outline-none flex-shrink-0"
                   title="Fill opacity"
                 >
                   <option value={0}>No fill</option>
@@ -752,10 +762,10 @@ export default function AnnotatePage() {
                 onClick={handleUndo}
                 disabled={shapes.length === 0}
                 title="Undo (⌘Z)"
-                className="h-8 w-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-100 hover:bg-gray-800 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+                className="h-7 w-7 flex items-center justify-center rounded text-gray-500 hover:text-gray-200 hover:bg-gray-800 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
               >
                 <svg
-                  className="w-4 h-4"
+                  className="w-3.5 h-3.5"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -772,10 +782,10 @@ export default function AnnotatePage() {
                 onClick={handleDelete}
                 disabled={!selectedId}
                 title="Delete selected (Del)"
-                className="h-8 w-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-100 hover:bg-gray-800 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+                className="h-7 w-7 flex items-center justify-center rounded text-gray-500 hover:text-gray-200 hover:bg-gray-800 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
               >
                 <svg
-                  className="w-4 h-4"
+                  className="w-3.5 h-3.5"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -792,10 +802,10 @@ export default function AnnotatePage() {
                 onClick={handleClearAll}
                 disabled={shapes.length === 0}
                 title="Clear all annotations"
-                className="h-8 w-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/10 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+                className="h-7 w-7 flex items-center justify-center rounded text-gray-500 hover:text-red-400 hover:bg-red-500/10 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
               >
                 <svg
-                  className="w-4 h-4"
+                  className="w-3.5 h-3.5"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -808,27 +818,6 @@ export default function AnnotatePage() {
                   />
                 </svg>
               </button>
-            </div>
-
-            <div className="w-px h-5 bg-gray-700/80 flex-shrink-0" />
-
-            {/* Save / Cancel */}
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <Button
-                variant="ghost"
-                onClick={handleCancel}
-                className="h-8 px-3 text-sm"
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={handleSave}
-                disabled={saving}
-                className="h-8 px-4 text-sm font-semibold"
-              >
-                {saving ? "Saving..." : "Save"}
-              </Button>
             </div>
           </div>
         </div>

@@ -21,7 +21,13 @@
       "Bash(npm list:*)",
       "Bash(npx electron-rebuild:*)",
       "Bash(node -e \"const e = require\\('/Users/hmake98/Documents/snapflow-desktop/node_modules/uiohook-napi'\\); console.log\\(Object.keys\\(e\\)\\); console.log\\('uIOhook defined:', !!e.uIOhook\\);\")",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "WebFetch(domain:www.shadcn.io)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:timdehof.github.io)",
+      "WebFetch(domain:shadcn-timeline.vercel.app)",
+      "Bash(curl -s \"https://raw.githubusercontent.com/timdehof/shadcn-timeline/main/src/components/timeline/timeline.tsx\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/timdehof/shadcn-timeline/refs/heads/main/src/components/timeline/timeline.tsx\")"
     ]
   }
 }

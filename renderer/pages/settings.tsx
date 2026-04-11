@@ -107,22 +107,10 @@ export default function SettingsPage() {
         <title>Settings - SnapFlow</title>
       </Head>
 
-      <div className="min-h-screen bg-gray-950">
-        {/* Titlebar */}
-        <header
-          className="bg-gray-950 border-b border-gray-800/40 sticky top-0 z-20 flex items-center justify-between h-11"
-          style={
-            {
-              WebkitAppRegion: "drag",
-              paddingLeft: "84px",
-              paddingRight: "12px",
-            } as React.CSSProperties
-          }
-        >
-          <div
-            className="flex items-center gap-2 text-gray-400"
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-          >
+      <div className="min-h-screen bg-gray-950 pt-8">
+        {/* App header — sits below the global traffic light bar */}
+        <header className="bg-gray-950 border-b border-gray-800/40 sticky top-8 z-20 flex items-center justify-between h-11 px-4">
+          <div className="flex items-center gap-2 text-gray-400">
             <button
               onClick={() => router.push("/home")}
               className="flex items-center gap-1.5 h-7 px-2 rounded-md hover:bg-gray-800/70 hover:text-gray-200 transition-all text-sm"
@@ -144,13 +132,11 @@ export default function SettingsPage() {
             </button>
           </div>
 
-          <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-            <ProfileDropdown
-              user={user}
-              onSettings={() => router.push("/settings")}
-              onLogout={handleLogout}
-            />
-          </div>
+          <ProfileDropdown
+            user={user}
+            onSettings={() => router.push("/settings")}
+            onLogout={handleLogout}
+          />
         </header>
 
         {/* Main Content */}

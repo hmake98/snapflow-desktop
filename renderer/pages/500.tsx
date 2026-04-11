@@ -12,15 +12,10 @@ export default function ErrorPage() {
       <Head>
         <title>SnapFlow - Error</title>
       </Head>
-      <div className="flex flex-col h-screen bg-gray-950 text-gray-100 select-none">
-        <div
-          className="flex items-center justify-between px-4 py-3 border-b border-gray-800/50"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        >
+      <div className="flex flex-col bg-gray-950 text-gray-100 select-none pt-8" style={{ height: "100vh" }}>
+        <div className="flex items-center justify-between px-4 h-11 border-b border-gray-800/50 flex-shrink-0">
           <span className="text-sm font-medium text-gray-400">SnapFlow</span>
-          <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-            <WindowControls />
-          </div>
+          <WindowControls />
         </div>
 
         <div className="flex flex-col items-center justify-center flex-1 gap-4 px-8">
