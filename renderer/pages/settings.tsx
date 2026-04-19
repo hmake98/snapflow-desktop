@@ -2,20 +2,17 @@ import React, { useState, useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { Button } from "../components/ui/Button";
-import { SkeletonSyncCard } from "../components/ui/Skeleton";
 import {
   AccountSection,
   DisplaysSection,
   GitHubConnectorManager,
   ZohoConnectorManager,
   UpdatesSection,
-  CloudSyncIndicator,
   // RecordingSection,
 } from "../components/settings";
-import { useStore } from "../store/useStore";
 import { ProfileDropdown } from "../components/ui/ProfileDropdown";
 
-type Tab = "account" | "connectors" | "sync" | "general"; // | "recording";
+type Tab = "account" | "connectors" | "general"; // | "recording";
 
 interface User {
   id: string;
@@ -27,9 +24,6 @@ export default function SettingsPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("account");
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const { activeWorkspace } = useStore();
-
   useEffect(() => {
     loadUser();
   }, []);
@@ -39,9 +33,7 @@ export default function SettingsPage() {
     if (router.query.tab) {
       const tab = router.query.tab as string;
       if (
-        ["account", "connectors", "sync", "general" /* "recording" */].includes(
-          tab
-        )
+        ["account", "connectors", "general" /* "recording" */].includes(tab)
       ) {
         setActiveTab(tab as Tab);
       }
@@ -50,15 +42,12 @@ export default function SettingsPage() {
 
   const loadUser = async () => {
     try {
-      setIsLoading(true);
       const result = await window.api.getUser();
       if (result.success) {
         setUser(result.data);
       }
     } catch (error) {
       console.error("Failed to load user:", error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -186,27 +175,6 @@ export default function SettingsPage() {
               Connectors
             </Button>
             <Button
-              variant={activeTab === "sync" ? "primary" : "ghost"}
-              onClick={() => setActiveTab("sync")}
-              leftIcon={
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                </svg>
-              }
-            >
-              Sync
-            </Button>
-            <Button
               variant={activeTab === "general" ? "primary" : "ghost"}
               onClick={() => setActiveTab("general")}
               leftIcon={
@@ -293,56 +261,6 @@ export default function SettingsPage() {
                   <ZohoConnectorManager />
                 </div>
               </div>
-            )}
-
-            {activeTab === "sync" && (
-              <>
-                {/* Sync Header */}
-                <div className="mb-6">
-                  <h2 className="text-xl font-semibold text-gray-100 mb-2">
-                    Cloud Sync
-                  </h2>
-                  <p className="text-sm text-gray-400">
-                    Back up and synchronize all your data to the cloud
-                  </p>
-                </div>
-
-                {/* Cloud Sync Indicator */}
-                {isLoading ? (
-                  <SkeletonSyncCard />
-                ) : user ? (
-                  <CloudSyncIndicator
-                    userId={user.id}
-                    workspaceId={activeWorkspace?.id}
-                  />
-                ) : (
-                  <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 border border-gray-700/50 rounded-2xl p-8 hover:border-gray-600/50 transition-all duration-300 backdrop-blur-sm max-w-4xl">
-                    <div className="text-center py-12">
-                      <div className="w-16 h-16 bg-gray-700/50 rounded-xl flex items-center justify-center mx-auto mb-4">
-                        <svg
-                          className="w-8 h-8 text-gray-500"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
-                          />
-                        </svg>
-                      </div>
-                      <h3 className="text-lg font-semibold text-gray-300 mb-2">
-                        User Not Found
-                      </h3>
-                      <p className="text-sm text-gray-500">
-                        Please log in to access cloud sync features
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </>
             )}
 
             {activeTab === "general" && (
