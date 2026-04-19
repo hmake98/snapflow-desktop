@@ -115,6 +115,7 @@ let pendingSession: {
     timestamp: number;
     file_path: string;
     trigger: string;
+    windowMeta?: { appName: string; windowTitle: string; url?: string };
   }[];
   timeline: unknown[];
 } | null = null;
@@ -720,8 +721,8 @@ async function createSessionHudWindow() {
   const { width, height } = primaryDisplay.workAreaSize;
   const { x: dx, y: dy } = primaryDisplay.workArea;
 
-  const hudWidth = 292;
-  const hudHeight = 60;
+  const hudWidth = 380;
+  const hudHeight = 84;
   const margin = 20;
 
   sessionHudWindow = new BrowserWindow({
@@ -4720,6 +4721,25 @@ function setupIPCHandlers() {
               (s: { file_path: string }) => s.file_path
             ),
             timeline: pendingSession.timeline,
+            windowContexts: pendingSession.screenshots
+              .map(
+                (s: {
+                  windowMeta?: {
+                    appName: string;
+                    windowTitle: string;
+                    url?: string;
+                  };
+                }) => s.windowMeta
+              )
+              .filter(
+                (
+                  m: unknown
+                ): m is {
+                  appName: string;
+                  windowTitle: string;
+                  url?: string;
+                } => !!m
+              ),
           },
           description,
           workspaceId
@@ -4747,11 +4767,16 @@ function setupIPCHandlers() {
         shortcuts: string[];
         clickCount: number;
         durationMs: number;
+        windowContexts?: Array<{
+          appName: string;
+          windowTitle: string;
+          url?: string;
+        }>;
       }
     ) => {
       try {
-        const description = await aiService.generateSessionDescription(params);
-        return { success: true, data: description };
+        const report = await aiService.generateSessionDescription(params);
+        return { success: true, data: report };
       } catch (error) {
         log.warn("[AI] Failed to generate description:", error);
         return { success: false, error: AiService.friendlyError(error) };
@@ -4837,15 +4862,18 @@ function setupIPCHandlers() {
           if (text.length >= 2) typedTexts.push(text);
         }
 
-        const description = await aiService.generateSessionDescription({
+        const report = await aiService.generateSessionDescription({
           screenshotPaths: sd.screenshotPaths ?? [],
           typedTexts: typedTexts.slice(0, 5),
           shortcuts: Array.from(shortcutSet).slice(0, 10),
           clickCount,
           durationMs: sd.duration ?? 0,
+          windowContexts: (sd as any).windowContexts as
+            | Array<{ appName: string; windowTitle: string; url?: string }>
+            | undefined,
         });
 
-        return { success: true, data: description };
+        return { success: true, data: report };
       } catch (error) {
         log.warn("[AI] Failed to generate description from snap:", error);
         return { success: false, error: AiService.friendlyError(error) };

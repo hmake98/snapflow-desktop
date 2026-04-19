@@ -3,7 +3,12 @@ import clsx from "clsx";
 import { cva, type VariantProps } from "class-variance-authority";
 import { motion, type HTMLMotionProps } from "framer-motion";
 
-type TimelineColor = "primary" | "secondary" | "muted" | "accent" | "destructive";
+type TimelineColor =
+  | "primary"
+  | "secondary"
+  | "muted"
+  | "accent"
+  | "destructive";
 
 // ── Variants ──────────────────────────────────────────────────────────────
 
@@ -21,12 +26,13 @@ const timelineVariants = cva("flex flex-col relative", {
 // ── Timeline ──────────────────────────────────────────────────────────────
 
 interface TimelineProps
-  extends React.HTMLAttributes<HTMLOListElement>,
+  extends
+    React.ComponentPropsWithoutRef<"ol">,
     VariantProps<typeof timelineVariants> {
   iconSize?: "sm" | "md" | "lg";
 }
 
-const Timeline = React.forwardRef<HTMLOListElement, TimelineProps>(
+const Timeline = React.forwardRef<React.ElementRef<"ol">, TimelineProps>(
   ({ className, iconSize, size, children, ...props }, ref) => {
     const items = React.Children.toArray(children);
     if (items.length === 0) return <TimelineEmpty />;
@@ -35,7 +41,11 @@ const Timeline = React.forwardRef<HTMLOListElement, TimelineProps>(
       <ol
         ref={ref}
         aria-label="Timeline"
-        className={clsx(timelineVariants({ size }), "relative w-full py-4", className)}
+        className={clsx(
+          timelineVariants({ size }),
+          "relative w-full py-4",
+          className
+        )}
         {...props}
       >
         {React.Children.map(children, (child, index) => {
@@ -43,7 +53,8 @@ const Timeline = React.forwardRef<HTMLOListElement, TimelineProps>(
             React.isValidElement(child) &&
             typeof child.type !== "string" &&
             "displayName" in child.type &&
-            (child.type as { displayName?: string }).displayName === "TimelineItem"
+            (child.type as { displayName?: string }).displayName ===
+              "TimelineItem"
           ) {
             return React.cloneElement(
               child as React.ReactElement<TimelineItemProps>,
@@ -72,7 +83,10 @@ interface TimelineItemProps extends Omit<HTMLMotionProps<"li">, "ref"> {
   iconSize?: "sm" | "md" | "lg";
 }
 
-const TimelineItem = React.forwardRef<HTMLLIElement, TimelineItemProps>(
+const TimelineItem = React.forwardRef<
+  React.ElementRef<"li">,
+  TimelineItemProps
+>(
   (
     {
       className,
@@ -82,44 +96,26 @@ const TimelineItem = React.forwardRef<HTMLLIElement, TimelineItemProps>(
       iconColor,
       showConnector = true,
       iconSize,
-      initial,
-      animate,
-      transition,
+      initial: _initial,
+      animate: _animate,
+      transition: _transition,
       ...props
     },
     ref
   ) => {
-    const {
-      style,
-      onDrag,
-      onDragStart,
-      onDragEnd,
-      onAnimationStart,
-      onAnimationComplete,
-      transformTemplate,
-      whileHover,
-      whileTap,
-      whileDrag,
-      whileFocus,
-      whileInView,
-      ...liProps
-    } = props as Record<string, unknown>;
-    void style; void onDrag; void onDragStart; void onDragEnd;
-    void onAnimationStart; void onAnimationComplete; void transformTemplate;
-    void whileHover; void whileTap; void whileDrag; void whileFocus; void whileInView;
-
     return (
-      <li
+      <motion.li
         ref={ref}
         className={clsx("relative flex gap-4", className)}
-        {...(liProps as React.LiHTMLAttributes<HTMLLIElement>)}
+        initial={_initial}
+        animate={_animate}
+        transition={_transition}
+        {...props}
       >
         {/* Left column: icon + connector */}
         <div className="flex flex-col items-center flex-shrink-0">
           <TimelineIcon icon={icon} color={iconColor} iconSize={iconSize} />
-          {showConnector && (
-            <TimelineConnector className="flex-1 mt-2" />
-          )}
+          {showConnector && <TimelineConnector className="flex-1 mt-2" />}
         </div>
 
         {/* Right column: content */}
@@ -129,11 +125,9 @@ const TimelineItem = React.forwardRef<HTMLLIElement, TimelineItemProps>(
               <TimelineTitle>{title}</TimelineTitle>
             </TimelineHeader>
           )}
-          {description && (
-            <TimelineContent>{description}</TimelineContent>
-          )}
+          {description && <TimelineContent>{description}</TimelineContent>}
         </div>
-      </li>
+      </motion.li>
     );
   }
 );
@@ -204,11 +198,21 @@ const TimelineIcon = ({
     )}
   >
     {icon ? (
-      <div className={clsx("flex items-center justify-center", iconInnerSizeMap[iconSize])}>
+      <div
+        className={clsx(
+          "flex items-center justify-center",
+          iconInnerSizeMap[iconSize]
+        )}
+      >
         {icon}
       </div>
     ) : (
-      <div className={clsx("rounded-full bg-current opacity-70", iconInnerSizeMap[iconSize])} />
+      <div
+        className={clsx(
+          "rounded-full bg-current opacity-70",
+          iconInnerSizeMap[iconSize]
+        )}
+      />
     )}
   </div>
 );
@@ -219,7 +223,11 @@ const TimelineHeader = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={clsx("flex items-center gap-2 mb-1", className)} {...props} />
+  <div
+    ref={ref}
+    className={clsx("flex items-center gap-2 mb-1", className)}
+    {...props}
+  />
 ));
 TimelineHeader.displayName = "TimelineHeader";
 
@@ -229,7 +237,10 @@ const TimelineTitle = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <h3
     ref={ref}
-    className={clsx("text-xs font-semibold text-gray-200 leading-none tracking-tight", className)}
+    className={clsx(
+      "text-xs font-semibold text-gray-200 leading-none tracking-tight",
+      className
+    )}
     {...props}
   >
     {children}
@@ -241,7 +252,11 @@ const TimelineContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={clsx("flex flex-col gap-1.5", className)} {...props} />
+  <div
+    ref={ref}
+    className={clsx("flex flex-col gap-1.5", className)}
+    {...props}
+  />
 ));
 TimelineContent.displayName = "TimelineContent";
 
@@ -249,7 +264,11 @@ const TimelineDescription = React.forwardRef<
   HTMLParagraphElement,
   React.HTMLAttributes<HTMLParagraphElement>
 >(({ className, ...props }, ref) => (
-  <p ref={ref} className={clsx("text-xs text-gray-500", className)} {...props} />
+  <p
+    ref={ref}
+    className={clsx("text-xs text-gray-500", className)}
+    {...props}
+  />
 ));
 TimelineDescription.displayName = "TimelineDescription";
 
@@ -259,7 +278,10 @@ const TimelineEmpty = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <div
     ref={ref}
-    className={clsx("flex flex-col items-center justify-center p-8 text-center", className)}
+    className={clsx(
+      "flex flex-col items-center justify-center p-8 text-center",
+      className
+    )}
     {...props}
   >
     <p className="text-sm text-gray-500">{children ?? "No items to display"}</p>
@@ -287,20 +309,22 @@ const TimelineLayout = ({
   const items = React.Children.toArray(children);
   return (
     <Timeline size={size} iconSize={iconSize} className={className}>
-      {items.map((child, index) =>
-        animate ? (
-          <motion.div
-            key={index}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25, delay: index * 0.06, ease: "easeOut" }}
-          >
-            {child}
-          </motion.div>
-        ) : (
-          <React.Fragment key={index}>{child}</React.Fragment>
-        )
-      )}
+      {items.map((child, index) => {
+        if (!animate || !React.isValidElement(child)) {
+          return <React.Fragment key={index}>{child}</React.Fragment>;
+        }
+
+        return React.cloneElement(child, {
+          key: child.key ?? index,
+          initial: { opacity: 0, y: 12 },
+          animate: { opacity: 1, y: 0 },
+          transition: {
+            duration: 0.25,
+            delay: index * 0.06,
+            ease: "easeOut",
+          },
+        } as Partial<TimelineItemProps>);
+      })}
     </Timeline>
   );
 };

@@ -340,6 +340,11 @@ const api = {
     shortcuts: string[];
     clickCount: number;
     durationMs: number;
+    windowContexts?: Array<{
+      appName: string;
+      windowTitle: string;
+      url?: string;
+    }>;
   }) => ipcRenderer.invoke("ai:generate-description", params),
   aiGenerateDescriptionFromSnap: (snapId: string) =>
     ipcRenderer.invoke("ai:generate-description-from-snap", { snapId }),

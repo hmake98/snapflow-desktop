@@ -17,7 +17,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { screen } from "electron";
+import { desktopCapturer, screen } from "electron";
 import log from "electron-log";
 import { captureService } from "../capture";
 import { storageManager } from "../../utils/storage";
@@ -29,7 +29,82 @@ import type {
   DebugSession,
   SnapshotResult,
   TimelineEntry,
+  WindowMeta,
 } from "./types";
+
+// ---------------------------------------------------------------------------
+// Window metadata helper — best-effort, never throws
+// ---------------------------------------------------------------------------
+
+/** Known browser app substrings for URL hint detection */
+const BROWSER_NAMES = [
+  "chrome",
+  "firefox",
+  "safari",
+  "edge",
+  "brave",
+  "arc",
+  "opera",
+];
+
+/**
+ * Extract a short app name from an OS window title.
+ * Most apps use the pattern "Page/Document title – App Name".
+ */
+function extractAppName(windowTitle: string): string {
+  // Match "– App Name" or "- App Name" or "— App Name" at the end
+  const match = windowTitle.match(/\s[—–-]\s+([^—–-]+)\s*$/);
+  if (match && match[1]) return match[1].trim();
+  // Fallback: use first word
+  return windowTitle.split(/\s/)[0] ?? windowTitle;
+}
+
+/**
+ * For browser windows, try to extract a page URL from the window title.
+ * Browsers sometimes include the URL in the title when devtools are open,
+ * but in general we can only detect that it *is* a browser and note the page title.
+ */
+function extractUrl(appName: string, windowTitle: string): string | undefined {
+  const isBrowser = BROWSER_NAMES.some((b) =>
+    appName.toLowerCase().includes(b)
+  );
+  if (!isBrowser) return undefined;
+  // Try to match a bare URL embedded in the title (e.g. from address bar copy)
+  const urlMatch = windowTitle.match(/https?:\/\/[^\s]+/);
+  return urlMatch?.[0];
+}
+
+/**
+ * Query the OS window list and return metadata about the frontmost
+ * non-SnapFlow window. Returns undefined on any failure.
+ */
+async function getActiveWindowMeta(): Promise<WindowMeta | undefined> {
+  try {
+    // thumbnailSize 0×0 means skip image data — only window names needed
+    const sources = await desktopCapturer.getSources({
+      types: ["window"],
+      thumbnailSize: { width: 0, height: 0 },
+    });
+
+    // Filter out our own overlay / HUD windows and blank entries
+    const external = sources.filter((s) => {
+      const n = s.name.trim();
+      return n.length > 0 && !n.toLowerCase().includes("snapflow");
+    });
+
+    if (external.length === 0) return undefined;
+
+    // On macOS the list is roughly front-to-back; take the first entry
+    const windowTitle = external[0].name.trim();
+    const appName = extractAppName(windowTitle);
+    const url = extractUrl(appName, windowTitle);
+
+    return { appName, windowTitle, url };
+  } catch {
+    // Permission not yet granted, or API unavailable — silently skip
+    return undefined;
+  }
+}
 
 // Minimum ms between auto-captures to prevent burst duplicates
 const MIN_CAPTURE_INTERVAL_MS = 1500;
@@ -116,6 +191,10 @@ export class SessionManager {
 
     const timestamp = Date.now();
 
+    // Capture active window metadata before taking the screenshot so we
+    // record what the QA was looking at, not our own overlay.
+    const windowMeta = await getActiveWindowMeta();
+
     // Debounce: skip if a capture was taken very recently
     if (timestamp - this.lastCaptureTime < MIN_CAPTURE_INTERVAL_MS) {
       log.info(
@@ -176,6 +255,7 @@ export class SessionManager {
       file_path: filePath,
       trigger: "manual",
       linked_event_id: linkedEventId,
+      windowMeta,
     };
 
     this.activeSession.screenshots.push(screenshot);

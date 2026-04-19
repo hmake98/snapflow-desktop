@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { Button } from "../components/ui/Button";
+import { Skeleton } from "../components/ui/Skeleton";
 import {
   AccountSection,
   DisplaysSection,
@@ -24,6 +25,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("account");
   const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
     loadUser();
   }, []);
@@ -48,6 +50,8 @@ export default function SettingsPage() {
       }
     } catch (error) {
       console.error("Failed to load user:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -89,6 +93,51 @@ export default function SettingsPage() {
       console.log("[LOGOUT] === LOGOUT FLOW END (with error) ===");
     }
   };
+
+  if (loading) {
+    return (
+      <>
+        <Head>
+          <title>Settings - SnapFlow</title>
+        </Head>
+        <div className="min-h-screen bg-gray-950 pt-8">
+          <header className="bg-gray-950 border-b border-gray-800/40 sticky top-8 z-20 flex items-center justify-between h-11 px-4">
+            <Skeleton className="h-7 w-24 rounded-md" />
+            <Skeleton className="h-7 w-7 rounded-full" />
+          </header>
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="flex items-center space-x-2 mb-8">
+              {[...Array(3)].map((_, i) => (
+                <Skeleton key={i} className="h-9 w-28 rounded-lg" />
+              ))}
+            </div>
+            <div className="space-y-6">
+              <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6 space-y-5">
+                <div className="flex items-center gap-4">
+                  <Skeleton className="w-16 h-16 rounded-full" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-5 w-40" />
+                    <Skeleton className="h-4 w-56" />
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-10 w-full rounded-lg" />
+                </div>
+                <div className="space-y-3">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-10 w-full rounded-lg" />
+                </div>
+                <div className="flex justify-end">
+                  <Skeleton className="h-10 w-28 rounded-lg" />
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

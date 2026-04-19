@@ -3,6 +3,7 @@ import Head from "next/head";
 import { useRouter } from "next/router";
 import type { Tenant, Workspace, OnboardingStatus } from "../types";
 import { Button } from "../components/ui/Button";
+import { Skeleton } from "../components/ui/Skeleton";
 
 function slugify(text: string): string {
   return text
@@ -540,9 +541,41 @@ export default function OnboardingPage() {
 
   if (loading) {
     return (
-      <div className="h-screen bg-gray-950 flex items-center justify-center">
-        <div className="text-gray-300">Loading onboarding...</div>
-      </div>
+      <>
+        <Head>
+          <title>SnapFlow - Onboarding</title>
+        </Head>
+        <div
+          className="bg-gray-950 flex flex-col overflow-hidden pt-8"
+          style={{ height: "100vh" }}
+        >
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-2xl mx-auto py-12 px-4">
+              <div className="text-center mb-12 space-y-3">
+                <Skeleton className="h-10 w-72 mx-auto" />
+                <Skeleton className="h-5 w-56 mx-auto" />
+              </div>
+              <div className="flex justify-between mb-8">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="flex flex-col items-center flex-1">
+                    <Skeleton className="w-10 h-10 rounded-full" />
+                    <Skeleton className="h-3 w-12 mt-2" />
+                  </div>
+                ))}
+              </div>
+              <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6 space-y-4">
+                <Skeleton className="h-7 w-48" />
+                <Skeleton className="h-4 w-80" />
+                <Skeleton className="h-10 w-full rounded-lg" />
+                <Skeleton className="h-10 w-full rounded-lg" />
+                <div className="flex justify-end pt-2">
+                  <Skeleton className="h-10 w-28 rounded-lg" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </>
     );
   }
 
@@ -551,8 +584,10 @@ export default function OnboardingPage() {
       <Head>
         <title>SnapFlow - Onboarding</title>
       </Head>
-      <div className="bg-gray-950 flex flex-col overflow-hidden pt-8" style={{ height: "100vh" }}>
-
+      <div
+        className="bg-gray-950 flex flex-col overflow-hidden pt-8"
+        style={{ height: "100vh" }}
+      >
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-2xl mx-auto py-12 px-4">

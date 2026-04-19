@@ -12,6 +12,12 @@ interface SessionSnapData {
   /** Cloud storage URLs for each screenshot, populated after Supabase sync */
   cloudScreenshotUrls?: string[];
   timeline: unknown[];
+  /** Per-screenshot active window/app metadata (parallel to screenshotPaths) */
+  windowContexts?: Array<{
+    appName: string;
+    windowTitle: string;
+    url?: string;
+  }>;
 }
 
 interface Snap {

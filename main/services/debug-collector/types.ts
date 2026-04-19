@@ -40,6 +40,20 @@ export interface DebugEvent {
 
 export type ScreenshotTrigger = "manual" | "event";
 
+/**
+ * Auto-captured context about the active window at the moment a screenshot
+ * was taken. Provides the LLM with "what app / page was being tested" without
+ * requiring any user input.
+ */
+export interface WindowMeta {
+  /** Application name extracted from the window title, e.g. "Google Chrome" */
+  appName: string;
+  /** Full OS window title, e.g. "Checkout – MyShop · Google Chrome" */
+  windowTitle: string;
+  /** Browser URL inferred from the window title, if the app is a browser */
+  url?: string;
+}
+
 export interface DebugScreenshot {
   id: string;
   timestamp: number;
@@ -48,6 +62,8 @@ export interface DebugScreenshot {
   trigger: ScreenshotTrigger;
   /** ID of the event that caused this screenshot, if trigger === "event" */
   linked_event_id?: string;
+  /** Active window/app context captured at the moment of the screenshot */
+  windowMeta?: WindowMeta;
 }
 
 // ---------------------------------------------------------------------------

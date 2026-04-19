@@ -10,6 +10,7 @@ import { Badge } from "../components/ui/Badge";
 import { ChipsInput } from "../components/ui/ChipsInput";
 import { SearchInput } from "../components/ui/SearchInput";
 import { FilterBar, SortControl } from "../components/ui/FilterBar";
+import { Skeleton } from "../components/ui/Skeleton";
 import {
   NoSnapsEmptyState,
   NoResultsEmptyState,
@@ -52,6 +53,12 @@ export default function HomePage() {
   const syncQueue = useSyncQueue(() => loadData());
 
   const [loading, setLoading] = useState(true);
+  // Subtle background-refresh indicator — shown when stale data is already
+  // visible and we're silently fetching fresh data behind the scenes.
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  // Connectors loaded once at page level; passed as a prop to sync dropdowns
+  // so that 12 cards don't each make their own IPC call on mount.
+  const [connectors, setConnectors] = useState<any[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string>("");
   const [filter, setFilter] = useState<"all" | "screenshot" | "session">("all");
   const [statusFilter, setStatusFilter] = useState<
@@ -94,10 +101,14 @@ export default function HomePage() {
     try {
       const userResult = await window.api.getUser();
       if (userResult.success && userResult.data) {
-        const issuesResult = await window.api.listIssues(
-          userResult.data.id,
+        // Fetch snaps and connectors in parallel — no need to wait for one
+        // before starting the other.
+        const [issuesResult, connectorsResult] = await Promise.all([
+          window.api.listIssues(userResult.data.id, wsId),
           wsId
-        );
+            ? window.api.listConnectors(wsId)
+            : Promise.resolve({ success: true, data: [] as any[] }),
+        ]);
         if (issuesResult.success) {
           const fresh = issuesResult.data || [];
           setIssues(fresh);
@@ -106,9 +117,12 @@ export default function HomePage() {
           // may be stale even though the issues list has been refreshed.
           setPreviewIssue((prev) => {
             if (!prev) return null;
-            const updated = fresh.find((i) => i.id === prev.id);
+            const updated = fresh.find((i: Issue) => i.id === prev.id);
             return updated ?? prev;
           });
+        }
+        if (connectorsResult.success) {
+          setConnectors(connectorsResult.data || []);
         }
       }
     } catch (error) {
@@ -130,66 +144,70 @@ export default function HomePage() {
     };
   }, [setIssues, activeWorkspace?.id]);
 
-  // Safety-net: re-fetch after short delays to catch any auto-sync that
-  // completed before or during initial render (e.g. annotate → home navigation).
+  // Safety-net: re-fetch once after 3 s to catch any auto-sync that
+  // completed just before or during initial render (annotate → home).
   useEffect(() => {
     const t1 = setTimeout(
       () => loadSnapsForWorkspace(activeWorkspace?.id || workspaceId),
       3000
     );
-    const t2 = setTimeout(
-      () => loadSnapsForWorkspace(activeWorkspace?.id || workspaceId),
-      8000
-    );
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
+    return () => clearTimeout(t1);
   }, []);
 
   const loadData = async () => {
+    // If Zustand already has snaps from this session (e.g. navigated back from
+    // annotate), skip the full-page skeleton and do a silent background refresh.
+    if (issues.length > 0) {
+      setLoading(false);
+      setIsRefreshing(true);
+    }
+
     try {
-      console.log("Loading user data...");
-      const userResult = await window.api.getUser();
-      console.log("User result:", userResult);
+      // Fire auth, onboarding check, and workspace list in parallel — they
+      // are independent of each other and together used to take ~450 ms
+      // sequentially.
+      const [userResult, onboardingResult, wsResult] = await Promise.all([
+        window.api.getUser(),
+        window.api.getOnboardingStatus(),
+        window.api.getUserWorkspaces(),
+      ]);
 
-      if (userResult.success && userResult.data) {
-        setUser(userResult.data);
-        console.log("User loaded:", userResult.data.email);
-
-        // Check onboarding status
-        console.log("Checking onboarding status...");
-        const onboardingResult = await window.api.getOnboardingStatus();
-        if (!onboardingResult.success || !onboardingResult.data?.isComplete) {
-          console.log("Onboarding incomplete, redirecting...");
-          router.push("/onboarding");
-          return;
-        }
-
-        // Load user workspaces and set active workspace
-        const wsResult = await window.api.getUserWorkspaces();
-        let resolvedWorkspaceId: string | undefined;
-        if (wsResult.success && wsResult.data?.length) {
-          const ws = activeWorkspace ?? wsResult.data[0];
-          if (!activeWorkspace) {
-            setActiveWorkspace(wsResult.data[0]);
-          }
-          resolvedWorkspaceId = ws.id;
-          setWorkspaceId(ws.id);
-          // Keep main process in sync so full-page-reload pages can resolve workspace
-          window.api.setActiveWorkspace(ws.id);
-        }
-
-        const issuesResult = await window.api.listIssues(
-          userResult.data.id,
-          resolvedWorkspaceId
-        );
-        if (issuesResult.success) {
-          setIssues(issuesResult.data || []);
-        }
-      } else {
-        console.error("No user data, redirecting to auth");
+      if (!userResult.success || !userResult.data) {
         router.push("/auth");
+        return;
+      }
+
+      setUser(userResult.data);
+
+      if (!onboardingResult.success || !onboardingResult.data?.isComplete) {
+        router.push("/onboarding");
+        return;
+      }
+
+      let resolvedWorkspaceId: string | undefined;
+      if (wsResult.success && wsResult.data?.length) {
+        const ws = activeWorkspace ?? wsResult.data[0];
+        if (!activeWorkspace) {
+          setActiveWorkspace(wsResult.data[0]);
+        }
+        resolvedWorkspaceId = ws.id;
+        setWorkspaceId(ws.id);
+        window.api.setActiveWorkspace(ws.id);
+      }
+
+      // Fetch snaps and connectors in parallel — single IPC round-trip pair.
+      const [issuesResult, connectorsResult] = await Promise.all([
+        window.api.listIssues(userResult.data.id, resolvedWorkspaceId),
+        resolvedWorkspaceId
+          ? window.api.listConnectors(resolvedWorkspaceId)
+          : Promise.resolve({ success: true, data: [] as any[] }),
+      ]);
+
+      if (issuesResult.success) {
+        setIssues(issuesResult.data || []);
+      }
+      if (connectorsResult.success) {
+        setConnectors(connectorsResult.data || []);
       }
     } catch (error) {
       console.error("Failed to load data:", error);
@@ -197,6 +215,7 @@ export default function HomePage() {
       router.push("/auth");
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -209,7 +228,8 @@ export default function HomePage() {
       if (result.success) {
         const message = result.data?.message || "Successfully synced to GitHub";
         window.api.showNotification("Synced to GitHub", message);
-        loadData();
+        // Lightweight refresh — no need to re-run auth/onboarding checks.
+        loadSnapsForWorkspace(workspaceId || activeWorkspace?.id);
       } else {
         window.api.showNotification(
           "GitHub Sync Failed",
@@ -495,36 +515,17 @@ export default function HomePage() {
   // GitHub Sync Modal Dialog Component
   const GitHubSyncDropdown = ({
     issue,
-    workspaceId: dropdownWorkspaceId,
+    connectors: allConnectors,
     className = "",
   }: {
     issue: Issue;
-    workspaceId: string;
+    connectors: any[];
     className?: string;
   }) => {
-    const [connectors, setConnectors] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
     const [isOpen, setIsOpen] = useState(false);
-
-    useEffect(() => {
-      loadConnectors();
-    }, []);
-
-    const loadConnectors = async () => {
-      try {
-        const result = await window.api.listConnectors(dropdownWorkspaceId);
-        if (result.success) {
-          const githubConnectors = (result.data || []).filter(
-            (c: any) => c.type === "github" && c.enabled
-          );
-          setConnectors(githubConnectors);
-        }
-      } catch (error) {
-        console.error("Failed to load connectors:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+    const connectors = allConnectors.filter(
+      (c: any) => c.type === "github" && c.enabled
+    );
 
     // Get the connector this issue is currently synced to
     const syncedConnector = issue.syncedTo?.find(
@@ -536,26 +537,6 @@ export default function HomePage() {
       handleSync(issue, connectorId);
       setIsOpen(false);
     };
-
-    if (loading) {
-      return (
-        <Button variant="ghost" size="sm" disabled className={className}>
-          <svg
-            className="w-4 h-4 animate-spin"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
-        </Button>
-      );
-    }
 
     if (connectors.length === 0) {
       return (
@@ -859,36 +840,17 @@ export default function HomePage() {
 
   const ZohoSyncDropdown = ({
     issue,
-    workspaceId: dropdownWorkspaceId,
+    connectors: allConnectors,
     className = "",
   }: {
     issue: Issue;
-    workspaceId: string;
+    connectors: any[];
     className?: string;
   }) => {
-    const [connectors, setConnectors] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
     const [isOpen, setIsOpen] = useState(false);
-
-    useEffect(() => {
-      loadConnectors();
-    }, []);
-
-    const loadConnectors = async () => {
-      try {
-        const result = await window.api.listConnectors(dropdownWorkspaceId);
-        if (result.success) {
-          const zohoConnectors = (result.data || []).filter(
-            (c: any) => c.type === "zoho" && c.enabled
-          );
-          setConnectors(zohoConnectors);
-        }
-      } catch (error) {
-        console.error("Failed to load connectors:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+    const connectors = allConnectors.filter(
+      (c: any) => c.type === "zoho" && c.enabled
+    );
 
     // Get the connector this issue is currently synced to
     const syncedConnector = issue.syncedTo?.find(
@@ -900,26 +862,6 @@ export default function HomePage() {
       handleZohoSync(issue, connectorId);
       setIsOpen(false);
     };
-
-    if (loading) {
-      return (
-        <Button variant="ghost" size="sm" disabled className={className}>
-          <svg
-            className="w-4 h-4 animate-spin"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
-        </Button>
-      );
-    }
 
     if (connectors.length === 0) {
       return (
@@ -1113,7 +1055,8 @@ export default function HomePage() {
           "Synced to Zoho",
           "Issue successfully synced to Zoho Projects"
         );
-        loadData();
+        // Lightweight refresh — skip auth/onboarding.
+        loadSnapsForWorkspace(workspaceId || activeWorkspace?.id);
       } else {
         window.api.showNotification(
           "Zoho Sync Failed",
@@ -1132,66 +1075,69 @@ export default function HomePage() {
 
   const handleLogout = async () => {
     try {
-      console.log("[LOGOUT] === LOGOUT FLOW START ===");
-      console.log("[LOGOUT] Current user:", user?.email);
-
-      // Clear local state immediately
-      console.log("[LOGOUT] Clearing local state...");
       setUser(null);
       setIssues([]);
-
-      console.log("[LOGOUT] Calling window.api.logout...");
-      const result = await window.api.logout();
-
-      console.log("[LOGOUT] Logout IPC returned");
-      console.log("[LOGOUT] Result:", JSON.stringify(result, null, 2));
-
-      if (result.success) {
-        console.log("[LOGOUT] ✓ Logout successful!");
-      }
-
+      await window.api.logout();
       window.api.showNotification(
         "Signed Out",
         "You have been logged out of SnapFlow"
       );
-
-      // Navigate using Next.js router
-      console.log("[LOGOUT] Starting navigation to /auth...");
-      console.log("[LOGOUT] Calling router.push('/auth')...");
       await router.push("/auth");
-      console.log("[LOGOUT] ✓ router.push completed");
-      console.log("[LOGOUT] === LOGOUT FLOW END ===");
     } catch (error) {
-      console.error("[LOGOUT] ✗ Logout exception:", error);
-      console.error(
-        "[LOGOUT] Error details:",
-        JSON.stringify(error, Object.getOwnPropertyNames(error), 2)
-      );
-      // Clear state and redirect even on error
+      console.error("[Logout] error:", error);
       setUser(null);
       setIssues([]);
       window.api.showNotification("Signed Out", "Session ended");
-      console.log("[LOGOUT] Attempting navigation after error...");
       router.push("/auth");
-      console.log("[LOGOUT] === LOGOUT FLOW END (with error) ===");
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="flex flex-col items-center space-y-6">
-          <div className="w-16 h-16 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
-          <div className="text-center space-y-2">
-            <h3 className="text-xl font-semibold text-gray-100">
-              Loading SnapFlow
-            </h3>
-            <p className="text-gray-400 font-medium">
-              Preparing your captures...
-            </p>
-          </div>
+      <>
+        <Head>
+          <title>Home - SnapFlow</title>
+        </Head>
+        <div className="min-h-screen bg-gray-950 pt-8">
+          <header className="bg-gray-950 border-b border-gray-800/40 sticky top-8 z-20 flex items-center justify-between h-11 px-4">
+            <Skeleton className="h-7 w-40 rounded-md" />
+            <Skeleton className="h-7 w-7 rounded-full" />
+          </header>
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="mb-8 space-y-4">
+              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                <div className="flex gap-2">
+                  {[...Array(3)].map((_, i) => (
+                    <Skeleton key={i} className="h-8 w-24 rounded-full" />
+                  ))}
+                </div>
+                <div className="flex gap-3 w-full lg:w-auto">
+                  <Skeleton className="h-9 w-64 rounded-lg" />
+                  <Skeleton className="h-9 w-28 rounded-lg" />
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[...Array(6)].map((_, i) => (
+                <div
+                  key={i}
+                  className="bg-gray-800/30 border border-gray-700/50 rounded-xl overflow-hidden"
+                >
+                  <Skeleton className="h-40 w-full rounded-none" />
+                  <div className="p-4 space-y-3">
+                    <Skeleton className="h-5 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                    <div className="flex gap-2 pt-1">
+                      <Skeleton className="h-5 w-16 rounded-full" />
+                      <Skeleton className="h-5 w-16 rounded-full" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </main>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -1203,8 +1149,16 @@ export default function HomePage() {
       <div className="min-h-screen bg-gray-950 pt-8">
         {/* App header — sits below the global traffic light bar (pt-8) */}
         <header className="bg-gray-950 border-b border-gray-800/40 sticky top-8 z-20 flex items-center justify-between h-11 px-4">
-          {/* Left: workspace switcher */}
-          <WorkspaceSwitcher />
+          {/* Left: workspace switcher + silent refresh indicator */}
+          <div className="flex items-center gap-2 min-w-0">
+            <WorkspaceSwitcher />
+            {isRefreshing && (
+              <div
+                className="w-3.5 h-3.5 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin flex-shrink-0"
+                title="Refreshing…"
+              />
+            )}
+          </div>
 
           {/* Right: profile */}
           <ProfileDropdown
@@ -1468,8 +1422,8 @@ export default function HomePage() {
                     key={issue.id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    whileHover={{ y: -4, transition: { duration: 0.2 } }}
+                    transition={{ delay: Math.min(index * 0.03, 0.12) }}
+                    whileHover={{ y: -4, transition: { duration: 0.15 } }}
                   >
                     <Card
                       className="overflow-hidden h-full flex flex-col group hover:shadow-2xl hover:shadow-blue-500/20 transition-all duration-300"
@@ -1653,12 +1607,12 @@ export default function HomePage() {
                           <div className="flex items-center space-x-0.5">
                             <GitHubSyncDropdown
                               issue={issue}
-                              workspaceId={workspaceId}
+                              connectors={connectors}
                               className="hover:bg-gray-800"
                             />
                             <ZohoSyncDropdown
                               issue={issue}
-                              workspaceId={workspaceId}
+                              connectors={connectors}
                               className="hover:bg-gray-800"
                             />
                             <Button
@@ -2346,14 +2300,14 @@ export default function HomePage() {
                       <div className="flex-1">
                         <GitHubSyncDropdown
                           issue={previewIssue}
-                          workspaceId={workspaceId}
+                          connectors={connectors}
                           className="w-full justify-center text-xs h-9 bg-blue-600 hover:bg-blue-700 text-white"
                         />
                       </div>
                       <div className="flex-1">
                         <ZohoSyncDropdown
                           issue={previewIssue}
-                          workspaceId={workspaceId}
+                          connectors={connectors}
                           className="w-full justify-center text-xs h-9 bg-orange-600 hover:bg-orange-700 text-white"
                         />
                       </div>

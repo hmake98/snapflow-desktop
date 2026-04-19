@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "../ui/Button";
+import { useStore } from "../../store/useStore";
 import type {
   Workspace,
   WorkspaceMemberWithUser,
@@ -290,6 +291,9 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
   tenant,
   currentUserId,
 }) => {
+  const { activeWorkspace, setActiveWorkspace, triggerWorkspaceRefresh } =
+    useStore();
+
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
@@ -353,6 +357,8 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
         setTenantDisplayName(r.data?.name ?? tenantName.trim());
         setTenantDisplaySlug(r.data?.slug ?? tenantDisplaySlug);
         setEditingTenant(false);
+        // Notify WorkspaceSwitcher (and any other subscriber) to re-fetch
+        triggerWorkspaceRefresh();
       } else {
         window.api.showNotification(
           "Error",
@@ -384,6 +390,8 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
           );
           setWorkspaces((p) => [r.data, ...p]);
           closeModal();
+          // New workspace — refresh switcher list
+          triggerWorkspaceRefresh();
         } else {
           window.api.showNotification(
             "Error",
@@ -404,7 +412,13 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
           setWorkspaces((p) =>
             p.map((w) => (w.id === editTarget.id ? r.data : w))
           );
+          // If this is the currently active workspace, update its name in the store
+          if (activeWorkspace?.id === editTarget.id) {
+            setActiveWorkspace({ ...activeWorkspace, ...r.data });
+          }
           closeModal();
+          // Refresh switcher so it picks up the new name
+          triggerWorkspaceRefresh();
         } else {
           window.api.showNotification(
             "Error",
@@ -431,6 +445,8 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
         );
         setWorkspaces((p) => p.filter((w) => w.id !== confirmDelete.id));
         setConfirmDelete(null);
+        // Refresh switcher list
+        triggerWorkspaceRefresh();
       } else {
         window.api.showNotification(
           "Error",

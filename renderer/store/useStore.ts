@@ -43,6 +43,10 @@ interface AppState {
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
 
+  // Workspace refresh signal — increment to force WorkspaceSwitcher to re-fetch
+  workspaceRefreshSignal: number;
+  triggerWorkspaceRefresh: () => void;
+
   // Network / offline state
   isOnline: boolean;
   setIsOnline: (online: boolean) => void;
@@ -104,6 +108,13 @@ export const useStore = create<AppState>((set) => ({
   // UI state
   isLoading: false,
   setIsLoading: (loading) => set({ isLoading: loading }),
+
+  // Workspace refresh signal
+  workspaceRefreshSignal: 0,
+  triggerWorkspaceRefresh: () =>
+    set((state) => ({
+      workspaceRefreshSignal: state.workspaceRefreshSignal + 1,
+    })),
 
   // Network / offline state
   isOnline: true,

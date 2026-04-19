@@ -3,7 +3,8 @@ import { useStore } from "../../store/useStore";
 import type { WorkspaceWithRole } from "../../types";
 
 export function WorkspaceSwitcher() {
-  const { activeWorkspace, setActiveWorkspace } = useStore();
+  const { activeWorkspace, setActiveWorkspace, workspaceRefreshSignal } =
+    useStore();
   const [open, setOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<WorkspaceWithRole[]>([]);
   const [loading, setLoading] = useState(false);
@@ -20,8 +21,8 @@ export function WorkspaceSwitcher() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const loadWorkspaces = async () => {
-    if (workspaces.length > 0) return; // Already loaded
+  const loadWorkspaces = async (force = false) => {
+    if (!force && workspaces.length > 0) return; // Already loaded, skip unless forced
     setLoading(true);
     try {
       const r = await window.api.getUserWorkspaces();
@@ -32,6 +33,13 @@ export function WorkspaceSwitcher() {
           setActiveWorkspace(r.data[0]);
           window.api.setActiveWorkspace(r.data[0].id);
         }
+        // If the active workspace name changed server-side, keep the store in sync
+        if (activeWorkspace) {
+          const updated = r.data.find((w) => w.id === activeWorkspace.id);
+          if (updated && updated.name !== activeWorkspace.name) {
+            setActiveWorkspace({ ...activeWorkspace, ...updated });
+          }
+        }
       }
     } catch (err) {
       console.error("Failed to load workspaces:", err);
@@ -39,6 +47,13 @@ export function WorkspaceSwitcher() {
       setLoading(false);
     }
   };
+
+  // Re-fetch whenever settings page triggers a workspace/org update
+  useEffect(() => {
+    if (workspaceRefreshSignal > 0) {
+      loadWorkspaces(true);
+    }
+  }, [workspaceRefreshSignal]);
 
   const handleToggle = () => {
     if (!open) loadWorkspaces();

@@ -24,12 +24,9 @@ export default function SessionHud() {
 
   useEffect(() => {
     // Listen for live status pushes from main process
-    const unsub = window.ipc.on(
-      "session:status",
-      (data: SessionStatus) => {
-        setStatus(data);
-      }
-    );
+    const unsub = window.ipc.on("session:status", (data: SessionStatus) => {
+      setStatus(data);
+    });
     unsubRef.current = unsub as () => void;
 
     return () => {
@@ -80,6 +77,8 @@ export default function SessionHud() {
       >
         <div
           style={{
+            width: "calc(100vw - 16px)",
+            maxWidth: "364px",
             background: "rgba(15, 15, 15, 0.92)",
             backdropFilter: "blur(12px)",
             border: "1px solid rgba(255,255,255,0.1)",
@@ -88,7 +87,7 @@ export default function SessionHud() {
             display: "flex",
             alignItems: "center",
             gap: "12px",
-            minWidth: "260px",
+            justifyContent: "space-between",
             boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
           }}
         >
@@ -176,7 +175,7 @@ export default function SessionHud() {
           />
 
           {/* Action buttons */}
-          <div style={{ display: "flex", gap: "6px" }}>
+          <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
             <button
               onClick={handleCapture}
               disabled={capturing}
@@ -191,6 +190,7 @@ export default function SessionHud() {
                 fontSize: "11px",
                 fontWeight: 600,
                 padding: "4px 10px",
+                whiteSpace: "nowrap",
                 cursor: capturing ? "not-allowed" : "pointer",
                 display: "flex",
                 alignItems: "center",
@@ -213,6 +213,7 @@ export default function SessionHud() {
                 fontSize: "11px",
                 fontWeight: 600,
                 padding: "4px 10px",
+                whiteSpace: "nowrap",
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",

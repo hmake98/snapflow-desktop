@@ -2,8 +2,8 @@ import React, { useState, useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import type { Workspace } from "../types";
-import { WindowControls } from "../components/ui/WindowControls";
 import { Button } from "../components/ui/Button";
+import { Skeleton } from "../components/ui/Skeleton";
 
 export default function JoinWorkspacePage() {
   const router = useRouter();
@@ -132,18 +132,35 @@ export default function JoinWorkspacePage() {
         <title>Join Workspace - SnapFlow</title>
       </Head>
 
-      <div className="w-screen bg-gradient-to-b from-gray-900 via-gray-950 to-black flex flex-col overflow-hidden pt-8" style={{ height: "100vh" }}>
-
+      <div
+        className="w-screen bg-gradient-to-b from-gray-900 via-gray-950 to-black flex flex-col overflow-hidden pt-8"
+        style={{ height: "100vh" }}
+      >
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="w-full max-w-md">
             {loading ? (
-              <div className="text-center space-y-4">
-                <div className="inline-block">
-                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 animate-pulse" />
+              <div className="space-y-6">
+                <div className="flex flex-col items-center space-y-4">
+                  <Skeleton className="w-16 h-16 rounded-xl" />
+                  <div className="space-y-2 text-center w-full">
+                    <Skeleton className="h-7 w-56 mx-auto" />
+                    <Skeleton className="h-7 w-48 mx-auto" />
+                  </div>
                 </div>
-                <p className="text-gray-400">
-                  Loading workspace information...
-                </p>
+                <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6 space-y-3">
+                  <div className="flex justify-between">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-4 w-32" />
+                  </div>
+                  <div className="flex justify-between">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-4 w-24" />
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <Skeleton className="h-10 flex-1 rounded-lg" />
+                  <Skeleton className="h-10 flex-1 rounded-lg" />
+                </div>
               </div>
             ) : error ? (
               <div className="text-center space-y-4">

@@ -74,6 +74,13 @@ export interface WorkspaceWithMembers extends Workspace {
   currentUserRole?: UserRole;
 }
 
+/** Active window/app context captured alongside each session screenshot */
+export interface WindowContext {
+  appName: string;
+  windowTitle: string;
+  url?: string;
+}
+
 export interface SessionSnapData {
   sessionId: string;
   duration: number;
@@ -83,6 +90,11 @@ export interface SessionSnapData {
   /** Cloud storage URLs for each screenshot, populated after Supabase sync */
   cloudScreenshotUrls?: string[];
   timeline: unknown[];
+  /**
+   * Per-screenshot window/app metadata captured at the moment each
+   * screenshot was taken. Parallel array to screenshotPaths.
+   */
+  windowContexts?: WindowContext[];
 }
 
 export interface Snap {

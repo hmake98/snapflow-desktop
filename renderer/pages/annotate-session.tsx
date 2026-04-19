@@ -12,7 +12,6 @@ import {
 import {
   TimelineLayout,
   TimelineItem,
-  TimelineTitle,
   TimelineContent,
   TimelineDescription,
 } from "../components/ui/Timeline";
@@ -33,11 +32,28 @@ interface DebugEvent {
   };
 }
 
+interface WindowMeta {
+  appName: string;
+  windowTitle: string;
+  url?: string;
+}
+
 interface DebugScreenshot {
   id: string;
   timestamp: number;
   file_path: string;
   trigger: "manual" | "event";
+  windowMeta?: WindowMeta;
+}
+
+/** Structured bug report returned by the AI service */
+interface BugReport {
+  title: string;
+  summary: string;
+  steps: string[];
+  expected: string;
+  actual: string;
+  severity: "critical" | "high" | "medium" | "low";
 }
 
 interface SessionData {
@@ -367,7 +383,6 @@ function groupTimeline(session: SessionData): GroupedEntry[] {
   return groups;
 }
 
-
 // ── Page component ────────────────────────────────────────────────────────
 
 export default function AnnotateSessionPage() {
@@ -378,7 +393,10 @@ export default function AnnotateSessionPage() {
   const [screenshots, setScreenshots] = useState<LoadedScreenshot[]>([]);
   const [groupedEntries, setGroupedEntries] = useState<GroupedEntry[]>([]);
   const [title, setTitle] = useState("");
+  const [titleWasEdited, setTitleWasEdited] = useState(false);
   const [description, setDescription] = useState("");
+  const [bugReport, setBugReport] = useState<BugReport | null>(null);
+  const [severity, setSeverity] = useState<BugReport["severity"] | null>(null);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -463,6 +481,20 @@ export default function AnnotateSessionPage() {
     }
   }
 
+  /** Format a BugReport into markdown for the description textarea */
+  function formatBugReportMarkdown(report: BugReport): string {
+    const lines: string[] = [];
+    lines.push(`## Summary\n${report.summary}`);
+    if (report.steps.length > 0) {
+      lines.push(
+        `\n## Steps to Reproduce\n${report.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+      );
+    }
+    lines.push(`\n## Expected Behavior\n${report.expected}`);
+    lines.push(`\n## Actual Behavior\n${report.actual}`);
+    return lines.join("\n");
+  }
+
   async function generateWithAi(data?: SessionData, groups?: GroupedEntry[]) {
     const sessionData = data ?? session;
     const entryGroups = groups ?? groupedEntries;
@@ -486,6 +518,11 @@ export default function AnnotateSessionPage() {
         .map((g) => g.combo);
       const clickCount = entryGroups.filter((g) => g.kind === "click").length;
 
+      // Collect per-screenshot window metadata
+      const windowContexts = sessionData.screenshots
+        .map((s) => s.windowMeta)
+        .filter((m): m is WindowMeta => !!m);
+
       const result = await window.api.aiGenerateDescription({
         screenshotPaths: sessionData.screenshots.map((s) => s.file_path),
         typedTexts,
@@ -493,10 +530,18 @@ export default function AnnotateSessionPage() {
         clickCount,
         durationMs:
           (sessionData.end_time ?? Date.now()) - sessionData.start_time,
+        windowContexts: windowContexts.length > 0 ? windowContexts : undefined,
       });
 
       if (result?.success && result.data) {
-        setDescription(result.data);
+        const report = result.data as BugReport;
+        setBugReport(report);
+        setSeverity(report.severity);
+        setDescription(formatBugReportMarkdown(report));
+        // Pre-fill title only if the user hasn't edited it yet
+        if (!titleWasEdited && report.title) {
+          setTitle(report.title);
+        }
       } else {
         setAiError(result?.error ?? "AI generation failed.");
       }
@@ -512,9 +557,17 @@ export default function AnnotateSessionPage() {
     setSaving(true);
     setError(null);
     try {
+      // Append severity to description so it survives in Zoho / GitHub
+      let finalDescription = description.trim() || undefined;
+      if (severity && finalDescription) {
+        finalDescription = `${finalDescription}\n\n## Severity\n${severity.charAt(0).toUpperCase() + severity.slice(1)}`;
+      } else if (severity && !finalDescription) {
+        finalDescription = `## Severity\n${severity.charAt(0).toUpperCase() + severity.slice(1)}`;
+      }
+
       const result = await window.api.saveSessionSnap(
         title.trim(),
-        description.trim() || undefined,
+        finalDescription,
         activeWorkspace?.id ?? undefined
       );
       if (!result?.success) {
@@ -572,7 +625,10 @@ export default function AnnotateSessionPage() {
         <title>Review Session – SnapFlow</title>
       </Head>
 
-      <div className="bg-gray-950 flex flex-col overflow-hidden pt-8" style={{ height: "100vh" }}>
+      <div
+        className="bg-gray-950 flex flex-col overflow-hidden pt-8"
+        style={{ height: "100vh" }}
+      >
         {/* ── App header bar ── */}
         <div className="bg-gray-900 border-b border-gray-800 flex-shrink-0 h-11 flex items-center px-4">
           <div className="flex items-center justify-between w-full gap-3">
@@ -705,10 +761,90 @@ export default function AnnotateSessionPage() {
                   type="text"
                   placeholder="e.g. Login flow – forgot password bug"
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    setTitleWasEdited(true);
+                  }}
                   className="input text-sm w-full"
                 />
               </div>
+
+              {/* Severity selector */}
+              <div>
+                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
+                  Severity
+                </label>
+                <div className="flex gap-1.5">
+                  {(["critical", "high", "medium", "low"] as const).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setSeverity(s)}
+                      className={[
+                        "flex-1 py-1 rounded text-[11px] font-semibold capitalize transition-all border",
+                        severity === s
+                          ? s === "critical"
+                            ? "bg-red-600/30 border-red-500/60 text-red-300"
+                            : s === "high"
+                              ? "bg-orange-600/30 border-orange-500/60 text-orange-300"
+                              : s === "medium"
+                                ? "bg-yellow-600/30 border-yellow-500/60 text-yellow-300"
+                                : "bg-blue-600/20 border-blue-500/40 text-blue-300"
+                          : "bg-transparent border-gray-700/60 text-gray-500 hover:border-gray-600 hover:text-gray-400",
+                      ].join(" ")}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+                {bugReport && (
+                  <p className="text-[10px] text-gray-600 mt-1">
+                    AI suggested · click to change
+                  </p>
+                )}
+              </div>
+
+              {/* AI-generated structured sections (collapsible preview) */}
+              {bugReport && (
+                <div className="rounded-lg border border-gray-700/40 bg-gray-900/40 text-[11px] text-gray-400 divide-y divide-gray-800/60 flex-shrink-0">
+                  {bugReport.steps.length > 0 && (
+                    <div className="px-3 py-2">
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                        Steps to Reproduce
+                      </p>
+                      <ol className="space-y-0.5 list-none">
+                        {bugReport.steps.map((step, i) => (
+                          <li key={i} className="flex gap-2">
+                            <span className="text-gray-600 flex-shrink-0 w-3.5 text-right">
+                              {i + 1}.
+                            </span>
+                            <span className="text-gray-400 leading-snug">
+                              {step}
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+                  <div className="px-3 py-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-0.5">
+                        Expected
+                      </p>
+                      <p className="text-gray-400 leading-snug">
+                        {bugReport.expected}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-0.5">
+                        Actual
+                      </p>
+                      <p className="text-gray-400 leading-snug">
+                        {bugReport.actual}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Description */}
               <div className="flex flex-col gap-1.5 flex-1 min-h-0">
@@ -817,11 +953,23 @@ export default function AnnotateSessionPage() {
               {session.screenshots.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-8">
                   <div className="w-10 h-10 rounded-xl bg-gray-800/60 border border-gray-700/50 flex items-center justify-center">
-                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    <svg
+                      className="w-5 h-5 text-gray-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.5}
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
                     </svg>
                   </div>
-                  <p className="text-sm text-gray-500">No screenshots captured</p>
+                  <p className="text-sm text-gray-500">
+                    No screenshots captured
+                  </p>
                 </div>
               ) : (
                 <TimelineLayout animate size="sm" iconSize="sm">
@@ -829,13 +977,25 @@ export default function AnnotateSessionPage() {
                   <TimelineItem
                     iconColor="primary"
                     icon={
-                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 12h14M12 5l7 7-7 7" />
+                      <svg
+                        className="w-3 h-3 text-white"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2.5}
+                          d="M5 12h14M12 5l7 7-7 7"
+                        />
                       </svg>
                     }
                     title="Session started"
                     description={
-                      <TimelineDescription>{formatTime(session.start_time)}</TimelineDescription>
+                      <TimelineDescription>
+                        {formatTime(session.start_time)}
+                      </TimelineDescription>
                     }
                   />
 
@@ -847,15 +1007,53 @@ export default function AnnotateSessionPage() {
                         key={shot.id}
                         iconColor="accent"
                         icon={
-                          <span className="text-[9px] font-bold text-white leading-none">{idx + 1}</span>
+                          <span className="text-[9px] font-bold text-white leading-none">
+                            {idx + 1}
+                          </span>
                         }
                         title={`Screenshot ${idx + 1}`}
                         description={
                           <TimelineContent>
                             <TimelineDescription>
                               {formatTime(shot.timestamp)}
-                              <span className="ml-2 text-gray-700">{formatRelative(shot.timestamp, session.start_time)}</span>
+                              <span className="ml-2 text-gray-700">
+                                {formatRelative(
+                                  shot.timestamp,
+                                  session.start_time
+                                )}
+                              </span>
                             </TimelineDescription>
+                            {/* Window / app badge */}
+                            {shot.windowMeta && (
+                              <div className="flex items-center gap-1.5 mt-1 mb-0.5">
+                                <div className="w-3.5 h-3.5 flex-shrink-0 rounded bg-gray-700/60 flex items-center justify-center">
+                                  <svg
+                                    className="w-2 h-2 text-gray-400"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                                    />
+                                  </svg>
+                                </div>
+                                <span
+                                  className="text-[10px] text-gray-500 truncate"
+                                  title={shot.windowMeta.windowTitle}
+                                >
+                                  {shot.windowMeta.appName}
+                                  {shot.windowMeta.url && (
+                                    <span className="ml-1 text-gray-600">
+                                      · {shot.windowMeta.url}
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                            )}
                             {loaded?.dataUrl ? (
                               <button
                                 onClick={() => setPreviewIndex(idx)}
@@ -868,8 +1066,18 @@ export default function AnnotateSessionPage() {
                                 />
                                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition-colors flex items-center justify-center">
                                   <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 rounded-full p-2.5 shadow-lg">
-                                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                                    <svg
+                                      className="w-4 h-4 text-white"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"
+                                      />
                                     </svg>
                                   </div>
                                 </div>
@@ -890,13 +1098,25 @@ export default function AnnotateSessionPage() {
                     <TimelineItem
                       iconColor="secondary"
                       icon={
-                        <svg className="w-3 h-3 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        <svg
+                          className="w-3 h-3 text-gray-200"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2.5}
+                            d="M5 13l4 4L19 7"
+                          />
                         </svg>
                       }
                       title="Session ended"
                       description={
-                        <TimelineDescription>{formatTime(session.end_time)}</TimelineDescription>
+                        <TimelineDescription>
+                          {formatTime(session.end_time)}
+                        </TimelineDescription>
                       }
                     />
                   )}
@@ -910,7 +1130,9 @@ export default function AnnotateSessionPage() {
       {/* ── Screenshot preview dialog ── */}
       <Dialog
         open={previewIndex !== null}
-        onOpenChange={(open) => { if (!open) setPreviewIndex(null); }}
+        onOpenChange={(open) => {
+          if (!open) setPreviewIndex(null);
+        }}
       >
         <DialogContent
           className="max-w-5xl w-[90vw] bg-gray-950 border border-gray-800 rounded-xl p-0 overflow-hidden shadow-2xl"
@@ -920,74 +1142,107 @@ export default function AnnotateSessionPage() {
             <DialogTitle>Screenshot Preview</DialogTitle>
           </DialogVisuallyHidden>
 
-          {previewIndex !== null && (() => {
-            const shot = session.screenshots[previewIndex];
-            const loaded = screenshots.find((s) => s.id === shot?.id);
-            const total = session.screenshots.length;
-            return (
-              <>
-                {/* Image */}
-                <div className="relative bg-black">
-                  {loaded?.dataUrl ? (
-                    <img
-                      src={loaded.dataUrl}
-                      alt={`Screenshot ${previewIndex + 1}`}
-                      className="w-full block max-h-[80vh] object-contain"
-                    />
-                  ) : (
-                    <div className="h-64 flex items-center justify-center">
-                      <div className="w-6 h-6 border-2 border-gray-700 border-t-gray-400 rounded-full animate-spin" />
-                    </div>
-                  )}
+          {previewIndex !== null &&
+            (() => {
+              const shot = session.screenshots[previewIndex];
+              const loaded = screenshots.find((s) => s.id === shot?.id);
+              const total = session.screenshots.length;
+              return (
+                <>
+                  {/* Image */}
+                  <div className="relative bg-black">
+                    {loaded?.dataUrl ? (
+                      <img
+                        src={loaded.dataUrl}
+                        alt={`Screenshot ${previewIndex + 1}`}
+                        className="w-full block max-h-[80vh] object-contain"
+                      />
+                    ) : (
+                      <div className="h-64 flex items-center justify-center">
+                        <div className="w-6 h-6 border-2 border-gray-700 border-t-gray-400 rounded-full animate-spin" />
+                      </div>
+                    )}
 
-                  {/* Prev button */}
-                  {previewIndex > 0 && (
-                    <button
-                      onClick={() => navigatePreview(-1)}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/60 hover:bg-black/80 border border-white/10 flex items-center justify-center text-white transition-colors"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                      </svg>
-                    </button>
-                  )}
+                    {/* Prev button */}
+                    {previewIndex > 0 && (
+                      <button
+                        onClick={() => navigatePreview(-1)}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/60 hover:bg-black/80 border border-white/10 flex items-center justify-center text-white transition-colors"
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15 19l-7-7 7-7"
+                          />
+                        </svg>
+                      </button>
+                    )}
 
-                  {/* Next button */}
-                  {previewIndex < total - 1 && (
-                    <button
-                      onClick={() => navigatePreview(1)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/60 hover:bg-black/80 border border-white/10 flex items-center justify-center text-white transition-colors"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-
-                {/* Footer bar */}
-                <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-800 bg-gray-900/80">
-                  <p className="text-xs font-medium text-gray-300">
-                    Screenshot {previewIndex + 1}
-                    <span className="text-gray-600 ml-1">— {formatTime(shot.timestamp)}</span>
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-gray-500 tabular-nums">
-                      {previewIndex + 1} / {total}
-                    </span>
-                    <button
-                      onClick={() => setPreviewIndex(null)}
-                      className="text-gray-500 hover:text-gray-200 transition-colors"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
+                    {/* Next button */}
+                    {previewIndex < total - 1 && (
+                      <button
+                        onClick={() => navigatePreview(1)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/60 hover:bg-black/80 border border-white/10 flex items-center justify-center text-white transition-colors"
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
+                      </button>
+                    )}
                   </div>
-                </div>
-              </>
-            );
-          })()}
+
+                  {/* Footer bar */}
+                  <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-800 bg-gray-900/80">
+                    <p className="text-xs font-medium text-gray-300">
+                      Screenshot {previewIndex + 1}
+                      <span className="text-gray-600 ml-1">
+                        — {formatTime(shot.timestamp)}
+                      </span>
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-gray-500 tabular-nums">
+                        {previewIndex + 1} / {total}
+                      </span>
+                      <button
+                        onClick={() => setPreviewIndex(null)}
+                        className="text-gray-500 hover:text-gray-200 transition-colors"
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
         </DialogContent>
       </Dialog>
     </>
@@ -995,15 +1250,6 @@ export default function AnnotateSessionPage() {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────
-
-function StatPill({ icon, value }: { icon: React.ReactNode; value: string }) {
-  return (
-    <span className="flex items-center gap-1 text-[11px] text-gray-500">
-      <span className="text-gray-600">{icon}</span>
-      <span>{value}</span>
-    </span>
-  );
-}
 
 function MetaRow({
   icon,

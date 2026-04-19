@@ -19,12 +19,39 @@ const aiStore = new Store({
 // Vision model available on Groq free tier
 const GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
 
+export interface WindowContext {
+  appName: string;
+  windowTitle: string;
+  url?: string;
+}
+
 export interface GenerateDescriptionParams {
   screenshotPaths: string[];
   typedTexts: string[];
   shortcuts: string[];
   clickCount: number;
   durationMs: number;
+  /** Per-screenshot window/app context captured at capture time */
+  windowContexts?: WindowContext[];
+}
+
+/**
+ * Structured bug report produced by the LLM.
+ * All fields are derived from visual analysis of the screenshots.
+ */
+export interface BugReport {
+  /** Short one-line bug title (≤ 80 chars) */
+  title: string;
+  /** 2–3 sentence summary of what was observed */
+  summary: string;
+  /** Numbered reproduction steps inferred from the screenshot sequence */
+  steps: string[];
+  /** What the correct / expected behaviour should have been */
+  expected: string;
+  /** What actually happened (the defect) */
+  actual: string;
+  /** Rough severity estimate: critical → high → medium → low */
+  severity: "critical" | "high" | "medium" | "low";
 }
 
 export class AiService {
@@ -54,7 +81,7 @@ export class AiService {
 
   async generateSessionDescription(
     params: GenerateDescriptionParams
-  ): Promise<string> {
+  ): Promise<BugReport> {
     const apiKey = this.getApiKey();
     if (!apiKey) {
       throw new Error(
@@ -69,9 +96,9 @@ export class AiService {
 
     const durationSec = Math.round(params.durationMs / 1000);
 
-    // Build image content parts (base64 data URIs, up to 4 screenshots)
+    // Build image content parts (base64 data URIs, up to 6 screenshots)
     const imageContent: OpenAI.Chat.ChatCompletionContentPart[] = [];
-    for (const filePath of params.screenshotPaths.slice(0, 4)) {
+    for (const filePath of params.screenshotPaths.slice(0, 6)) {
       try {
         const buffer = fs.readFileSync(filePath);
         const base64 = buffer.toString("base64");
@@ -88,21 +115,36 @@ export class AiService {
       throw new Error("No screenshots available to generate a description.");
     }
 
-    // Build supplementary activity context from keyboard/mouse data.
-    // Screenshots are the primary source — activity data is supplementary only.
-    const activityLines: string[] = [];
+    // ── Supplementary context lines ──────────────────────────────────────
 
-    // Only include typed text that looks like real user input (already filtered
-    // upstream, but guard here too: skip short all-same-character strings).
+    const contextLines: string[] = [];
+
+    // Window / app context per screenshot
+    const contexts = params.windowContexts ?? [];
+    if (contexts.length > 0) {
+      const unique = Array.from(
+        new Map(contexts.map((c) => [c.appName, c])).values()
+      );
+      const appList = unique
+        .map((c) => (c.url ? `${c.appName} (${c.url})` : c.appName))
+        .join(", ");
+      contextLines.push(`Applications visible: ${appList}`);
+
+      // Add page/window titles for more context
+      const titles = unique.map((c) => `"${c.windowTitle}"`).join(", ");
+      contextLines.push(`Window titles: ${titles}`);
+    }
+
+    // Typed text
     const meaningfulTyped = params.typedTexts.filter((t) => {
       const stripped = t.replace(/\s/g, "");
       if (stripped.length < 2) return false;
-      if (new Set(stripped.split("")).size === 1) return false; // e.g., "sss"
+      if (new Set(stripped.split("")).size === 1) return false;
       return true;
     });
     if (meaningfulTyped.length > 0) {
-      activityLines.push(
-        `Text typed by user: ${meaningfulTyped.map((t) => `"${t}"`).join(", ")}`
+      contextLines.push(
+        `Text typed: ${meaningfulTyped.map((t) => `"${t}"`).join(", ")}`
       );
     }
 
@@ -110,31 +152,45 @@ export class AiService {
       (s) => s !== "Tab" && s !== "Escape" && s !== "Enter"
     );
     if (meaningfulShortcuts.length > 0) {
-      activityLines.push(
-        `Keyboard shortcuts used: ${Array.from(new Set(meaningfulShortcuts)).join(", ")}`
+      contextLines.push(
+        `Keyboard shortcuts: ${Array.from(new Set(meaningfulShortcuts)).join(", ")}`
       );
     }
 
-    const activityContext =
-      activityLines.length > 0
-        ? `\n\nSupplementary activity data (use only if consistent with screenshots):\n${activityLines.join("\n")}`
+    const supplementary =
+      contextLines.length > 0
+        ? `\n\nSupplementary context (use only where consistent with screenshots):\n${contextLines.join("\n")}`
         : "";
 
-    const prompt = `The following ${imageContent.length} screenshot${imageContent.length !== 1 ? "s" : ""} were captured during a ${durationSec}-second screen session.${activityContext}
+    // ── Prompt ───────────────────────────────────────────────────────────
 
-Write a concise technical description (2–4 sentences) for a developer or QA engineer reviewing this session. Base your description primarily on what is visible in the screenshots. Your description must:
-1. Identify the application, page, or feature visible
-2. Describe the sequence of actions or states observed (navigation, interactions, changes visible on screen)
-3. Note any visible errors, warnings, failed states, or unexpected UI behavior
-4. Provide enough context to understand what was being tested or done
+    const prompt = `You are a senior QA engineer writing a bug report for a development team. Analyse the following ${imageContent.length} screenshot${imageContent.length !== 1 ? "s" : ""} captured during a ${durationSec}-second QA session.${supplementary}
 
-Write in past tense. Be factual and specific — only describe what is observable in the screenshots. Do not speculate or invent details not visible. If nothing significant is observable, say so briefly.`;
+Your task: produce a complete, factual bug report based ONLY on what is observable in the screenshots. Do NOT invent details.
+
+Respond with ONLY valid JSON — no markdown fences, no extra text:
+{
+  "title": "<one-line bug title, max 80 chars, present tense, e.g. 'Checkout button disabled after entering valid card'>",
+  "summary": "<2–3 sentences describing the application/page, the sequence of states or interactions observed, and any visible error or unexpected behaviour>",
+  "steps": [
+    "<Step 1: Describe the first visible state or action>",
+    "<Step 2: …>",
+    "<Step N: Describe the final broken/unexpected state>"
+  ],
+  "expected": "<one sentence: what correct behaviour should look like>",
+  "actual": "<one sentence: what the screenshots show instead — the defect>",
+  "severity": "<one of: critical | high | medium | low>"
+}
+
+Severity guide — critical: app crash / data loss / security issue; high: core feature broken, no workaround; medium: feature partially works or has a workaround; low: cosmetic or minor UX issue.
+
+Write all text in past tense. Be specific and factual.`;
 
     log.info(
-      "[AI] Generating description — screenshots:",
+      "[AI] Generating bug report — screenshots:",
       imageContent.length,
-      "typed blocks:",
-      params.typedTexts.length
+      "window contexts:",
+      contexts.length
     );
 
     const content: OpenAI.Chat.ChatCompletionContentPart[] = [
@@ -144,15 +200,49 @@ Write in past tense. Be factual and specific — only describe what is observabl
 
     const response = await client.chat.completions.create({
       model: GROQ_MODEL,
-      max_tokens: 180,
+      max_tokens: 600,
       messages: [{ role: "user", content }],
     });
 
-    const text = response.choices[0]?.message?.content?.trim();
-    if (!text) throw new Error("Empty response from Groq.");
+    const raw = response.choices[0]?.message?.content?.trim();
+    if (!raw) throw new Error("Empty response from Groq.");
 
-    log.info("[AI] Description generated successfully");
-    return text;
+    // Parse the JSON — strip any accidental fences the model may still add
+    const jsonStr = raw
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+
+    let report: BugReport;
+    try {
+      report = JSON.parse(jsonStr) as BugReport;
+    } catch {
+      // If JSON parse fails, build a fallback report from the raw text
+      log.warn("[AI] Failed to parse JSON from model, using fallback");
+      report = {
+        title: "Bug detected during QA session",
+        summary: raw.slice(0, 300),
+        steps: ["See screenshots for reproduction steps"],
+        expected: "Application should function as designed",
+        actual: "Unexpected behaviour observed — see screenshots",
+        severity: "medium",
+      };
+    }
+
+    // Ensure required fields exist
+    report.title = report.title ?? "Untitled bug";
+    report.steps = Array.isArray(report.steps) ? report.steps : [];
+    report.severity = (["critical", "high", "medium", "low"] as const).includes(
+      report.severity
+    )
+      ? report.severity
+      : "medium";
+
+    log.info(
+      "[AI] Bug report generated successfully — severity:",
+      report.severity
+    );
+    return report;
   }
 
   /** Returns a short user-facing message for common API errors. */
