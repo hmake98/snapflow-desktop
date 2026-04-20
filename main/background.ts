@@ -220,7 +220,7 @@ async function createMainWindow() {
     {
       width: 1200,
       height: 800,
-      fullscreen: true,
+      fullscreen: false,
       icon: iconPath,
       backgroundColor: "#030712", // matches Tailwind bg-gray-950
       titleBarStyle: "hiddenInset", // macOS: keeps native traffic lights, no title text
@@ -233,6 +233,18 @@ async function createMainWindow() {
     },
     true // Enable preventClose for tray-based application
   );
+
+  // Open maximized (full-size window) instead of fullscreen.
+  // Fullscreen hides the macOS menu bar and dock; maximize is the correct behaviour.
+  mainWindow.maximize();
+
+  // Re-maximize after every page load (loadURL) so the window never shrinks
+  // when navigating to the annotate / annotate-recording pages.
+  mainWindow.webContents.on("did-finish-load", () => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMaximized()) {
+      mainWindow.maximize();
+    }
+  });
 
   // Set Content Security Policy to fix Electron security warning
   mainWindow.webContents.session.webRequest.onHeadersReceived(
@@ -604,15 +616,17 @@ function hideMainWindowForCapture() {
 }
 
 function restoreMainWindowAfterCapture() {
-  mainWindow?.show();
-  if (windowStateBeforeCapture && mainWindow && !mainWindow.isDestroyed()) {
-    if (windowStateBeforeCapture.isFullScreen) {
-      mainWindow.setFullScreen(true);
-    } else if (windowStateBeforeCapture.isMaximized) {
-      mainWindow.maximize();
-    }
-    windowStateBeforeCapture = null;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  // Maximize BEFORE show() so the window never flashes at its smaller
+  // creation size (1200×800).  Electron allows maximizing a hidden window.
+  const wasMaximized = windowStateBeforeCapture?.isMaximized ?? true;
+  if (wasMaximized && !mainWindow.isMaximized()) {
+    mainWindow.maximize();
   }
+  windowStateBeforeCapture = null;
+
+  mainWindow.show();
 }
 
 async function showMainWindow() {
@@ -1062,7 +1076,14 @@ function handleCaptureSessionToggle() {
         timeline,
       };
 
-      // Navigate to session review page
+      // Navigate to session review page — maximize before show to avoid size flash.
+      if (
+        mainWindow &&
+        !mainWindow.isDestroyed() &&
+        !mainWindow.isMaximized()
+      ) {
+        mainWindow.maximize();
+      }
       mainWindow?.show();
       mainWindow?.focus();
       if (mainWindow && mainWindow.webContents) {
@@ -1256,6 +1277,9 @@ async function handleStartRecordingWithSelection(
     }
 
     // Show main window — picker modal is mounted globally in _app.tsx
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMaximized()) {
+      mainWindow.maximize();
+    }
     mainWindow?.show();
     mainWindow?.focus();
 
@@ -1472,6 +1496,11 @@ async function handleStopRecording() {
       issueId: result.issueId, // Issue ID for file organization
     };
 
+    // Maximize BEFORE show() so the window never flashes at its smaller creation size.
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMaximized()) {
+      mainWindow.maximize();
+    }
+
     // Show main window and navigate to recording annotate page
     mainWindow?.show();
 
@@ -1519,7 +1548,10 @@ async function handleCancelRecording() {
     recordingAreaSelector = null;
   }
 
-  // Show main window
+  // Show main window — maximize before show to avoid size flash.
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMaximized()) {
+    mainWindow.maximize();
+  }
   mainWindow?.show();
 }
 
@@ -3566,7 +3598,14 @@ function setupIPCHandlers() {
         recordingControlWindow = null;
       }
 
-      // Show main window and navigate to home
+      // Show main window and navigate to home — maximize before show to avoid size flash.
+      if (
+        mainWindow &&
+        !mainWindow.isDestroyed() &&
+        !mainWindow.isMaximized()
+      ) {
+        mainWindow.maximize();
+      }
       mainWindow?.show();
       mainWindow?.webContents.send("recording-saved", result);
 

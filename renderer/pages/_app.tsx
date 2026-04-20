@@ -12,12 +12,16 @@ import "../styles/globals.css";
 
 // Overlay/utility routes that don't need auth checks.
 // Checked synchronously so these windows never flash the splash screen.
+// IMPORTANT: every route that runs in its own BrowserWindow (not the main
+// window) MUST be listed here so it skips the auth-check/splash-screen flow.
 const OVERLAY_ROUTES = [
   "/area-capture",
   "/window-capture",
-  // "/recording-area-selector",
-  // "/recording-control",
-  // "/recording-overlay",
+  "/recording-area-selector",
+  "/recording-control",
+  "/recording-overlay",
+  "/session-hud",
+  "/window-picker",
   "/auth",
   "/500",
 ];
@@ -95,8 +99,11 @@ function MyApp({ Component, pageProps }: AppProps) {
         "/500",
         "/area-capture",
         "/window-capture",
-        // "/recording-area-selector",
-        // "/recording-control",
+        "/recording-area-selector",
+        "/recording-control",
+        "/recording-overlay",
+        "/session-hud",
+        "/window-picker",
       ];
       const semiProtectedRoutes = ["/join-workspace"]; // Auth required, but skip onboarding check
 

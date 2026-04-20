@@ -73,7 +73,7 @@ export const createWindow = (
     if (!win.isMinimized() && !win.isMaximized()) {
       Object.assign(state, getCurrentPosition());
     }
-    Object.assign(state, { isFullScreen: win.isFullScreen() });
+    // Do not persist fullscreen state — always open maximized, never fullscreen.
     (store as any).set(key, state);
   };
 
@@ -93,12 +93,10 @@ export const createWindow = (
     },
   }) as WindowInstance;
 
-  // Restore fullscreen state or apply the fullscreen option explicitly,
-  // since BrowserWindowConstructorOptions fullscreen is unreliable on macOS.
-  const shouldBeFullScreen =
-    (savedState as any).isFullScreen ?? options.fullscreen ?? false;
-  if (shouldBeFullScreen) {
-    win.setFullScreen(true);
+  // Never restore fullscreen — always open as a maximized (but not fullscreen) window.
+  // Fullscreen hides the menu bar and dock; maximized is the correct "full size" behaviour.
+  if (options.fullscreen) {
+    win.maximize();
   }
 
   win.on("close", (event) => {
