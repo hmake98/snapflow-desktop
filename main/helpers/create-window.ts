@@ -73,11 +73,14 @@ export const createWindow = (
     if (!win.isMinimized() && !win.isMaximized()) {
       Object.assign(state, getCurrentPosition());
     }
-
+    Object.assign(state, { isFullScreen: win.isFullScreen() });
     (store as any).set(key, state);
   };
 
-  state = ensureVisibleOnSomeDisplay(restore());
+  const savedState = restore() as typeof defaultSize & {
+    isFullScreen?: boolean;
+  };
+  state = ensureVisibleOnSomeDisplay(savedState);
 
   const win = new BrowserWindow({
     ...state,
@@ -89,6 +92,14 @@ export const createWindow = (
       ...options.webPreferences,
     },
   }) as WindowInstance;
+
+  // Restore fullscreen state or apply the fullscreen option explicitly,
+  // since BrowserWindowConstructorOptions fullscreen is unreliable on macOS.
+  const shouldBeFullScreen =
+    (savedState as any).isFullScreen ?? options.fullscreen ?? false;
+  if (shouldBeFullScreen) {
+    win.setFullScreen(true);
+  }
 
   win.on("close", (event) => {
     // If preventClose is enabled and not quitting, hide window instead of closing
