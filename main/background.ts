@@ -144,6 +144,12 @@ const appSettingsStore = new Store({
 // State tracking for tray actions to prevent race conditions
 let isShowingWindow = false;
 
+// Preserve window state before hiding for capture so it can be restored afterward
+let windowStateBeforeCapture: {
+  isMaximized: boolean;
+  isFullScreen: boolean;
+} | null = null;
+
 // Current renderer route — updated via "route:change" IPC from _app.tsx
 let currentRoute = "";
 
@@ -214,6 +220,7 @@ async function createMainWindow() {
     {
       width: 1200,
       height: 800,
+      fullscreen: true,
       icon: iconPath,
       backgroundColor: "#030712", // matches Tailwind bg-gray-950
       titleBarStyle: "hiddenInset", // macOS: keeps native traffic lights, no title text
@@ -586,6 +593,28 @@ function updateTrayMenu() {
  * Returns true if user clicked "Open System Settings", false otherwise
  */
 
+function hideMainWindowForCapture() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    windowStateBeforeCapture = {
+      isMaximized: mainWindow.isMaximized(),
+      isFullScreen: mainWindow.isFullScreen(),
+    };
+  }
+  mainWindow?.hide();
+}
+
+function restoreMainWindowAfterCapture() {
+  mainWindow?.show();
+  if (windowStateBeforeCapture && mainWindow && !mainWindow.isDestroyed()) {
+    if (windowStateBeforeCapture.isFullScreen) {
+      mainWindow.setFullScreen(true);
+    } else if (windowStateBeforeCapture.isMaximized) {
+      mainWindow.maximize();
+    }
+    windowStateBeforeCapture = null;
+  }
+}
+
 async function showMainWindow() {
   // Prevent concurrent calls to showMainWindow
   if (isShowingWindow) {
@@ -864,7 +893,7 @@ async function handleScreenshotCapture(
   try {
     // For window mode, create a transparent overlay for window selection
     if (mode === "window") {
-      mainWindow?.hide();
+      hideMainWindowForCapture();
 
       // Wait a bit for window to hide
       await new Promise((resolve) => setTimeout(resolve, 300));
@@ -875,7 +904,7 @@ async function handleScreenshotCapture(
     }
 
     if (mode === "region") {
-      mainWindow?.hide();
+      hideMainWindowForCapture();
 
       // Wait a bit for window to hide (reduced delay for smoother UX)
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -902,7 +931,7 @@ async function handleScreenshotCapture(
 
     log.info("[Tray] Starting", resolvedMode, "capture...");
 
-    mainWindow?.hide();
+    hideMainWindowForCapture();
     await new Promise((resolve) => setTimeout(resolve, 300));
 
     log.info("[Tray] Capturing screenshot...");
@@ -937,8 +966,8 @@ async function handleScreenshotCapture(
       log.info("[Tray] Navigation complete");
     }
 
-    // Then show and focus the window
-    mainWindow?.show();
+    // Then show and focus the window, restoring maximized/fullscreen state
+    restoreMainWindowAfterCapture();
     mainWindow?.focus();
     log.info("[Tray] Window shown and focused");
   } catch (error) {
@@ -951,7 +980,7 @@ async function handleScreenshotCapture(
  * Falls back to fullscreen if the display cannot be identified.
  */
 async function handleCurrentAppScreenCapture(displayId: number) {
-  mainWindow?.hide();
+  hideMainWindowForCapture();
   await new Promise((resolve) => setTimeout(resolve, 300));
 
   const { dataUrl } = await captureService.captureSpecificScreen(
@@ -963,7 +992,7 @@ async function handleCurrentAppScreenCapture(displayId: number) {
   if (mainWindow && mainWindow.webContents) {
     mainWindow.webContents.send("navigate", "/annotate");
   }
-  mainWindow?.show();
+  restoreMainWindowAfterCapture();
   mainWindow?.focus();
 }
 
@@ -3277,7 +3306,7 @@ function setupIPCHandlers() {
         log.info("[IPC Capture] Screenshot stored in pendingScreenshot");
 
         // Navigate to annotate page using client-side navigation (preserves app state)
-        mainWindow?.show();
+        restoreMainWindowAfterCapture();
         mainWindow?.focus();
         if (mainWindow && mainWindow.webContents) {
           mainWindow.webContents.send("navigate", "/annotate");
@@ -3303,7 +3332,7 @@ function setupIPCHandlers() {
         if (areaCaptureOverlays.length > 0) {
           closeAreaCaptureOverlays();
         }
-        mainWindow?.show();
+        restoreMainWindowAfterCapture();
         mainWindow?.focus();
         const errorMessage =
           error instanceof Error
@@ -3450,7 +3479,7 @@ function setupIPCHandlers() {
       log.info(
         "[Window Capture] Showing main window and navigating to annotate page..."
       );
-      mainWindow?.show();
+      restoreMainWindowAfterCapture();
       mainWindow?.focus();
       if (mainWindow && mainWindow.webContents) {
         mainWindow.webContents.send("navigate", "/annotate");
@@ -3461,7 +3490,7 @@ function setupIPCHandlers() {
     } catch (error) {
       log.error("[Window Capture] Error:", error);
       // Show main window even on error
-      mainWindow?.show();
+      restoreMainWindowAfterCapture();
       mainWindow?.focus();
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
@@ -3477,7 +3506,7 @@ function setupIPCHandlers() {
       windowCaptureOverlay = null;
       if (process.platform === "darwin") app.dock?.show();
     }
-    mainWindow?.show();
+    restoreMainWindowAfterCapture();
     mainWindow?.focus();
     return { success: true };
   });
