@@ -118,6 +118,7 @@ let pendingSession: {
     windowMeta?: { appName: string; windowTitle: string; url?: string };
   }[];
   timeline: unknown[];
+  environment?: { os: string; screen: string; appVersion: string };
 } | null = null;
 let pendingZohoTokens: {
   accessToken: string;
@@ -171,6 +172,70 @@ let pendingRecording: {
 
 // Active workspace scoped to the current session (set by renderer on login/switch)
 let activeWorkspaceId: string | null = null;
+
+async function getPostAuthNavigationTarget(
+  userId: string | null,
+  userEmail?: string | null
+): Promise<string> {
+  if (!userId) {
+    return "/onboarding";
+  }
+
+  const supabase = getSupabase();
+
+  // Pending invites must win over existing tenant/workspace checks so an
+  // already-onboarded user can still accept an invite into another workspace.
+  if (userEmail && supabase) {
+    const { data: pendingInvites } = await supabase
+      .from("pending_invites")
+      .select("workspace_id, role")
+      .eq("email", userEmail)
+      .is("accepted_at", null)
+      .order("created_at", { ascending: true });
+
+    if (pendingInvites && pendingInvites.length > 0) {
+      for (const invite of pendingInvites) {
+        const { data: existingMember } = await supabase
+          .from("workspace_members")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("workspace_id", invite.workspace_id)
+          .maybeSingle();
+
+        if (!existingMember) {
+          log.info(
+            "[Auth] Pending invite found, navigating to /join-workspace:",
+            invite.workspace_id
+          );
+          return `/join-workspace?workspaceId=${invite.workspace_id}&role=${invite.role}`;
+        }
+      }
+
+      log.info("[Auth] All pending invites already accepted, navigating home");
+      return "/home";
+    }
+  }
+
+  const existingTenant = await tenantService.getTenantByOwner(userId);
+  if (existingTenant) {
+    return "/home";
+  }
+
+  if (supabase) {
+    const { data: memberData } = await supabase
+      .from("workspace_members")
+      .select("workspace_id")
+      .eq("user_id", userId)
+      .limit(1)
+      .maybeSingle();
+
+    if (memberData?.workspace_id) {
+      return "/home";
+    }
+  }
+
+  return "/onboarding";
+}
 
 if (isProd) {
   serve({ directory: "app" });
@@ -417,7 +482,8 @@ function registerGlobalShortcuts() {
       const activeSession = debugCollector.getActiveSession();
       if (!activeSession) return; // only active during a session
       try {
-        const shot = await debugCollector.captureScreenshot();
+        // force=true: keyboard-triggered snaps are always intentional
+        const shot = await debugCollector.captureScreenshot(true, true);
         log.info("[Session] In-session screenshot captured:", shot.id);
         // Pulse the HUD screenshot count (status interval will update within 1s)
       } catch (err) {
@@ -794,8 +860,18 @@ async function createSessionHudWindow() {
   });
   if (process.platform === "darwin") app.dock?.show();
 
-  // Prevent HUD from appearing in screenshots/screen recordings
-  sessionHudWindow.setContentProtection(true);
+  // Prevent HUD from appearing in screenshots/screen recordings.
+  // Skip in dev so the window is actually visible during development.
+  if (isProd) {
+    sessionHudWindow.setContentProtection(true);
+  }
+
+  // Register ready-to-show BEFORE loadURL — the event can fire while the
+  // await is in progress; registering after means it's already been missed
+  // and show() is never called, leaving the window permanently hidden.
+  sessionHudWindow.once("ready-to-show", () => {
+    sessionHudWindow?.show();
+  });
 
   if (isProd) {
     await sessionHudWindow.loadURL("app://./session-hud");
@@ -804,9 +880,11 @@ async function createSessionHudWindow() {
     await sessionHudWindow.loadURL(`http://localhost:${port}/session-hud`);
   }
 
-  sessionHudWindow.once("ready-to-show", () => {
-    sessionHudWindow?.show();
-  });
+  // Fallback: if ready-to-show already fired during loadURL (race condition
+  // edge case), force-show the window now if it's still hidden.
+  if (sessionHudWindow && !sessionHudWindow.isDestroyed() && !sessionHudWindow.isVisible()) {
+    sessionHudWindow.show();
+  }
 
   sessionHudWindow.on("closed", () => {
     sessionHudWindow = null;
@@ -1074,19 +1152,23 @@ function handleCaptureSessionToggle() {
         events: session.events,
         screenshots: session.screenshots,
         timeline,
+        environment: session.environment,
       };
 
-      // Navigate to session review page — maximize before show to avoid size flash.
-      if (
-        mainWindow &&
-        !mainWindow.isDestroyed() &&
-        !mainWindow.isMaximized()
-      ) {
-        mainWindow.maximize();
-      }
-      mainWindow?.show();
-      mainWindow?.focus();
-      if (mainWindow && mainWindow.webContents) {
+      // Navigate to the session review page.
+      // Order matters on macOS:
+      //   1. restore()  — un-minimize a dock-minimized window first; calling
+      //                   maximize() on a minimized window is a no-op on macOS.
+      //   2. maximize() — ensure full-screen size before show() so there is no
+      //                   1200×800 creation-size flash.
+      //   3. show()     — make the window visible / bring it to front.
+      //   4. focus()    — give it keyboard focus.
+      //   5. send()     — deliver the navigate event to the now-visible renderer.
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        if (!mainWindow.isMaximized()) mainWindow.maximize();
+        mainWindow.show();
+        mainWindow.focus();
         mainWindow.webContents.send("navigate", "/annotate-session");
         mainWindow.webContents.send("collector:session-stopped", session);
       }
@@ -1629,82 +1711,16 @@ const handleOAuthCallback = async (url: string) => {
     //      Multiple pending invites are processed one at a time in creation order.
     //   2. Already owns a tenant or is already a workspace member → /home
     //   3. Brand-new user with no affiliation → /onboarding
-    const session = await authService.getSession();
     let navigateTo = "/onboarding";
     try {
       const currentUserId = sessionManager.getUserId();
+      const session = await authService.getSession();
       const userEmail = session?.user?.email;
       if (currentUserId) {
-        const supabase = getSupabase();
-
-        // ── Priority 1: Pending workspace invite (from pending_invites table) ─
-        // Query all unaccepted invites ordered by creation time so we process
-        // them one at a time. Metadata-based invites (legacy / OTP fallback)
-        // are also still written into this table via inviteByEmail.
-        let foundPendingInvite = false;
-        if (userEmail && supabase) {
-          const { data: pendingInvites } = await supabase
-            .from("pending_invites")
-            .select("workspace_id, role")
-            .eq("email", userEmail)
-            .is("accepted_at", null)
-            .order("created_at", { ascending: true });
-
-          if (pendingInvites && pendingInvites.length > 0) {
-            // Find the first invite the user hasn't joined yet
-            for (const invite of pendingInvites) {
-              const { data: existingMember } = await supabase
-                .from("workspace_members")
-                .select("id")
-                .eq("user_id", currentUserId)
-                .eq("workspace_id", invite.workspace_id)
-                .maybeSingle();
-
-              if (!existingMember) {
-                log.info(
-                  "[OAuth] Pending invite found, navigating to /join-workspace:",
-                  invite.workspace_id
-                );
-                navigateTo = `/join-workspace?workspaceId=${invite.workspace_id}&role=${invite.role}`;
-                foundPendingInvite = true;
-                break;
-              }
-            }
-            if (!foundPendingInvite) {
-              // All pending invites already accepted
-              log.info(
-                "[OAuth] All pending invites already accepted, navigating to /home"
-              );
-              navigateTo = "/home";
-              foundPendingInvite = true; // skip further checks
-            }
-          }
-        }
-
-        if (!foundPendingInvite) {
-          // ── Priority 2: Existing tenant owner ───────────────────────────────
-          const existingTenant =
-            await tenantService.getTenantByOwner(currentUserId);
-          if (existingTenant) {
-            log.info("[OAuth] User owns a tenant, navigating to /home");
-            navigateTo = "/home";
-          } else if (supabase) {
-            // ── Priority 3: Existing workspace member (invited user, no owned tenant) ──
-            const { data: memberData } = await supabase
-              .from("workspace_members")
-              .select("workspace_id")
-              .eq("user_id", currentUserId)
-              .limit(1)
-              .maybeSingle();
-            if (memberData?.workspace_id) {
-              log.info(
-                "[OAuth] User has workspace membership, navigating to /home"
-              );
-              navigateTo = "/home";
-            }
-            // else: new user, stays at /onboarding
-          }
-        }
+        navigateTo = await getPostAuthNavigationTarget(
+          currentUserId,
+          userEmail
+        );
       }
     } catch (navCheckError) {
       log.warn(
@@ -2099,20 +2115,45 @@ if (app && app.requestSingleInstanceLock) {
       // Register global keyboard shortcuts
       registerGlobalShortcuts();
 
-      // Listen for display changes to update tray menu
-      screen.on("display-added", () => {
-        log.info("[Display] Display added, updating tray menu");
+      // Listen for display changes to update tray menu and self-heal preferences
+      screen.on("display-added", (_event, display) => {
+        log.info("[Display] Display added:", display.id, "— updating tray menu");
         updateTrayMenu();
+        // Notify renderer so DisplaysSection refreshes automatically
+        mainWindow?.webContents.send("displays:changed", {
+          displays: captureService.getAvailableDisplays(),
+        });
       });
 
-      screen.on("display-removed", () => {
-        log.info("[Display] Display removed, updating tray menu");
+      screen.on("display-removed", (_event, display) => {
+        log.info("[Display] Display removed:", display.id, "— updating tray menu");
         updateTrayMenu();
+
+        // If the removed display was the user's saved default, clear the stale
+        // preference so captures fall back to cursor-based auto-detection.
+        const savedId = captureScreenSettings.getDefaultScreenId();
+        if (savedId !== null && savedId === display.id) {
+          log.info(
+            "[Display] Saved default display was removed — clearing stale preference"
+          );
+          captureScreenSettings.clearDefaultScreenId();
+          mainWindow?.webContents.send("displays:default-cleared", {
+            removedDisplayId: display.id,
+          });
+        }
+
+        // Notify renderer regardless (display list has changed)
+        mainWindow?.webContents.send("displays:changed", {
+          displays: captureService.getAvailableDisplays(),
+        });
       });
 
       screen.on("display-metrics-changed", () => {
         log.info("[Display] Display metrics changed, updating tray menu");
         updateTrayMenu();
+        mainWindow?.webContents.send("displays:changed", {
+          displays: captureService.getAvailableDisplays(),
+        });
       });
 
       // Initialize auto-updater (only in production)
@@ -2345,7 +2386,8 @@ function setupIPCHandlers() {
       const user = await authService.createUser(name, email, password);
       // Store user in session (same as login)
       await sessionManager.setUser(user);
-      return { success: true, data: user };
+      const redirectTo = await getPostAuthNavigationTarget(user.id, user.email);
+      return { success: true, data: { ...user, redirectTo } };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
@@ -2373,7 +2415,8 @@ function setupIPCHandlers() {
 
       // Store user in session
       await sessionManager.setUser(user);
-      return { success: true, data: user };
+      const redirectTo = await getPostAuthNavigationTarget(user.id, user.email);
+      return { success: true, data: { ...user, redirectTo } };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
@@ -2696,25 +2739,11 @@ function setupIPCHandlers() {
       if (!supabase) {
         throw new Error("Supabase client not initialized");
       }
-      const { data: existingMember } = await supabase
-        .from("workspace_members")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("workspace_id", workspaceId)
-        .limit(1)
-        .maybeSingle();
 
-      if (existingMember) {
-        log.warn("[workspace:join] User already a member of workspace");
-        return { success: true, message: "User already a member" };
-      }
-
-      // Add user to workspace as member
-      await workspaceService.addMember(workspaceId, userId, role);
-
-      // Mark this invite as accepted in pending_invites
       const userEmail = (await authService.getSession())?.user?.email;
-      if (userEmail) {
+
+      const markInviteAccepted = async () => {
+        if (!userEmail) return;
         const adminClient = getSupabaseAdmin();
         const updateClient = adminClient ?? supabase;
         await updateClient
@@ -2725,15 +2754,85 @@ function setupIPCHandlers() {
         log.info(
           `[workspace:join] Marked pending_invite accepted for ${userEmail} / ${workspaceId}`
         );
+      };
+
+      const getAlreadyOnboarded = async () => {
+        const existingTenant = await tenantService.getTenantByOwner(userId);
+        const progress = await onboardingService.getProgress(userId);
+        return {
+          alreadyOnboarded: !!existingTenant || progress?.isComplete === true,
+          progress,
+        };
+      };
+
+      const getNextPendingInvite = async (): Promise<{
+        workspaceId: string;
+        role: string;
+      } | null> => {
+        if (!userEmail) return null;
+
+        const { data: remainingInvites } = await supabase
+          .from("pending_invites")
+          .select("workspace_id, role")
+          .eq("email", userEmail)
+          .is("accepted_at", null)
+          .order("created_at", { ascending: true });
+
+        for (const invite of remainingInvites ?? []) {
+          const { data: alreadyMember } = await supabase
+            .from("workspace_members")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("workspace_id", invite.workspace_id)
+            .maybeSingle();
+
+          if (!alreadyMember) {
+            return {
+              workspaceId: invite.workspace_id,
+              role: invite.role,
+            };
+          }
+
+          await supabase
+            .from("pending_invites")
+            .update({ accepted_at: new Date().toISOString() })
+            .eq("email", userEmail)
+            .eq("workspace_id", invite.workspace_id);
+        }
+
+        return null;
+      };
+
+      const { data: existingMember } = await supabase
+        .from("workspace_members")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("workspace_id", workspaceId)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingMember) {
+        log.warn("[workspace:join] User already a member of workspace");
+        await markInviteAccepted();
+        const { alreadyOnboarded } = await getAlreadyOnboarded();
+        const nextPendingInvite = await getNextPendingInvite();
+        return {
+          success: true,
+          message: "User already a member",
+          data: { alreadyOnboarded, nextPendingInvite },
+        };
       }
+
+      // Add user to workspace as member
+      await workspaceService.addMember(workspaceId, userId, role);
+
+      // Mark this invite as accepted in pending_invites
+      await markInviteAccepted();
 
       // Determine whether this user already has completed onboarding.
       // If they own a tenant or previously completed onboarding they should go
       // straight to /home — not through the member-mode onboarding flow.
-      const existingTenant = await tenantService.getTenantByOwner(userId);
-      let progress = await onboardingService.getProgress(userId);
-      const alreadyOnboarded =
-        !!existingTenant || progress?.isComplete === true;
+      const { alreadyOnboarded, progress } = await getAlreadyOnboarded();
 
       if (!alreadyOnboarded) {
         // First-time user: initialize progress and send to connector step
@@ -2745,38 +2844,12 @@ function setupIPCHandlers() {
 
       // Check whether there are more unaccepted invites for this user so the
       // renderer can navigate directly to the next join-workspace page.
-      let nextPendingInvite: { workspaceId: string; role: string } | null =
-        null;
-      if (userEmail) {
-        const { data: remaining } = await supabase
-          .from("pending_invites")
-          .select("workspace_id, role")
-          .eq("email", userEmail)
-          .is("accepted_at", null)
-          .order("created_at", { ascending: true })
-          .limit(1)
-          .maybeSingle();
-        if (remaining) {
-          // Verify not already a member (invite could be stale)
-          const { data: alreadyMember } = await supabase
-            .from("workspace_members")
-            .select("id")
-            .eq("user_id", userId)
-            .eq("workspace_id", remaining.workspace_id)
-            .maybeSingle();
-          if (!alreadyMember) {
-            nextPendingInvite = {
-              workspaceId: remaining.workspace_id,
-              role: remaining.role,
-            };
-          }
-        }
-      }
+      const nextPendingInvite = await getNextPendingInvite();
 
       log.info(
         `[workspace:join] User ${userId} joined workspace ${workspaceId}, alreadyOnboarded=${alreadyOnboarded}, nextPendingInvite=${nextPendingInvite?.workspaceId ?? "none"}`
       );
-      return { success: true, alreadyOnboarded, nextPendingInvite };
+      return { success: true, data: { alreadyOnboarded, nextPendingInvite } };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
@@ -3006,6 +3079,54 @@ function setupIPCHandlers() {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
       log.error("Set onboarding step error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  ipcMain.handle("onboarding:complete", async () => {
+    try {
+      const userId = sessionManager.getUserId();
+      if (!userId) {
+        return { success: false, error: "User not authenticated" };
+      }
+
+      const tenant = await tenantService.getTenantByOwner(userId);
+      let hasWorkspaceAccess = false;
+
+      if (tenant) {
+        const workspaces = await workspaceService.listWorkspaces(tenant.id);
+        hasWorkspaceAccess = workspaces.length > 0;
+      } else {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data: memberData } = await supabase
+            .from("workspace_members")
+            .select("workspace_id")
+            .eq("user_id", userId)
+            .limit(1)
+            .maybeSingle();
+          hasWorkspaceAccess = !!memberData?.workspace_id;
+        }
+      }
+
+      if (!hasWorkspaceAccess) {
+        return {
+          success: false,
+          error: "Complete workspace setup before finishing onboarding",
+        };
+      }
+
+      const progress = await onboardingService.getProgress(userId);
+      if (!progress) {
+        await onboardingService.initializeProgress(userId);
+      }
+
+      await onboardingService.complete(userId);
+      return { success: true };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("Complete onboarding error:", error);
       return { success: false, error: errorMessage };
     }
   });
@@ -4737,7 +4858,9 @@ function setupIPCHandlers() {
     try {
       const active = debugCollector.getActiveSession();
       if (!active) return { success: false, error: "No active session" };
-      const shot = await debugCollector.captureScreenshot();
+      // force=true bypasses debounce and fingerprint dedup — manual snaps
+      // from the HUD should always produce a new screenshot entry.
+      const shot = await debugCollector.captureScreenshot(true, true);
       log.info("[Session] HUD-triggered screenshot:", shot.id);
       return { success: true, data: shot };
     } catch (error) {
@@ -4840,6 +4963,8 @@ function setupIPCHandlers() {
           windowTitle: string;
           url?: string;
         }>;
+        timeline?: string;
+        environment?: { os: string; screen: string; appVersion: string };
       }
     ) => {
       try {

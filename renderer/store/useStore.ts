@@ -4,6 +4,7 @@ import type {
   Issue,
   Connector,
   Workspace,
+  UserRole,
   // ShowPickerPayload,
 } from "../types";
 
@@ -21,9 +22,19 @@ interface AppState {
   user: User | null;
   setUser: (user: User | null) => void;
 
+  // Current user's role in the active workspace
+  currentUserRole: UserRole | null;
+  setCurrentUserRole: (role: UserRole | null) => void;
+
   // Active workspace state (persisted across pages)
   activeWorkspace: Workspace | null;
   setActiveWorkspace: (workspace: Workspace | null) => void;
+
+  /**
+   * Reset ALL state to initial values — call on logout or account switch so no
+   * stale data from the previous user leaks into the next session.
+   */
+  resetStore: () => void;
 
   // Issues state
   issues: Issue[];
@@ -70,9 +81,26 @@ export const useStore = create<AppState>((set) => ({
   user: null,
   setUser: (user) => set({ user }),
 
+  // Current user role
+  currentUserRole: null,
+  setCurrentUserRole: (currentUserRole) => set({ currentUserRole }),
+
   // Active workspace
   activeWorkspace: null,
   setActiveWorkspace: (activeWorkspace) => set({ activeWorkspace }),
+
+  // Reset everything — use on logout / account switch
+  resetStore: () =>
+    set({
+      user: null,
+      currentUserRole: null,
+      activeWorkspace: null,
+      issues: [],
+      connectors: [],
+      isLoading: false,
+      workspaceRefreshSignal: 0,
+      syncQueue: [],
+    }),
 
   // Issues state
   issues: [],

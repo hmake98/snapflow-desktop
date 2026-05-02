@@ -1,4 +1,14 @@
-export type UserRole = "owner" | "admin" | "pm" | "qa" | "dev" | "client";
+/**
+ * Simplified three-level role model.
+ *
+ *  owner  – created the workspace/tenant; has all permissions
+ *  admin  – can manage workspace settings, invite/remove members, change roles
+ *  member – can create, view, and capture snaps; cannot manage workspace
+ *
+ * Legacy roles (pm | qa | dev | client) were collapsed into "member".
+ * The DB migration coerces old rows automatically.
+ */
+export type UserRole = "owner" | "admin" | "member";
 
 export interface RecordingSource {
   id: string;
@@ -231,6 +241,7 @@ export type IPCChannel =
   | "workspace-member:invite"
   | "onboarding:get-status"
   | "onboarding:set-step"
+  | "onboarding:complete"
   | "snap:create"
   | "snap:list"
   | "snap:update"

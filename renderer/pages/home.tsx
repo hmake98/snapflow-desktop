@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Head from "next/head";
 import { useRouter } from "next/router";
@@ -48,6 +48,7 @@ export default function HomePage() {
     updateIssue,
     activeWorkspace,
     setActiveWorkspace,
+    resetStore,
   } = useStore();
 
   const syncQueue = useSyncQueue(() => loadData());
@@ -62,7 +63,7 @@ export default function HomePage() {
   const [workspaceId, setWorkspaceId] = useState<string>("");
   const [filter, setFilter] = useState<"all" | "screenshot" | "session">("all");
   const [statusFilter, setStatusFilter] = useState<
-    "all" | "cloud" | "github" | "zoho"
+    "all" | "github" | "zoho"
   >("all");
   const [sortBy, setSortBy] = useState<"date" | "name">("name");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
@@ -86,86 +87,105 @@ export default function HomePage() {
     string | null
   >(null);
 
+  /**
+   * Monotonically-incrementing fetch token.
+   * Every call to loadSnapsForWorkspace claims a new token; when the async
+   * result arrives it checks the token is still current before writing to
+   * state. This means rapid workspace switches can never produce a
+   * "stale response wins" race condition.
+   */
+  const fetchIdRef = useRef(0);
+
   useEffect(() => {
     loadData();
   }, []);
 
-  // Reload snaps when workspace changes
+  // Single source of truth for snaps: whenever the active workspace changes,
+  // immediately wipe stale data and fetch fresh snaps for the new workspace.
   useEffect(() => {
-    if (activeWorkspace) {
+    if (activeWorkspace?.id) {
       loadSnapsForWorkspace(activeWorkspace.id);
     }
   }, [activeWorkspace?.id]);
 
   const loadSnapsForWorkspace = async (wsId?: string) => {
+    // Claim this fetch slot — any in-flight fetch with an older token is stale.
+    const myToken = ++fetchIdRef.current;
+
+    // ── Clear immediately so the UI never shows another workspace's snaps ──
+    setIssues([]);
+    setConnectors([]);
+    setPreviewDialogOpen(false);
+    setPreviewIssue(null);
+    setLoading(true);
+
+    if (!wsId) {
+      setLoading(false);
+      return;
+    }
+
     try {
-      const userResult = await window.api.getUser();
-      if (userResult.success && userResult.data) {
-        // Fetch snaps and connectors in parallel — no need to wait for one
-        // before starting the other.
-        const [issuesResult, connectorsResult] = await Promise.all([
-          window.api.listIssues(userResult.data.id, wsId),
-          wsId
-            ? window.api.listConnectors(wsId)
-            : Promise.resolve({ success: true, data: [] as any[] }),
-        ]);
-        if (issuesResult.success) {
-          const fresh = issuesResult.data || [];
-          setIssues(fresh);
-          // Keep the open preview modal in sync — cloudFileUrl and syncStatus
-          // are set asynchronously after upload, so the modal's snapshot
-          // may be stale even though the issues list has been refreshed.
-          setPreviewIssue((prev) => {
-            if (!prev) return null;
-            const updated = fresh.find((i: Issue) => i.id === prev.id);
-            return updated ?? prev;
-          });
-        }
-        if (connectorsResult.success) {
-          setConnectors(connectorsResult.data || []);
+      // Use the user already in the store — avoids an extra IPC round-trip.
+      const userId = user?.id;
+      if (!userId) {
+        const userResult = await window.api.getUser();
+        if (!userResult.success || !userResult.data) {
+          setLoading(false);
+          return;
         }
       }
+
+      const effectiveUserId = user?.id ?? (await window.api.getUser()).data?.id;
+      if (!effectiveUserId) {
+        setLoading(false);
+        return;
+      }
+
+      const [issuesResult, connectorsResult] = await Promise.all([
+        window.api.listIssues(effectiveUserId, wsId),
+        window.api.listConnectors(wsId),
+      ]);
+
+      // Discard if a newer fetch has already started (workspace switched again)
+      if (myToken !== fetchIdRef.current) return;
+
+      if (issuesResult.success) {
+        setIssues(issuesResult.data || []);
+      }
+      if (connectorsResult.success) {
+        setConnectors(connectorsResult.data || []);
+      }
     } catch (error) {
-      console.error("Failed to reload snaps for workspace:", error);
+      console.error("[Home] Failed to load snaps for workspace:", error);
+    } finally {
+      if (myToken === fetchIdRef.current) {
+        setLoading(false);
+        setIsRefreshing(false);
+      }
     }
   };
 
-  // Listen for auto-sync completion and refresh issues
+  // Listen for auto-sync completion and refresh issues for the current workspace
   useEffect(() => {
-    const unsubscribe = window.api.onAutoSyncCompleted(async (data) => {
-      console.log("[Home] Auto-sync completed, reloading issues...", data);
-      // Re-fetch fresh data — don't rely on stale closure values since this
-      // event can fire before activeWorkspace has finished loading.
-      await loadSnapsForWorkspace(activeWorkspace?.id);
+    const unsubscribe = window.api.onAutoSyncCompleted(async () => {
+      // activeWorkspace?.id is captured in closure — always the current value
+      if (activeWorkspace?.id) {
+        await loadSnapsForWorkspace(activeWorkspace.id);
+      }
     });
 
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [setIssues, activeWorkspace?.id]);
-
-  // Safety-net: re-fetch once after 3 s to catch any auto-sync that
-  // completed just before or during initial render (annotate → home).
-  useEffect(() => {
-    const t1 = setTimeout(
-      () => loadSnapsForWorkspace(activeWorkspace?.id || workspaceId),
-      3000
-    );
-    return () => clearTimeout(t1);
-  }, []);
+  }, [activeWorkspace?.id]);
 
   const loadData = async () => {
-    // If Zustand already has snaps from this session (e.g. navigated back from
-    // annotate), skip the full-page skeleton and do a silent background refresh.
-    if (issues.length > 0) {
-      setLoading(false);
-      setIsRefreshing(true);
-    }
-
+    // loadData's job is auth/onboarding checks + workspace bootstrap.
+    // Snap fetching is delegated entirely to loadSnapsForWorkspace, which is
+    // triggered by the activeWorkspace?.id effect above. This prevents the
+    // double-fetch that used to happen when _app.tsx pre-populated the store
+    // before home.tsx mounted.
     try {
-      // Fire auth, onboarding check, and workspace list in parallel — they
-      // are independent of each other and together used to take ~450 ms
-      // sequentially.
       const [userResult, onboardingResult, wsResult] = await Promise.all([
         window.api.getUser(),
         window.api.getOnboardingStatus(),
@@ -184,38 +204,27 @@ export default function HomePage() {
         return;
       }
 
-      let resolvedWorkspaceId: string | undefined;
+      // If _app.tsx already set the active workspace, honour it — don't
+      // override with wsResult.data[0] which might be a different workspace.
       if (wsResult.success && wsResult.data?.length) {
-        const ws = activeWorkspace ?? wsResult.data[0];
         if (!activeWorkspace) {
-          setActiveWorkspace(wsResult.data[0]);
+          // First load — pick the first workspace and activate it.
+          const first = wsResult.data[0];
+          setActiveWorkspace(first);
+          setWorkspaceId(first.id);
+          window.api.setActiveWorkspace(first.id);
+          // The effect on activeWorkspace?.id will fire and call loadSnapsForWorkspace.
+        } else {
+          // activeWorkspace is already set by _app.tsx; just sync the local workspaceId.
+          setWorkspaceId(activeWorkspace.id);
+          // loadSnapsForWorkspace was already triggered by the activeWorkspace?.id effect.
+          // Nothing more to do here.
         }
-        resolvedWorkspaceId = ws.id;
-        setWorkspaceId(ws.id);
-        window.api.setActiveWorkspace(ws.id);
-      }
-
-      // Fetch snaps and connectors in parallel — single IPC round-trip pair.
-      const [issuesResult, connectorsResult] = await Promise.all([
-        window.api.listIssues(userResult.data.id, resolvedWorkspaceId),
-        resolvedWorkspaceId
-          ? window.api.listConnectors(resolvedWorkspaceId)
-          : Promise.resolve({ success: true, data: [] as any[] }),
-      ]);
-
-      if (issuesResult.success) {
-        setIssues(issuesResult.data || []);
-      }
-      if (connectorsResult.success) {
-        setConnectors(connectorsResult.data || []);
       }
     } catch (error) {
-      console.error("Failed to load data:", error);
+      console.error("[Home] Failed to load data:", error);
       window.api.showNotification("SnapFlow", "Failed to load data");
       router.push("/auth");
-    } finally {
-      setLoading(false);
-      setIsRefreshing(false);
     }
   };
 
@@ -229,7 +238,7 @@ export default function HomePage() {
         const message = result.data?.message || "Successfully synced to GitHub";
         window.api.showNotification("Synced to GitHub", message);
         // Lightweight refresh — no need to re-run auth/onboarding checks.
-        loadSnapsForWorkspace(workspaceId || activeWorkspace?.id);
+        loadSnapsForWorkspace(activeWorkspace?.id);
       } else {
         window.api.showNotification(
           "GitHub Sync Failed",
@@ -246,34 +255,6 @@ export default function HomePage() {
     }
   };
 
-  const _handleCloudSync = async (issue: Issue) => {
-    if (!user) return;
-    const shouldProceed = await syncQueue.syncToCloud(user.id, workspaceId);
-    if (!shouldProceed) return;
-    updateIssue(issue.id, { syncStatus: "syncing" });
-    try {
-      const result = await window.api.syncToCloud(user.id, workspaceId);
-      if (result.success) {
-        window.api.showNotification(
-          "Cloud Sync",
-          "Synced to cloud successfully"
-        );
-        loadData();
-      } else {
-        window.api.showNotification(
-          "Cloud Sync Failed",
-          result.error || "Sync failed"
-        );
-        updateIssue(issue.id, { syncStatus: "failed" });
-      }
-    } catch (err) {
-      window.api.showNotification(
-        "Cloud Sync Failed",
-        err instanceof Error ? err.message : "Sync failed"
-      );
-      updateIssue(issue.id, { syncStatus: "failed" });
-    }
-  };
 
   const confirmDelete = (issueId: string) => {
     setIssueToDelete(issueId);
@@ -427,8 +408,6 @@ export default function HomePage() {
         (filter === "session" && isSession) ||
         (filter === "screenshot" && !isSession && issue.type === "screenshot");
 
-      // Determine sync status for filtering
-      const isCloudSynced = issue.syncStatus === "synced"; // Synced to Supabase
       const hasGitHubSync = issue.syncedTo?.some(
         (s) => s.platform === "github"
       );
@@ -436,7 +415,6 @@ export default function HomePage() {
 
       const matchesStatusFilter =
         statusFilter === "all" ||
-        (statusFilter === "cloud" && isCloudSynced) ||
         (statusFilter === "github" && hasGitHubSync) ||
         (statusFilter === "zoho" && hasZohoSync);
 
@@ -499,14 +477,6 @@ export default function HomePage() {
 
     if (zohoSync) {
       return <Badge variant="info">📊 Zoho</Badge>;
-    }
-
-    return null;
-  };
-
-  const getCloudSyncBadge = (issue: Issue) => {
-    if (issue.syncStatus === "synced") {
-      return <Badge variant="primary">☁️ Cloud</Badge>;
     }
 
     return null;
@@ -1056,7 +1026,7 @@ export default function HomePage() {
           "Issue successfully synced to Zoho Projects"
         );
         // Lightweight refresh — skip auth/onboarding.
-        loadSnapsForWorkspace(workspaceId || activeWorkspace?.id);
+        loadSnapsForWorkspace(activeWorkspace?.id);
       } else {
         window.api.showNotification(
           "Zoho Sync Failed",
@@ -1074,20 +1044,19 @@ export default function HomePage() {
   };
 
   const handleLogout = async () => {
+    // Wipe ALL store state atomically so the next user starts clean.
+    // Do this before calling logout() to prevent any brief render with stale data.
+    resetStore();
     try {
-      setUser(null);
-      setIssues([]);
       await window.api.logout();
       window.api.showNotification(
         "Signed Out",
         "You have been logged out of SnapFlow"
       );
-      await router.push("/auth");
     } catch (error) {
       console.error("[Logout] error:", error);
-      setUser(null);
-      setIssues([]);
       window.api.showNotification("Signed Out", "Session ended");
+    } finally {
       router.push("/auth");
     }
   };
@@ -1279,12 +1248,6 @@ export default function HomePage() {
                 <FilterBar
                   options={[
                     { id: "all", label: "All", count: issues.length },
-                    {
-                      id: "cloud",
-                      label: "Cloud Sync",
-                      count: issues.filter((i) => i.syncStatus === "synced")
-                        .length,
-                    },
                     {
                       id: "github",
                       label: "GitHub Sync",
@@ -1598,10 +1561,7 @@ export default function HomePage() {
                         {/* Sync Status and Actions */}
                         <div className="flex items-center justify-between mt-auto gap-2">
                           <div className="flex items-center gap-1 flex-wrap">
-                            {getCloudSyncBadge(issue)}
-                            {!getCloudSyncBadge(issue) && (
-                              <Badge variant="gray">Local</Badge>
-                            )}
+                            <Badge variant="primary">☁️ Synced</Badge>
                           </div>
 
                           <div className="flex items-center space-x-0.5">
@@ -2180,93 +2140,6 @@ export default function HomePage() {
                       </p>
                     </div>
 
-                    {/* Shareable URL - Only show if synced to cloud */}
-                    {(() => {
-                      const isSession = !!(previewIssue as any).sessionData;
-                      const cloudUrls = (previewIssue as any).sessionData
-                        ?.cloudScreenshotUrls as string[] | undefined;
-                      const shareableUrl = isSession
-                        ? cloudUrls?.[activeCarouselIdx]
-                        : previewIssue.cloudFileUrl;
-                      if (!shareableUrl) return null;
-                      const screenshotLabel = isSession
-                        ? `screenshot ${activeCarouselIdx + 1}`
-                        : previewIssue.type === "recording"
-                          ? "recording"
-                          : "screenshot";
-                      return (
-                        <div>
-                          <label className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5 block">
-                            Shareable Link
-                            {isSession && cloudUrls && cloudUrls.length > 1 && (
-                              <span className="ml-1.5 normal-case font-normal text-gray-500">
-                                (screenshot {activeCarouselIdx + 1})
-                              </span>
-                            )}
-                          </label>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              readOnly
-                              value={shareableUrl}
-                              className="flex-1 text-xs text-gray-300 font-mono bg-gray-800/50 px-2.5 py-1.5 rounded-lg border border-gray-700/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                            />
-                            <Button
-                              variant="primary"
-                              size="xs"
-                              onClick={() => {
-                                navigator.clipboard.writeText(shareableUrl);
-                                window.api.showNotification(
-                                  "Copied",
-                                  "Link copied to clipboard"
-                                );
-                              }}
-                              title="Copy to clipboard"
-                            >
-                              <svg
-                                className="w-3.5 h-3.5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                                />
-                              </svg>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              onClick={() => {
-                                window.api.openExternalUrl(shareableUrl);
-                              }}
-                              title="Open in browser"
-                            >
-                              <svg
-                                className="w-3.5 h-3.5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                                />
-                              </svg>
-                            </Button>
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1.5">
-                            Anyone with this link can view this{" "}
-                            {screenshotLabel}
-                          </p>
-                        </div>
-                      );
-                    })()}
 
                     {/* File Path - Collapsible on mobile */}
                     <details className="group">
@@ -2327,10 +2200,7 @@ export default function HomePage() {
                               syncedTo: previewIssue.syncedTo,
                             });
                             if (result.success) {
-                              const msg = result.synced
-                                ? "Bug report with media link copied to clipboard"
-                                : "Bug report copied to clipboard (no cloud link — sync to include media)";
-                              window.api.showNotification("Copied", msg);
+                              window.api.showNotification("Copied", "Bug report copied to clipboard");
                             } else {
                               window.api.showNotification(
                                 "Copy Failed",

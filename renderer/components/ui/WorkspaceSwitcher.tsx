@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useStore } from "../../store/useStore";
-import type { WorkspaceWithRole } from "../../types";
+import type { WorkspaceWithRole, UserRole } from "../../types";
 
 export function WorkspaceSwitcher() {
-  const { activeWorkspace, setActiveWorkspace, workspaceRefreshSignal } =
-    useStore();
+  const {
+    activeWorkspace,
+    setActiveWorkspace,
+    setCurrentUserRole,
+    workspaceRefreshSignal,
+  } = useStore();
   const [open, setOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<WorkspaceWithRole[]>([]);
   const [loading, setLoading] = useState(false);
@@ -21,23 +25,31 @@ export function WorkspaceSwitcher() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const loadWorkspaces = async (force = false) => {
-    if (!force && workspaces.length > 0) return; // Already loaded, skip unless forced
+  const loadWorkspaces = async () => {
     setLoading(true);
     try {
       const r = await window.api.getUserWorkspaces();
       if (r.success && r.data) {
         setWorkspaces(r.data);
-        // Auto-set active workspace if none selected
+
+        // Auto-set active workspace if none is selected yet
         if (!activeWorkspace && r.data.length > 0) {
-          setActiveWorkspace(r.data[0]);
-          window.api.setActiveWorkspace(r.data[0].id);
+          const first = r.data[0];
+          setActiveWorkspace(first);
+          setCurrentUserRole((first.role ?? "member") as UserRole);
+          window.api.setActiveWorkspace(first.id);
         }
-        // If the active workspace name changed server-side, keep the store in sync
+
+        // Keep the store in sync if the active workspace name/role changed server-side
         if (activeWorkspace) {
           const updated = r.data.find((w) => w.id === activeWorkspace.id);
-          if (updated && updated.name !== activeWorkspace.name) {
-            setActiveWorkspace({ ...activeWorkspace, ...updated });
+          if (updated) {
+            const nameChanged = updated.name !== activeWorkspace.name;
+            if (nameChanged) {
+              setActiveWorkspace({ ...activeWorkspace, ...updated });
+            }
+            // Always sync role to store so permission checks are up to date
+            setCurrentUserRole((updated.role ?? "member") as UserRole);
           }
         }
       }
@@ -51,36 +63,43 @@ export function WorkspaceSwitcher() {
   // Re-fetch whenever settings page triggers a workspace/org update
   useEffect(() => {
     if (workspaceRefreshSignal > 0) {
-      loadWorkspaces(true);
+      loadWorkspaces();
     }
   }, [workspaceRefreshSignal]);
 
   const handleToggle = () => {
-    if (!open) loadWorkspaces();
+    if (!open) loadWorkspaces(); // Always fetch fresh data when opening
     setOpen((v) => !v);
   };
 
   const handleSelect = (ws: WorkspaceWithRole) => {
     setActiveWorkspace(ws);
+    setCurrentUserRole((ws.role ?? "member") as UserRole);
     window.api.setActiveWorkspace(ws.id);
     setOpen(false);
     window.api.showNotification("Workspace Switched", `Switched to ${ws.name}`);
   };
 
   const ROLE_COLORS: Record<string, string> = {
+    owner: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
     admin: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+    member: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+    // Legacy aliases — kept so old DB rows still render gracefully
     pm: "bg-blue-500/20 text-blue-300 border-blue-500/30",
-    dev: "bg-green-500/20 text-green-300 border-green-500/30",
-    qa: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
-    client: "bg-gray-500/20 text-gray-300 border-gray-500/30",
+    dev: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+    qa: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+    client: "bg-blue-500/20 text-blue-300 border-blue-500/30",
   };
 
   const ROLE_LABELS: Record<string, string> = {
+    owner: "Owner",
     admin: "Admin",
-    pm: "PM",
-    dev: "Dev",
-    qa: "QA",
-    client: "Client",
+    member: "Member",
+    // Legacy aliases
+    pm: "Member",
+    dev: "Member",
+    qa: "Member",
+    client: "Member",
   };
 
   return (

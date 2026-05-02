@@ -5,31 +5,22 @@ import type { WorkspaceMemberWithUser, UserRole, Workspace } from "../../types";
 const ROLE_LABELS: Record<UserRole, string> = {
   owner: "Owner",
   admin: "Admin",
-  pm: "Project Manager",
-  qa: "QA",
-  dev: "Developer",
-  client: "Client",
+  member: "Member",
 };
 
 const ROLE_COLORS: Record<UserRole, string> = {
   owner: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
   admin: "bg-purple-500/20 text-purple-300 border-purple-500/30",
-  pm: "bg-blue-500/20 text-blue-300 border-blue-500/30",
-  dev: "bg-green-500/20 text-green-300 border-green-500/30",
-  qa: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
-  client: "bg-gray-500/20 text-gray-300 border-gray-500/30",
+  member: "bg-blue-500/20 text-blue-300 border-blue-500/30",
 };
 
 const ROLE_DESCRIPTIONS: Partial<Record<UserRole, string>> = {
-  admin: "Full access",
-  pm: "Manage tasks",
-  dev: "View & capture",
-  qa: "Test & report",
-  client: "View only",
+  admin: "Manage workspace, invite & remove members",
+  member: "Create & view snaps, run captures",
 };
 
-const ALL_ROLES: UserRole[] = ["owner", "admin", "pm", "dev", "qa", "client"];
-const WORKSPACE_ROLES: UserRole[] = ["admin", "pm", "dev", "qa", "client"];
+const ALL_ROLES: UserRole[] = ["owner", "admin", "member"];
+const WORKSPACE_ROLES: UserRole[] = ["admin", "member"];
 
 interface InviteFormState {
   email: string;
@@ -60,7 +51,7 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteForm, setInviteForm] = useState<InviteFormState>({
     email: "",
-    role: "dev" as Exclude<UserRole, "owner">,
+    role: "member" as Exclude<UserRole, "owner">,
   });
   const [inviting, setInviting] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<ConfirmRemoveState>(null);
@@ -69,7 +60,10 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all");
 
-  const isAdmin = currentUserRole === "admin" || isTenantOwner;
+  const isAdmin =
+    currentUserRole === "owner" ||
+    currentUserRole === "admin" ||
+    isTenantOwner;
 
   const loadMembers = useCallback(async () => {
     try {
@@ -111,7 +105,7 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
           "Invite Sent",
           `Invite sent to ${inviteForm.email}`
         );
-        setInviteForm({ email: "", role: "dev" });
+        setInviteForm({ email: "", role: "member" });
         setShowInviteModal(false);
       } else {
         window.api.showNotification(
@@ -591,7 +585,7 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
               <button
                 onClick={() => {
                   setShowInviteModal(false);
-                  setInviteForm({ email: "", role: "dev" });
+                  setInviteForm({ email: "", role: "member" });
                 }}
                 className="w-7 h-7 rounded-lg text-gray-500 hover:text-gray-200 hover:bg-gray-800 flex items-center justify-center transition-all"
               >
@@ -692,7 +686,7 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
                   type="button"
                   onClick={() => {
                     setShowInviteModal(false);
-                    setInviteForm({ email: "", role: "dev" });
+                    setInviteForm({ email: "", role: "member" });
                   }}
                   disabled={inviting}
                   className="flex-1 h-9 rounded-lg text-sm font-medium text-gray-400 hover:text-gray-200 hover:bg-gray-800 border border-gray-700/60 transition-all disabled:opacity-50"

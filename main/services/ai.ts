@@ -33,6 +33,18 @@ export interface GenerateDescriptionParams {
   durationMs: number;
   /** Per-screenshot window/app context captured at capture time */
   windowContexts?: WindowContext[];
+  /**
+   * Pre-built chronological activity narrative from the renderer's groupTimeline().
+   * When present this is used as the PRIMARY prompt context; screenshots are
+   * visual evidence only.  Format:
+   *   +0s  ↳ Navigated to: Chrome — "Login"
+   *   +3s  ⌨ Typed: "user@example.com"
+   *   +5s  🖱 Left-clicked
+   *   +6s  📸 Screenshot captured
+   */
+  timeline?: string;
+  /** Host environment captured at session start */
+  environment?: { os: string; screen: string; appVersion: string };
 }
 
 /**
@@ -111,90 +123,100 @@ export class AiService {
       }
     }
 
-    if (imageContent.length === 0) {
-      throw new Error("No screenshots available to generate a description.");
+    if (imageContent.length === 0 && !params.timeline) {
+      throw new Error("No session data available to generate a description.");
     }
 
-    // ── Supplementary context lines ──────────────────────────────────────
+    // ── Build context block ───────────────────────────────────────────────
 
-    const contextLines: string[] = [];
+    const contextParts: string[] = [];
 
-    // Window / app context per screenshot
-    const contexts = params.windowContexts ?? [];
-    if (contexts.length > 0) {
-      const unique = Array.from(
-        new Map(contexts.map((c) => [c.appName, c])).values()
-      );
-      const appList = unique
-        .map((c) => (c.url ? `${c.appName} (${c.url})` : c.appName))
-        .join(", ");
-      contextLines.push(`Applications visible: ${appList}`);
-
-      // Add page/window titles for more context
-      const titles = unique.map((c) => `"${c.windowTitle}"`).join(", ");
-      contextLines.push(`Window titles: ${titles}`);
-    }
-
-    // Typed text
-    const meaningfulTyped = params.typedTexts.filter((t) => {
-      const stripped = t.replace(/\s/g, "");
-      if (stripped.length < 2) return false;
-      if (new Set(stripped.split("")).size === 1) return false;
-      return true;
-    });
-    if (meaningfulTyped.length > 0) {
-      contextLines.push(
-        `Text typed: ${meaningfulTyped.map((t) => `"${t}"`).join(", ")}`
+    // Environment line
+    if (params.environment) {
+      contextParts.push(
+        `Environment: ${params.environment.os} · ${params.environment.screen} · App v${params.environment.appVersion}`
       );
     }
 
-    const meaningfulShortcuts = params.shortcuts.filter(
-      (s) => s !== "Tab" && s !== "Escape" && s !== "Enter"
-    );
-    if (meaningfulShortcuts.length > 0) {
-      contextLines.push(
-        `Keyboard shortcuts: ${Array.from(new Set(meaningfulShortcuts)).join(", ")}`
+    // Primary: structured activity timeline (text-first strategy)
+    if (params.timeline) {
+      contextParts.push(`\nActivity timeline:\n${params.timeline}`);
+    } else {
+      // Fallback when no timeline: reconstruct from individual fields
+      const contexts = params.windowContexts ?? [];
+      if (contexts.length > 0) {
+        const unique = Array.from(
+          new Map(contexts.map((c) => [c.appName, c])).values()
+        );
+        contextParts.push(
+          `Applications: ${unique.map((c) => (c.url ? `${c.appName} (${c.url})` : c.appName)).join(", ")}`
+        );
+      }
+      const meaningfulTyped = params.typedTexts.filter((t) => {
+        const s = t.replace(/\s/g, "");
+        return s.length >= 2 && new Set(s.split("")).size > 1;
+      });
+      if (meaningfulTyped.length > 0) {
+        contextParts.push(
+          `Text typed: ${meaningfulTyped.map((t) => `"${t}"`).join(", ")}`
+        );
+      }
+      const meaningfulShortcuts = params.shortcuts.filter(
+        (s) => s !== "Tab" && s !== "Escape" && s !== "Enter"
       );
+      if (meaningfulShortcuts.length > 0) {
+        contextParts.push(
+          `Shortcuts used: ${Array.from(new Set(meaningfulShortcuts)).join(", ")}`
+        );
+      }
     }
 
-    const supplementary =
-      contextLines.length > 0
-        ? `\n\nSupplementary context (use only where consistent with screenshots):\n${contextLines.join("\n")}`
-        : "";
+    const contextBlock =
+      contextParts.length > 0 ? contextParts.join("\n") : "";
 
     // ── Prompt ───────────────────────────────────────────────────────────
+    // Text-first strategy: the activity timeline is the ground-truth source.
+    // Screenshots are visual evidence to confirm or elaborate details.
+    // The model must not invent steps or errors not supported by the data.
 
-    const prompt = `You are a senior QA engineer writing a bug report for a development team. Analyse the following ${imageContent.length} screenshot${imageContent.length !== 1 ? "s" : ""} captured during a ${durationSec}-second QA session.${supplementary}
+    const hasImages = imageContent.length > 0;
+    const imageNote = hasImages
+      ? `\n\nThe ${imageContent.length} screenshot${imageContent.length !== 1 ? "s" : ""} attached show the visual state at the moments marked "📸 Screenshot captured" in the timeline. Use them to confirm details and describe visible UI elements, but derive the sequence of steps FROM THE TIMELINE, not the images alone.`
+      : "";
 
-Your task: produce a complete, factual bug report based ONLY on what is observable in the screenshots. Do NOT invent details.
+    const prompt = `You are a senior QA engineer writing a bug report from a recorded QA session.
+
+${contextBlock}${imageNote}
+
+Your task: produce a complete, factual bug report. Base the reproduction STEPS primarily on the activity timeline above. Use the screenshots to confirm visible UI states. Do NOT invent details not supported by the data.
 
 Respond with ONLY valid JSON — no markdown fences, no extra text:
 {
-  "title": "<one-line bug title, max 80 chars, present tense, e.g. 'Checkout button disabled after entering valid card'>",
-  "summary": "<2–3 sentences describing the application/page, the sequence of states or interactions observed, and any visible error or unexpected behaviour>",
+  "title": "<one-line bug title, max 80 chars, e.g. 'Checkout button stays disabled after entering valid card'>",
+  "summary": "<2–3 sentences: what app/page was being tested, what the QA did, and what unexpected behaviour was observed>",
   "steps": [
-    "<Step 1: Describe the first visible state or action>",
-    "<Step 2: …>",
-    "<Step N: Describe the final broken/unexpected state>"
+    "<Step 1: Opening state or navigation>",
+    "<Step 2: Action taken (match typed text, clicks, shortcuts from timeline)>",
+    "<Step N: The broken or unexpected final state>"
   ],
   "expected": "<one sentence: what correct behaviour should look like>",
-  "actual": "<one sentence: what the screenshots show instead — the defect>",
+  "actual": "<one sentence: what actually happened — the defect>",
   "severity": "<one of: critical | high | medium | low>"
 }
 
-Severity guide — critical: app crash / data loss / security issue; high: core feature broken, no workaround; medium: feature partially works or has a workaround; low: cosmetic or minor UX issue.
+Severity guide — critical: app crash / data loss / security; high: core feature broken, no workaround; medium: feature partial or has workaround; low: cosmetic or minor UX.
 
-Write all text in past tense. Be specific and factual.`;
+Write in past tense. Be specific and factual. If there is no clear bug, describe what was tested and note it appeared to function correctly.`;
 
     log.info(
       "[AI] Generating bug report — screenshots:",
       imageContent.length,
-      "window contexts:",
-      contexts.length
+      "has timeline:",
+      !!params.timeline
     );
 
     const content: OpenAI.Chat.ChatCompletionContentPart[] = [
-      ...imageContent,
+      ...(hasImages ? imageContent : []),
       { type: "text", text: prompt },
     ];
 

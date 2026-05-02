@@ -185,6 +185,48 @@ export class CaptureService extends EventEmitter {
   }
 
   /**
+   * Determine the best display to capture for a fullscreen shot.
+   *
+   * Priority (highest → lowest):
+   *  1. Caller-supplied explicit display ID (e.g. from a tray menu action)
+   *  2. Display currently containing the mouse cursor
+   *  3. Primary display (safe fallback)
+   *
+   * On single-display systems this always returns the primary, so behaviour
+   * is completely unchanged from the old code.
+   */
+  getFullscreenTargetDisplay(explicitId?: number | null): Electron.Display {
+    const allDisplays = screen.getAllDisplays();
+
+    // Single-display — no ambiguity
+    if (allDisplays.length === 1) return allDisplays[0];
+
+    // Explicit caller preference
+    if (explicitId != null) {
+      const found = allDisplays.find((d) => d.id === explicitId);
+      if (found) return found;
+      log.warn(
+        "[Capture] Explicit display ID not found, falling back to cursor display:",
+        explicitId
+      );
+    }
+
+    // Auto: display under the cursor — zero user interaction required
+    try {
+      const cursorPoint = screen.getCursorScreenPoint();
+      const cursorDisplay = screen.getDisplayNearestPoint(cursorPoint);
+      log.info(
+        "[Capture] Multi-display auto-select: cursor on display",
+        cursorDisplay.id,
+        `(${cursorDisplay.bounds.width}×${cursorDisplay.bounds.height})`
+      );
+      return cursorDisplay;
+    } catch {
+      return screen.getPrimaryDisplay();
+    }
+  }
+
+  /**
    * Main capture method - handles fullscreen, window, and region captures
    */
   async captureScreenshot(
@@ -195,6 +237,22 @@ export class CaptureService extends EventEmitter {
         "[Capture] Starting screenshot capture with options:",
         JSON.stringify(options)
       );
+
+      // ── Multi-display fullscreen: auto-route to cursor display ────────────
+      // On multi-monitor setups the legacy code always picked the primary
+      // display. Instead we delegate to captureSpecificScreen() which already
+      // handles correct source matching + thumbnail sizing per display.
+      if (
+        options.mode === "fullscreen" &&
+        screen.getAllDisplays().length > 1
+      ) {
+        const targetDisplay = this.getFullscreenTargetDisplay();
+        log.info(
+          "[Capture] Multi-display fullscreen → routing to display",
+          targetDisplay.id
+        );
+        return this.captureSpecificScreen(targetDisplay.id);
+      }
 
       const primaryDisplay = screen.getPrimaryDisplay();
       const scaleFactor = primaryDisplay.scaleFactor || 1;

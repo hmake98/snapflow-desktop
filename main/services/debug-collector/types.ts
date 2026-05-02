@@ -70,12 +70,24 @@ export interface DebugScreenshot {
 // Session
 // ---------------------------------------------------------------------------
 
+/** System context captured once at session start. */
+export interface SessionEnvironment {
+  /** e.g. "macOS 14.4.0" | "Windows 10.0.22631" | "Linux 6.5.0" */
+  os: string;
+  /** Primary display resolution, e.g. "2560×1600" */
+  screen: string;
+  /** SnapFlow app version, e.g. "1.2.0" */
+  appVersion: string;
+}
+
 export interface DebugSession {
   id: string;
   start_time: number;
   end_time: number | null;
   events: DebugEvent[];
   screenshots: DebugScreenshot[];
+  /** Captured once at session start — OS, screen size, app version */
+  environment?: SessionEnvironment;
 }
 
 // ---------------------------------------------------------------------------

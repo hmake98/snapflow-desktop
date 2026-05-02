@@ -81,7 +81,7 @@ export default function OnboardingPage() {
   const [zohoConnectorName, setZohoConnectorName] = useState("");
   const [zohoOAuthError, setZohoOAuthError] = useState("");
 
-  const [connectorAddedType, setConnectorAddedType] = useState<string>("");
+  const [connectedTypes, setConnectedTypes] = useState<Set<string>>(new Set());
 
   // Helper to update step and persist to DB
   async function updateStep(newStep: number) {
@@ -275,6 +275,9 @@ export default function OnboardingPage() {
 
       const newWorkspace = result.data as Workspace;
       setWorkspace(newWorkspace);
+      // Set as the active workspace so the main process has the correct context
+      // before the user reaches the connectors step or /home.
+      await window.api.setActiveWorkspace(newWorkspace.id);
       window.api.showNotification(
         "Workspace Created",
         "Workspace created successfully!"
@@ -440,7 +443,7 @@ export default function OnboardingPage() {
         return;
       }
 
-      setConnectorAddedType("github");
+      setConnectedTypes((prev) => new Set(Array.from(prev).concat("github")));
       setConnectors([...connectors, { type: "github" }]);
       window.api.showNotification(
         "GitHub Connected",
@@ -507,7 +510,7 @@ export default function OnboardingPage() {
         return;
       }
 
-      setConnectorAddedType("zoho");
+      setConnectedTypes((prev) => new Set(Array.from(prev).concat("zoho")));
       setConnectors([...connectors, { type: "zoho" }]);
       window.api.showNotification(
         "Zoho Connected",
@@ -526,7 +529,23 @@ export default function OnboardingPage() {
   // Handle completing onboarding
   async function handleComplete() {
     // Connectors are optional - can complete without any
-    router.push("/home");
+    setSaving(true);
+    setError("");
+
+    try {
+      const result = await window.api.completeOnboarding();
+      if (!result.success) {
+        setError(result.error || "Failed to complete onboarding");
+        return;
+      }
+
+      await router.push("/home");
+    } catch (err) {
+      console.error("Error completing onboarding:", err);
+      setError("Failed to complete onboarding");
+    } finally {
+      setSaving(false);
+    }
   }
 
   // Handle skip connectors (go to home but incomplete)
@@ -605,7 +624,7 @@ export default function OnboardingPage() {
 
             {/* Step Indicator */}
             <div className="flex justify-between mb-8">
-              {(isMemberMode ? [4, 5] : [1, 2, 3, 4, 5]).map((s, idx) => {
+              {(isMemberMode ? [4, 5] : [1, 3, 4, 5]).map((s, idx) => {
                 // Map visible index (1-based) to display number
                 const displayNum = idx + 1;
                 // A visible step is "done" if the actual step has passed it
@@ -617,13 +636,11 @@ export default function OnboardingPage() {
                     : "Done"
                   : s === 1
                     ? "Org"
-                    : s === 2
-                      ? "Team"
-                      : s === 3
-                        ? "Workspace"
-                        : s === 4
-                          ? "Connectors"
-                          : "Done";
+                    : s === 3
+                      ? "Workspace"
+                      : s === 4
+                        ? "Connectors"
+                        : "Done";
                 return (
                   <div key={s} className="flex flex-col items-center flex-1">
                     <div
@@ -667,7 +684,7 @@ export default function OnboardingPage() {
                 <span className="text-sm text-gray-400 flex-1 text-center">
                   {isMemberMode
                     ? `Step ${step === 4 ? 1 : 2} of 2`
-                    : `Step ${step === 1 ? 1 : step === 3 ? 2 : step === 4 ? 3 : 4} of 4`}
+                    : `Step ${step === 1 ? 1 : step === 3 ? 2 : 3} of 3`}
                 </span>
                 <Button
                   onClick={() => {
@@ -677,7 +694,13 @@ export default function OnboardingPage() {
                   }}
                   variant="outline"
                   size="sm"
-                  disabled={isMemberMode ? step === 5 : step === 4}
+                  disabled={
+                    isMemberMode
+                      ? step === 5
+                      : step === 4 ||
+                        (step === 1 && !tenant) ||
+                        (step === 3 && !workspace)
+                  }
                 >
                   Next →
                 </Button>
@@ -795,18 +818,18 @@ export default function OnboardingPage() {
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold text-gray-100">GitHub</h3>
-                        {connectorAddedType !== "github" && (
+                        {!connectedTypes.has("github") && (
                           <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded">
                             Optional
                           </span>
                         )}
                       </div>
-                      {connectorAddedType === "github" && (
+                      {connectedTypes.has("github") && (
                         <span className="text-green-400 text-lg">✓</span>
                       )}
                     </div>
 
-                    {connectorAddedType === "github" ? (
+                    {connectedTypes.has("github") ? (
                       <div className="text-green-400 text-sm">
                         Connected: {githubSelectedRepoFullName}
                       </div>
@@ -916,18 +939,18 @@ export default function OnboardingPage() {
                         <h3 className="font-semibold text-gray-100">
                           Zoho Projects
                         </h3>
-                        {connectorAddedType !== "zoho" && (
+                        {!connectedTypes.has("zoho") && (
                           <span className="text-xs bg-orange-500/20 text-orange-300 px-2 py-1 rounded">
                             Optional
                           </span>
                         )}
                       </div>
-                      {connectorAddedType === "zoho" && (
+                      {connectedTypes.has("zoho") && (
                         <span className="text-green-400 text-lg">✓</span>
                       )}
                     </div>
 
-                    {connectorAddedType === "zoho" ? (
+                    {connectedTypes.has("zoho") ? (
                       <div className="text-green-400 text-sm">
                         Connected: {zohoSelectedPortalName} /{" "}
                         {zohoSelectedProjectName}
@@ -1064,9 +1087,11 @@ export default function OnboardingPage() {
 
                 <div className="flex flex-col gap-3">
                   <Button onClick={handleComplete} className="w-full">
-                    {connectors.length > 0
-                      ? "Continue to SnapFlow"
-                      : "Continue Without Connectors"}
+                    {saving
+                      ? "Finishing..."
+                      : connectors.length > 0
+                        ? "Continue to SnapFlow"
+                        : "Continue Without Connectors"}
                   </Button>
                   {connectors.length > 0 && (
                     <button

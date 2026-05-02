@@ -264,24 +264,17 @@ export function GitHubConnectorManager() {
     }
   };
 
-  if (loading && !workspaceId) {
+  if (loading) {
     return (
-      <div className="space-y-3">
-        {[...Array(1)].map((_, i) => (
-          <div
-            key={i}
-            className="animate-pulse bg-gray-800/40 border border-gray-700/30 rounded-xl p-5"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-gray-700 rounded-lg" />
-              <div className="flex-1 space-y-2">
-                <div className="h-3.5 bg-gray-700 rounded w-1/3" />
-                <div className="h-3 bg-gray-700 rounded w-1/4" />
-              </div>
-              <div className="w-20 h-8 bg-gray-700 rounded-lg" />
-            </div>
+      <div className="animate-pulse space-y-2">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-gray-700/60 rounded-lg flex-shrink-0" />
+          <div className="flex-1 space-y-1.5">
+            <div className="h-3 bg-gray-700/60 rounded w-1/3" />
+            <div className="h-2.5 bg-gray-700/40 rounded w-1/4" />
           </div>
-        ))}
+          <div className="w-16 h-7 bg-gray-700/60 rounded-lg" />
+        </div>
       </div>
     );
   }

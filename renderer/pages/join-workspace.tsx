@@ -82,8 +82,9 @@ export default function JoinWorkspacePage() {
         `You've joined ${workspace.name}!`
       );
 
-      // Set this workspace as active so onboarding/home loads the right context
-      window.api.setActiveWorkspace(workspace.id);
+      // Set this workspace as active so onboarding/home loads the right context.
+      // Must be awaited — subsequent IPC calls on the next page rely on activeWorkspaceId.
+      await window.api.setActiveWorkspace(workspace.id);
 
       // If there are more unaccepted invites, go to the next one immediately
       const next = result.data?.nextPendingInvite;

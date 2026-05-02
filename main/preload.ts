@@ -62,7 +62,7 @@ const api = {
   inviteTeamMember: (
     workspaceId: string,
     email: string,
-    role: "admin" | "pm" | "qa" | "dev" | "client"
+    role: "admin" | "member"
   ) =>
     ipcRenderer.invoke("workspace-member:invite", { workspaceId, email, role }),
   listWorkspaceMembers: (workspaceId: string) =>
@@ -74,7 +74,7 @@ const api = {
   updateMemberRole: (
     workspaceId: string,
     userId: string,
-    role: "admin" | "pm" | "qa" | "dev" | "client"
+    role: "admin" | "member"
   ) =>
     ipcRenderer.invoke("workspace-member:update-role", {
       workspaceId,
@@ -86,6 +86,7 @@ const api = {
   getOnboardingStatus: () => ipcRenderer.invoke("onboarding:get-status"),
   setOnboardingStep: (step: number) =>
     ipcRenderer.invoke("onboarding:set-step", { step }),
+  completeOnboarding: () => ipcRenderer.invoke("onboarding:complete"),
 
   // Issue methods
   createIssue: (
@@ -345,6 +346,10 @@ const api = {
       windowTitle: string;
       url?: string;
     }>;
+    /** Full chronological activity narrative (text-primary AI strategy) */
+    timeline?: string;
+    /** Host environment from session start */
+    environment?: { os: string; screen: string; appVersion: string };
   }) => ipcRenderer.invoke("ai:generate-description", params),
   aiGenerateDescriptionFromSnap: (snapId: string) =>
     ipcRenderer.invoke("ai:generate-description-from-snap", { snapId }),
@@ -452,6 +457,22 @@ const api = {
     ipcRenderer.on("auto-sync-completed", subscription);
     return () =>
       ipcRenderer.removeListener("auto-sync-completed", subscription);
+  },
+
+  // Display change events — fired automatically when monitors connect/disconnect
+  onDisplaysChanged: (
+    callback: (data: { displays: Array<{ id: number; label: string; bounds: { x: number; y: number; width: number; height: number }; scaleFactor: number; isPrimary: boolean }> }) => void
+  ) => {
+    const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on("displays:changed", subscription);
+    return () => ipcRenderer.removeListener("displays:changed", subscription);
+  },
+  onDisplayDefaultCleared: (
+    callback: (data: { removedDisplayId: number }) => void
+  ) => {
+    const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on("displays:default-cleared", subscription);
+    return () => ipcRenderer.removeListener("displays:default-cleared", subscription);
   },
 
   // Utility methods

@@ -8,7 +8,8 @@ type TimelineColor =
   | "secondary"
   | "muted"
   | "accent"
-  | "destructive";
+  | "destructive"
+  | "warning";
 
 // ── Variants ──────────────────────────────────────────────────────────────
 
@@ -74,8 +75,8 @@ Timeline.displayName = "Timeline";
 
 // ── TimelineItem ──────────────────────────────────────────────────────────
 
-interface TimelineItemProps extends Omit<HTMLMotionProps<"li">, "ref"> {
-  title?: string;
+interface TimelineItemProps extends Omit<HTMLMotionProps<"li">, "ref" | "title"> {
+  title?: React.ReactNode;
   description?: React.ReactNode;
   icon?: React.ReactNode;
   iconColor?: TimelineColor;
@@ -179,6 +180,7 @@ const iconColorMap: Record<string, string> = {
   muted: "bg-gray-800 text-gray-400",
   accent: "bg-indigo-600 text-white",
   destructive: "bg-red-600 text-white",
+  warning: "bg-amber-600/80 text-white",
 };
 
 const TimelineIcon = ({

@@ -27,23 +27,17 @@ type ConfirmDeleteState = { id: string; name: string } | null;
 const ROLE_LABELS: Record<UserRole, string> = {
   owner: "Owner",
   admin: "Admin",
-  pm: "Project Manager",
-  dev: "Developer",
-  qa: "QA",
-  client: "Client",
+  member: "Member",
 };
 
 const ROLE_COLORS: Record<UserRole, string> = {
   owner: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
   admin: "bg-purple-500/20 text-purple-300 border-purple-500/30",
-  pm: "bg-blue-500/20 text-blue-300 border-blue-500/30",
-  dev: "bg-green-500/20 text-green-300 border-green-500/30",
-  qa: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
-  client: "bg-gray-500/20 text-gray-300 border-gray-500/30",
+  member: "bg-blue-500/20 text-blue-300 border-blue-500/30",
 };
 
 // Workspace-assignable roles (exclude "owner" which is tenant-level)
-const WORKSPACE_ROLES: UserRole[] = ["admin", "pm", "dev", "qa", "client"];
+const WORKSPACE_ROLES: UserRole[] = ["admin", "member"];
 
 // ─── WorkspaceMembersPanel ─────────────────────────────────────────────────────
 

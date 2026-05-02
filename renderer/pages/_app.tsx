@@ -6,6 +6,7 @@ import { SplashScreen } from "../components/ui/SplashScreen";
 // import { WindowPickerModal } from "../components/WindowPickerModal";
 import { useStore } from "../store/useStore";
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
+import type { UserRole } from "../types";
 // import type { ShowPickerPayload } from "../types";
 
 import "../styles/globals.css";
@@ -55,7 +56,8 @@ function MyApp({ Component, pageProps }: AppProps) {
   //   pickerPayload,
   //   showRecordingPicker,
   // } = useStore();
-  useStore();
+  const { setUser, setActiveWorkspace, setCurrentUserRole, resetStore } =
+    useStore();
 
   // Notify main process of route changes so tray can enable/disable capture actions
   useEffect(() => {
@@ -64,25 +66,24 @@ function MyApp({ Component, pageProps }: AppProps) {
 
   useEffect(() => {
     // Setup OAuth callback listener
-    const unsubscribe = window.api.onNavigate((route: string) => {
+    const unsubscribeNavigate = window.api.onNavigate((route: string) => {
       console.log("[App] Received navigate event:", route);
       console.log("[App] Current pathname:", router.pathname);
       router.push(route);
     });
 
-    // Recording picker listener — commented out
-    // const unsubscribePicker = window.ipc.on(
-    //   "recording:show-picker",
-    //   (payload: unknown) => {
-    //     setPickerPayload(payload as ShowPickerPayload);
-    //     setShowRecordingPicker(true);
-    //   }
-    // );
+    // Session expiry — wipe all state and redirect to login so the next user
+    // starts with a completely clean store instead of stale data.
+    const unsubscribeExpired = window.api.onSessionExpired?.(() => {
+      console.log("[App] Session expired — resetting store and redirecting");
+      resetStore();
+      router.push("/auth");
+    });
 
     console.log("[App] onNavigate listener set up");
     return () => {
-      unsubscribe();
-      // if (unsubscribePicker) unsubscribePicker();
+      unsubscribeNavigate();
+      unsubscribeExpired?.();
     };
   }, []);
 
@@ -202,6 +203,34 @@ function MyApp({ Component, pageProps }: AppProps) {
             await router.push("/onboarding");
             return;
           }
+        }
+
+        // ── Load user context into store atomically ────────────────────────
+        // This ensures the Zustand store is populated as soon as auth is
+        // confirmed — pages no longer need to re-fetch the user themselves.
+        try {
+          const [freshUser, workspacesResult] = await Promise.all([
+            window.api.getUser(),
+            window.api.getUserWorkspaces(),
+          ]);
+
+          if (freshUser.success && freshUser.data) {
+            setUser(freshUser.data);
+          }
+
+          if (workspacesResult.success && workspacesResult.data?.length) {
+            // Restore the previously active workspace (main process tracks it)
+            // or fall back to the first workspace in the list.
+            const activeResult = await window.api.getActiveWorkspaceId?.();
+            const savedId = activeResult?.success ? activeResult.data : null;
+            const list = workspacesResult.data;
+            const toActivate =
+              list.find((w) => w.id === savedId) ?? list[0];
+            setActiveWorkspace(toActivate);
+            setCurrentUserRole((toActivate.role ?? "member") as UserRole);
+          }
+        } catch (ctxErr) {
+          console.error("[App] Failed to load user context into store:", ctxErr);
         }
 
         console.log("[App] Auth check passed, setting authChecked to true");

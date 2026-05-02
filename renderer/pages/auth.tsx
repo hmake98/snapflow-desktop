@@ -56,10 +56,11 @@ export default function AuthPage() {
         );
         clearTimeout(authTimeout);
         if (result.success) {
+          const redirectTo = result.data?.redirectTo || "/home";
           try {
-            await router.push("/home");
+            await router.push(redirectTo);
           } catch {
-            window.location.href = "/home";
+            window.location.href = redirectTo;
           }
           return;
         } else {
@@ -80,10 +81,11 @@ export default function AuthPage() {
         );
         clearTimeout(authTimeout);
         if (result.success) {
+          const redirectTo = result.data?.redirectTo || "/home";
           try {
-            await router.push("/home");
+            await router.push(redirectTo);
           } catch {
-            window.location.href = "/home";
+            window.location.href = redirectTo;
           }
           return;
         } else {
@@ -144,8 +146,10 @@ export default function AuthPage() {
         <title>{isLogin ? "Login" : "Sign Up"} - SnapFlow</title>
       </Head>
 
-      <div className="w-full overflow-hidden flex flex-col bg-slate-950 pt-8" style={{ height: "100vh" }}>
-
+      <div
+        className="w-full overflow-hidden flex flex-col bg-slate-950 pt-8"
+        style={{ height: "100vh" }}
+      >
         {/* Two-column body */}
         <div className="flex-1 flex overflow-hidden">
           {/* ── Left brand panel ── */}
@@ -261,8 +265,8 @@ export default function AuthPage() {
           </div>
 
           {/* ── Right form panel ── */}
-          <div className="flex-1 flex items-center justify-center overflow-hidden bg-slate-950 px-8">
-            <div className="w-full max-w-md">
+          <div className="flex-1 flex items-center justify-center overflow-hidden bg-slate-950 px-6">
+            <div className="w-full max-w-[360px]">
               {/* Form header */}
               <div className="mb-7">
                 <h2 className="text-2xl font-bold text-gray-100">

@@ -17,7 +17,8 @@
  */
 
 import { randomUUID } from "crypto";
-import { desktopCapturer, screen } from "electron";
+import os from "os";
+import { app, desktopCapturer, screen } from "electron";
 import log from "electron-log";
 import { captureService } from "../capture";
 import { storageManager } from "../../utils/storage";
@@ -27,6 +28,7 @@ import type {
   DebugEvent,
   DebugScreenshot,
   DebugSession,
+  SessionEnvironment,
   SnapshotResult,
   TimelineEntry,
   WindowMeta,
@@ -120,6 +122,26 @@ export class SessionManager {
   // Mode 2 — Session capture
   // ---------------------------------------------------------------------------
 
+  /** Build a snapshot of the host environment for attaching to a session. */
+  private captureEnvironment(): SessionEnvironment {
+    try {
+      const platform = process.platform;
+      const platformName =
+        platform === "darwin"
+          ? "macOS"
+          : platform === "win32"
+            ? "Windows"
+            : "Linux";
+      const osString = `${platformName} ${os.release()}`;
+      const { width, height } = screen.getPrimaryDisplay().size;
+      const screenString = `${width}×${height}`;
+      const appVersion = app.getVersion();
+      return { os: osString, screen: screenString, appVersion };
+    } catch {
+      return { os: "Unknown", screen: "Unknown", appVersion: "Unknown" };
+    }
+  }
+
   /** Start a new debug session. Throws if a session is already active. */
   startSession(): DebugSession {
     if (this.activeSession) {
@@ -132,6 +154,7 @@ export class SessionManager {
       end_time: null,
       events: [],
       screenshots: [],
+      environment: this.captureEnvironment(),
     };
 
     this.activeSession = session;
@@ -182,9 +205,10 @@ export class SessionManager {
 
   /**
    * Take a screenshot inside the active session.
-   * Optionally link the screenshot to the most recent event.
+   * @param linkToLatestEvent - Link screenshot to the most recent event (default true)
+   * @param force - Bypass debounce and fingerprint dedup (use for manual/user-triggered captures)
    */
-  async captureScreenshot(linkToLatestEvent = true): Promise<DebugScreenshot> {
+  async captureScreenshot(linkToLatestEvent = true, force = false): Promise<DebugScreenshot> {
     if (!this.activeSession) {
       throw new Error("No active debug session");
     }
@@ -195,8 +219,9 @@ export class SessionManager {
     // record what the QA was looking at, not our own overlay.
     const windowMeta = await getActiveWindowMeta();
 
-    // Debounce: skip if a capture was taken very recently
-    if (timestamp - this.lastCaptureTime < MIN_CAPTURE_INTERVAL_MS) {
+    // Debounce: skip if a capture was taken very recently.
+    // Bypassed when force=true (manual/user-triggered captures always proceed).
+    if (!force && timestamp - this.lastCaptureTime < MIN_CAPTURE_INTERVAL_MS) {
       log.info(
         "[SessionManager] Skipping duplicate capture — too soon after last capture"
       );
@@ -212,11 +237,12 @@ export class SessionManager {
       mode: "fullscreen",
     });
 
-    // Fingerprint check: skip if screen content hasn't changed
+    // Fingerprint check: skip if screen content hasn't changed.
+    // Bypassed when force=true so users always get a new entry when they click Snap.
     const fingerprint = Buffer.from(
       buffer.slice(0, FINGERPRINT_BYTES)
     ).toString("base64");
-    if (fingerprint === this.lastCaptureFingerprint) {
+    if (!force && fingerprint === this.lastCaptureFingerprint) {
       log.info(
         "[SessionManager] Skipping duplicate capture — screen unchanged"
       );
