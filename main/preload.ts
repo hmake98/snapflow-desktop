@@ -28,6 +28,20 @@ const api = {
   getUser: () => ipcRenderer.invoke("user:get"),
   updateUser: (userId: string, updates: { name?: string; email?: string }) =>
     ipcRenderer.invoke("user:update", { userId, updates }),
+  uploadAvatar: (
+    userId: string,
+    fileData: number[],
+    mimeType: string,
+    extension: string
+  ) =>
+    ipcRenderer.invoke("user:upload-avatar", {
+      userId,
+      fileData,
+      mimeType,
+      extension,
+    }),
+  removeAvatar: (userId: string) =>
+    ipcRenderer.invoke("user:remove-avatar", { userId }),
   logout: () => ipcRenderer.invoke("user:logout"),
   googleSignIn: () => ipcRenderer.invoke("user:google-signin"),
   getSessionExpiry: () => ipcRenderer.invoke("user:get-session-expiry"),
@@ -354,9 +368,12 @@ const api = {
   aiGenerateDescriptionFromSnap: (snapId: string) =>
     ipcRenderer.invoke("ai:generate-description-from-snap", { snapId }),
   aiIsConfigured: () => ipcRenderer.invoke("ai:is-configured"),
-  aiGetKey: () => ipcRenderer.invoke("ai:get-key"),
-  aiSetKey: (key: string) => ipcRenderer.invoke("ai:set-key", { key }),
-  aiClearKey: () => ipcRenderer.invoke("ai:clear-key"),
+  aiGetAllStatus: () => ipcRenderer.invoke("ai:get-all-status"),
+  aiGetKey: (provider: string) => ipcRenderer.invoke("ai:get-key", { provider }),
+  aiSetKey: (provider: string, key: string) => ipcRenderer.invoke("ai:set-key", { provider, key }),
+  aiClearKey: (provider: string) => ipcRenderer.invoke("ai:clear-key", { provider }),
+  aiGetActiveProvider: () => ipcRenderer.invoke("ai:get-active-provider"),
+  aiSetActiveProvider: (provider: string) => ipcRenderer.invoke("ai:set-active-provider", { provider }),
 
   // Event listeners
   onScreenshotCaptured: (

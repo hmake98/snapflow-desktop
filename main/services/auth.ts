@@ -22,6 +22,7 @@ export interface AuthUser {
   id: string;
   name: string;
   email: string;
+  avatarUrl?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,6 +35,7 @@ function mapUser(u: SupabaseUser): AuthUser {
     id: u.id,
     name: u.user_metadata?.name ?? u.email?.split("@")[0] ?? "User",
     email: u.email!,
+    avatarUrl: u.user_metadata?.avatar_url ?? undefined,
     createdAt: new Date(u.created_at),
     updatedAt: new Date(u.updated_at ?? u.created_at),
   };
@@ -148,7 +150,7 @@ class AuthService {
     try {
       const { data, error } = await supabase
         .from("user_profiles")
-        .select("id, name, email")
+        .select("id, name, email, avatar_url")
         .eq("id", userId)
         .single();
 
@@ -161,6 +163,7 @@ class AuthService {
           (data.email as string).split("@")[0] ||
           "User",
         email: data.email as string,
+        avatarUrl: (data.avatar_url as string) ?? undefined,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -358,6 +361,82 @@ class AuthService {
 
     log.info("[Auth] ✓ exchangeCodeForSession");
     return data.session;
+  }
+
+  // ── Avatar management ────────────────────────────────────────────────────────
+
+  async uploadAvatar(
+    userId: string,
+    fileData: Buffer,
+    mimeType: string,
+    extension: string
+  ): Promise<AuthUser> {
+    log.info("[Auth] uploadAvatar →", userId);
+    const supabase = requireSupabase();
+
+    const filePath = `${userId}/avatar.${extension}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("avatars")
+      .upload(filePath, fileData, {
+        contentType: mimeType,
+        upsert: true,
+      });
+
+    if (uploadError) {
+      log.error("[Auth] avatar upload error:", uploadError.message);
+      throw new Error(uploadError.message);
+    }
+
+    const { data: urlData } = supabase.storage
+      .from("avatars")
+      .getPublicUrl(filePath);
+
+    const avatarUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+
+    // Persist to auth user metadata and user_profiles
+    const { data, error } = await supabase.auth.updateUser({
+      data: { avatar_url: avatarUrl },
+    });
+    if (error) throw new Error(error.message);
+
+    await supabase
+      .from("user_profiles")
+      .update({ avatar_url: avatarUrl })
+      .eq("id", userId);
+
+    const user = mapUser(data.user);
+    log.info("[Auth] ✓ uploadAvatar", userId);
+    return user;
+  }
+
+  async removeAvatar(userId: string): Promise<AuthUser> {
+    log.info("[Auth] removeAvatar →", userId);
+    const supabase = requireSupabase();
+
+    // Remove all files under the user's avatar folder
+    const { data: files } = await supabase.storage
+      .from("avatars")
+      .list(userId);
+
+    if (files && files.length > 0) {
+      const paths = files.map((f) => `${userId}/${f.name}`);
+      await supabase.storage.from("avatars").remove(paths);
+    }
+
+    const { data, error } = await supabase.auth.updateUser({
+      data: { avatar_url: null },
+    });
+    if (error) throw new Error(error.message);
+
+    await supabase
+      .from("user_profiles")
+      .update({ avatar_url: null })
+      .eq("id", userId);
+
+    const user = mapUser(data.user);
+    log.info("[Auth] ✓ removeAvatar", userId);
+    return user;
   }
 
   // ── Sign-out ─────────────────────────────────────────────────────────────────

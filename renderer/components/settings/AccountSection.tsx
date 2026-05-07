@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { AVATAR_PLACEHOLDER } from "../../utils/avatar";
 import { Button } from "../ui/Button";
 import { WorkspacesSection } from "./WorkspacesSection";
 import { UsersSection } from "./UsersSection";
@@ -9,6 +10,7 @@ interface User {
   id: string;
   name: string;
   email: string;
+  avatarUrl?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -42,6 +44,9 @@ export const AccountSection: React.FC = () => {
   const [formData, setFormData] = useState({ name: "", email: "" });
   const [saving, setSaving] = useState(false);
   const [isTenantOwner, setIsTenantOwner] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   // Derive role and isAdmin from the store — always in sync with active workspace.
   const currentUserRole = storeRole ?? "member";
@@ -141,6 +146,73 @@ export const AccountSection: React.FC = () => {
     setEditing(false);
   };
 
+  const handleAvatarFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    const allowed = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      window.api.showNotification("Invalid file", "Please select a JPG, PNG, GIF, or WebP image.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      window.api.showNotification("File too large", "Avatar must be under 2 MB.");
+      return;
+    }
+
+    const extension = file.name.split(".").pop() ?? "jpg";
+    const arrayBuffer = await file.arrayBuffer();
+    const fileData = Array.from(new Uint8Array(arrayBuffer));
+
+    // Show local preview immediately
+    setAvatarPreview(URL.createObjectURL(file));
+    setAvatarUploading(true);
+
+    try {
+      const result = await window.api.uploadAvatar(
+        user.id,
+        fileData,
+        file.type,
+        extension
+      );
+      if (result.success) {
+        setUser(result.data);
+        window.api.showNotification("Avatar Updated", "Your profile picture has been saved.");
+      } else {
+        setAvatarPreview(null);
+        window.api.showNotification("Upload failed", result.error ?? "Could not upload avatar.");
+      }
+    } catch {
+      setAvatarPreview(null);
+      window.api.showNotification("Upload failed", "Could not upload avatar.");
+    } finally {
+      setAvatarUploading(false);
+      // Reset input so the same file can be re-selected if needed
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (!user) return;
+    setAvatarUploading(true);
+    try {
+      const result = await window.api.removeAvatar(user.id);
+      if (result.success) {
+        setUser(result.data);
+        setAvatarPreview(null);
+        window.api.showNotification("Avatar Removed", "Your profile picture has been removed.");
+      } else {
+        window.api.showNotification("Error", result.error ?? "Could not remove avatar.");
+      }
+    } catch {
+      window.api.showNotification("Error", "Could not remove avatar.");
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
   // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -200,6 +272,67 @@ export const AccountSection: React.FC = () => {
         {/* Profile tab */}
         {activeTab === "profile" && (
           <div className="max-w-2xl space-y-4">
+            {/* Avatar upload */}
+            <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg px-4 py-4 flex items-center gap-4">
+              <div className="relative flex-shrink-0 group">
+                <img
+                  src={avatarPreview ?? user.avatarUrl ?? AVATAR_PLACEHOLDER}
+                  alt="Profile"
+                  className="w-16 h-16 rounded-full object-cover ring-2 ring-gray-700/60"
+                />
+                {/* Overlay on hover */}
+                <button
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={avatarUploading}
+                  className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center disabled:cursor-not-allowed"
+                  title="Change avatar"
+                >
+                  {avatarUploading ? (
+                    <svg className="w-5 h-5 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  )}
+                </button>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  className="hidden"
+                  onChange={handleAvatarFileChange}
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-200 truncate">{user.name}</p>
+                <p className="text-xs text-gray-500 mt-0.5">JPG, PNG, GIF or WebP — max 2 MB</p>
+                <div className="flex items-center gap-2 mt-2">
+                  <button
+                    onClick={() => avatarInputRef.current?.click()}
+                    disabled={avatarUploading}
+                    className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50 transition-colors"
+                  >
+                    {avatarUploading ? "Uploading…" : "Change photo"}
+                  </button>
+                  {(avatarPreview || user.avatarUrl) && !avatarUploading && (
+                    <>
+                      <span className="text-gray-700">·</span>
+                      <button
+                        onClick={handleRemoveAvatar}
+                        className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                      >
+                        Remove
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {/* Profile fields */}
             <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg overflow-hidden">
               <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-700/40">

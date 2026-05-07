@@ -4,13 +4,14 @@ import { useRouter } from "next/router";
 import { useStore } from "../store/useStore";
 import {
   AccountSection,
+  AiSection,
   DisplaysSection,
   GitHubConnectorManager,
   ZohoConnectorManager,
   UpdatesSection,
 } from "../components/settings";
 
-type Tab = "account" | "connectors" | "general";
+type Tab = "account" | "connectors" | "ai" | "general";
 
 function getInitials(name: string) {
   return name
@@ -29,7 +30,7 @@ export default function SettingsPage() {
   // Set active tab from query parameter
   useEffect(() => {
     const tab = router.query.tab as string | undefined;
-    if (tab && ["account", "connectors", "general"].includes(tab)) {
+    if (tab && ["account", "connectors", "ai", "general"].includes(tab)) {
       setActiveTab(tab as Tab);
     }
   }, [router.query.tab]);
@@ -67,6 +68,16 @@ export default function SettingsPage() {
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
             d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+        </svg>
+      ),
+    },
+    {
+      id: "ai",
+      label: "AI",
+      icon: (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
         </svg>
       ),
     },
@@ -204,6 +215,12 @@ export default function SettingsPage() {
                     <ZohoConnectorManager />
                   </div>
                 </div>
+              </div>
+            )}
+
+            {activeTab === "ai" && (
+              <div className="p-6 max-w-2xl space-y-3">
+                <AiSection />
               </div>
             )}
 

@@ -319,8 +319,8 @@ async function createMainWindow() {
           ...details.responseHeaders,
           "Content-Security-Policy": [
             isProd
-              ? "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; media-src 'self' snapflow: blob:"
-              : "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: http://localhost:*; media-src 'self' snapflow: blob:",
+              ? "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://lh3.googleusercontent.com https://*.supabase.co; font-src 'self' data:; connect-src 'self'; media-src 'self' snapflow: blob:"
+              : "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://lh3.googleusercontent.com https://*.supabase.co; font-src 'self' data:; connect-src 'self' ws: http://localhost:*; media-src 'self' snapflow: blob:",
           ],
         },
       });
@@ -2468,6 +2468,54 @@ function setupIPCHandlers() {
       }
     }
   );
+
+  ipcMain.handle(
+    "user:upload-avatar",
+    async (
+      _event,
+      {
+        userId,
+        fileData,
+        mimeType,
+        extension,
+      }: {
+        userId: string;
+        fileData: number[];
+        mimeType: string;
+        extension: string;
+      }
+    ) => {
+      try {
+        const buffer = Buffer.from(fileData);
+        const user = await authService.uploadAvatar(
+          userId,
+          buffer,
+          mimeType,
+          extension
+        );
+        await sessionManager.setUser(user);
+        return { success: true, data: user };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "An unexpected error occurred";
+        log.error("[IPC] upload-avatar error:", error);
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
+
+  ipcMain.handle("user:remove-avatar", async (_event, { userId }: { userId: string }) => {
+    try {
+      const user = await authService.removeAvatar(userId);
+      await sessionManager.setUser(user);
+      return { success: true, data: user };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("[IPC] remove-avatar error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
 
   ipcMain.handle("user:logout", async () => {
     try {
@@ -5078,25 +5126,44 @@ function setupIPCHandlers() {
     return { success: true, data: aiService.isConfigured() };
   });
 
-  ipcMain.handle("ai:get-key", () => {
-    const key = aiService.getStoredApiKey();
-    // Return masked key for display
-    const masked = key ? key.slice(0, 7) + "…" + key.slice(-4) : null;
-    return { success: true, data: masked };
+  ipcMain.handle("ai:get-all-status", () => {
+    return { success: true, data: aiService.getAllStatus() };
   });
 
-  ipcMain.handle("ai:set-key", (_, { key }: { key: string }) => {
+  ipcMain.handle("ai:get-key", (_, { provider }: { provider: string }) => {
+    const p = provider as import("./services/ai").Provider;
+    return { success: true, data: aiService.getMaskedKey(p) };
+  });
+
+  ipcMain.handle("ai:set-key", (_, { provider, key }: { provider: string; key: string }) => {
     try {
-      aiService.setApiKey(key);
+      aiService.setApiKey(provider as import("./services/ai").Provider, key);
       return { success: true };
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }
   });
 
-  ipcMain.handle("ai:clear-key", () => {
-    aiService.clearApiKey();
-    return { success: true };
+  ipcMain.handle("ai:clear-key", (_, { provider }: { provider: string }) => {
+    try {
+      aiService.clearApiKey(provider as import("./services/ai").Provider);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle("ai:get-active-provider", () => {
+    return { success: true, data: aiService.getActiveProvider() };
+  });
+
+  ipcMain.handle("ai:set-active-provider", (_, { provider }: { provider: string }) => {
+    try {
+      aiService.setActiveProvider(provider as import("./services/ai").Provider);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
   });
 
   ipcMain.handle("debug:test-capture", async () => {

@@ -768,7 +768,7 @@ export default function AnnotateSessionPage() {
         {/* ── Body: two-column ── */}
         <div className="flex flex-row-reverse flex-1 overflow-hidden min-h-0">
           {/* Form panel — visually on the right via flex-row-reverse */}
-          <div className="w-[340px] flex-shrink-0 border-l border-gray-800 bg-gray-900/30 flex flex-col overflow-hidden">
+          <div className="w-[480px] flex-shrink-0 border-l border-gray-800 bg-gray-900/30 flex flex-col overflow-hidden">
             {/* Session meta — compact rows */}
             <div className="px-4 py-2.5 border-b border-gray-800/60 flex-shrink-0">
               <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">

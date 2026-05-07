@@ -1,11 +1,12 @@
 import React from "react";
+import { AVATAR_PLACEHOLDER } from "../../utils/avatar";
 
 export function ProfileDropdown({
   user,
   onSettings,
   onLogout,
 }: {
-  user: { name?: string; email?: string } | null;
+  user: { name?: string; email?: string; avatarUrl?: string } | null;
   onSettings: () => void;
   onLogout: () => void;
 }) {
@@ -27,9 +28,11 @@ export function ProfileDropdown({
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2 h-7 px-2 rounded-md hover:bg-gray-800/70 transition-all group"
       >
-        <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-xs flex-shrink-0">
-          {user?.name?.charAt(0).toUpperCase() ?? "?"}
-        </div>
+        <img
+          src={user?.avatarUrl ?? AVATAR_PLACEHOLDER}
+          alt={user?.name ?? ""}
+          className="w-6 h-6 rounded-full object-cover flex-shrink-0"
+        />
         <span className="text-sm text-gray-400 group-hover:text-gray-200 max-w-[120px] truncate transition-colors">
           {user?.name ?? ""}
         </span>
@@ -51,13 +54,20 @@ export function ProfileDropdown({
       {open && (
         <div className="absolute right-0 top-full mt-2 w-56 bg-gray-900 border border-gray-700/50 rounded-xl shadow-2xl z-50 overflow-hidden">
           {/* User info */}
-          <div className="px-4 py-3 border-b border-gray-800">
-            <p className="text-sm font-medium text-gray-200 truncate">
-              {user?.name}
-            </p>
-            <p className="text-xs text-gray-500 truncate mt-0.5">
-              {user?.email}
-            </p>
+          <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-3">
+            <img
+              src={user?.avatarUrl ?? AVATAR_PLACEHOLDER}
+              alt={user?.name ?? ""}
+              className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+            />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-200 truncate">
+                {user?.name}
+              </p>
+              <p className="text-xs text-gray-500 truncate mt-0.5">
+                {user?.email}
+              </p>
+            </div>
           </div>
 
           {/* Menu items */}

@@ -267,35 +267,7 @@ export class CaptureService extends EventEmitter {
         scaleFactor
       );
 
-      // Get desktop sources - this will trigger permission prompt if not granted
-      log.info("[Capture] Requesting desktop sources...");
-      const sources = await desktopCapturer.getSources({
-        types: ["screen", "window"],
-        thumbnailSize: {
-          width: Math.floor(width * scaleFactor),
-          height: Math.floor(height * scaleFactor),
-        },
-        fetchWindowIcons: false,
-      });
-
-      log.info("[Capture] Retrieved", sources.length, "sources");
-      if (sources.length > 0) {
-        log.info(
-          "[Capture] Available sources:",
-          sources.map((s) => ({ id: s.id, name: s.name }))
-        );
-      }
-
-      if (sources.length === 0) {
-        log.error(
-          "[Capture] No sources available - permission likely not granted"
-        );
-        throw new Error(
-          "Screen Recording permission denied. Please grant permission in System Preferences > Security & Privacy > Privacy > Screen Recording, then completely quit and restart SnapFlow."
-        );
-      }
-
-      // Handle special multi-screen modes
+      // Handle special multi-screen modes before fetching sources
       if (options.mode === "all-screens") {
         return this.captureAllScreens();
       }
@@ -305,22 +277,72 @@ export class CaptureService extends EventEmitter {
         return this.captureSpecificScreen(displayId);
       }
 
-      // Select the appropriate source
+      // On macOS, desktopCapturer.getSources() called from the main process
+      // occasionally returns a 0×0 thumbnail on the first call (timing race with
+      // the OS compositor). Retry up to 3 times with a short delay before giving up.
+      const MAX_RETRIES = 3;
+      const RETRY_DELAY_MS = 400;
       let source: DesktopCapturerSource | undefined;
-      if (options.mode === "window" && options.windowId) {
-        log.info("[Capture] Looking for window with ID:", options.windowId);
-        source = sources.find((s) => s.id === options.windowId);
-        log.info("[Capture] Window source found:", !!source);
-      } else {
-        // For fullscreen or region, get the primary screen
-        log.info("[Capture] Looking for screen source...");
-        source = sources.find((s) => s.id.startsWith("screen"));
-        log.info("[Capture] Screen source found:", source?.id);
+      let buffer = Buffer.alloc(0);
+
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        log.info(
+          `[Capture] Requesting desktop sources (attempt ${attempt}/${MAX_RETRIES})...`
+        );
+        const sources = await desktopCapturer.getSources({
+          types: ["screen", "window"],
+          thumbnailSize: {
+            width: Math.floor(width * scaleFactor),
+            height: Math.floor(height * scaleFactor),
+          },
+          fetchWindowIcons: false,
+        });
+
+        log.info("[Capture] Retrieved", sources.length, "sources");
+        if (sources.length > 0) {
+          log.info(
+            "[Capture] Available sources:",
+            sources.map((s) => ({ id: s.id, name: s.name }))
+          );
+        }
+
+        if (sources.length === 0) {
+          log.error("[Capture] No sources available - permission likely not granted");
+          throw new Error(
+            "Screen Recording permission denied. Please grant permission in System Preferences > Security & Privacy > Privacy > Screen Recording, then completely quit and restart SnapFlow."
+          );
+        }
+
+        if (options.mode === "window" && options.windowId) {
+          log.info("[Capture] Looking for window with ID:", options.windowId);
+          source = sources.find((s) => s.id === options.windowId);
+          log.info("[Capture] Window source found:", !!source);
+        } else {
+          log.info("[Capture] Looking for screen source...");
+          source = sources.find((s) => s.id.startsWith("screen"));
+          log.info("[Capture] Screen source found:", source?.id);
+        }
+
+        if (!source) {
+          log.error("[Capture] No matching source found for mode:", options.mode);
+          throw new Error("No capture source found");
+        }
+
+        buffer = source.thumbnail.toPNG();
+        log.info(`[Capture] Thumbnail size: ${JSON.stringify(source.thumbnail.getSize())}, buffer: ${buffer.length} bytes`);
+
+        if (buffer.length >= 1000) break;
+
+        if (attempt < MAX_RETRIES) {
+          log.info(`[Capture] Empty thumbnail on attempt ${attempt}, retrying in ${RETRY_DELAY_MS}ms…`);
+          await new Promise<void>((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+        }
       }
 
-      if (!source) {
-        log.error("[Capture] No matching source found for mode:", options.mode);
-        throw new Error("No capture source found");
+      if (!source || buffer.length < 1000) {
+        throw new Error(
+          "Screenshot capture returned an empty image. Ensure Screen Recording permission is granted in System Settings and try again."
+        );
       }
 
       // Handle region capture
@@ -402,22 +424,17 @@ export class CaptureService extends EventEmitter {
         );
 
         const croppedImage = regionSource.thumbnail.crop(cropRect);
-        const buffer = croppedImage.toPNG();
+        const regionBuffer = croppedImage.toPNG();
 
         clipboard.writeImage(croppedImage);
         return {
-          dataUrl: `data:image/png;base64,${buffer.toString("base64")}`,
-          buffer,
+          dataUrl: `data:image/png;base64,${regionBuffer.toString("base64")}`,
+          buffer: regionBuffer,
         };
       }
 
-      // Fullscreen or window capture
+      // Fullscreen or window capture — buffer already fetched in the retry loop above
       log.info("[Capture] Processing", options.mode, "capture...");
-      const thumbnailSize = source.thumbnail.getSize();
-      log.info("[Capture] Thumbnail size:", thumbnailSize);
-
-      const buffer = source.thumbnail.toPNG();
-      log.info("[Capture] Screenshot buffer size:", buffer.length, "bytes");
 
       // Copy to clipboard
       clipboard.writeImage(source.thumbnail);
@@ -728,6 +745,13 @@ export class CaptureService extends EventEmitter {
       }
 
       const buffer = image.toPNG();
+
+      if (buffer.length < 1000) {
+        throw new Error(
+          "Screenshot capture returned an empty image. Ensure Screen Recording permission is granted in System Settings and try again."
+        );
+      }
+
       clipboard.writeImage(image);
 
       log.info("[Capture] Specific screen capture completed");
