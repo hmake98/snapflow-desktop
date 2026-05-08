@@ -30,7 +30,6 @@ export class WindowPickerService {
    */
   async getSources(): Promise<RecordingSource[]> {
     try {
-      log.info("[WindowPicker] Fetching available sources...");
 
       // Check screen recording permission first (macOS requirement)
       const hasPermission =
@@ -52,12 +51,7 @@ export class WindowPickerService {
         fetchWindowIcons: false,
       });
 
-      log.info(`[WindowPicker] Retrieved ${sources.length} sources`);
       if (sources.length > 0) {
-        log.info(
-          "[WindowPicker] Source IDs:",
-          sources.map((s) => `${s.id}(${s.name})`).join(", ")
-        );
       }
 
       // Get Snapflow window IDs to filter them out
@@ -82,7 +76,6 @@ export class WindowPickerService {
         },
       ];
 
-      log.info("[WindowPicker] Added Full Screen option");
 
       // Add window sources (filter out Snapflow windows and inactive windows)
       const windowSources = sources.filter((s) => {
@@ -90,15 +83,12 @@ export class WindowPickerService {
         if (!isWindow) return false;
 
         if (s.name === "") {
-          log.info(`[WindowPicker] Skipping window with empty name`);
           return false;
         }
         if (snapflowWindowIds.includes(s.id)) {
-          log.info(`[WindowPicker] Skipping Snapflow window: ${s.id}`);
           return false;
         }
         if (s.name.toLowerCase().includes("snapflow")) {
-          log.info(`[WindowPicker] Skipping Snapflow-named window: ${s.name}`);
           return false;
         }
 
@@ -106,9 +96,6 @@ export class WindowPickerService {
         // Skip windows with zero or very small dimensions (likely hidden/minimized)
         const size = s.thumbnail.getSize();
         if (size.width < 50 || size.height < 50) {
-          log.info(
-            `[WindowPicker] Skipping window with invalid thumbnail: ${s.name}`
-          );
           return false;
         }
 
@@ -129,9 +116,6 @@ export class WindowPickerService {
         });
       }
 
-      log.info(
-        `[WindowPicker] Returning ${recordingSources.length} sources (1 screen + ${windowSources.length} windows)`
-      );
 
       // Fallback: if no sources found from desktopCapturer, at least add displays
       if (recordingSources.length === 0) {
@@ -154,9 +138,6 @@ export class WindowPickerService {
           });
         }
 
-        log.info(
-          `[WindowPicker] Added ${recordingSources.length} displays as fallback`
-        );
       }
 
       return recordingSources;
@@ -196,16 +177,10 @@ export class WindowPickerService {
           (s) => s.type === "window" && s.name === saved.name
         );
         if (byName) {
-          log.info(
-            `[WindowPicker] Matched default source by name: "${saved.name}" (ID changed from ${saved.id} to ${byName.id})`
-          );
           return { valid: true, source: byName };
         }
       }
 
-      log.info(
-        `[WindowPicker] Default source not found: "${saved.name}" (${saved.id})`
-      );
       return { valid: false };
     } catch (error) {
       log.error("[WindowPicker] Error validating default source:", error);
@@ -252,9 +227,6 @@ export class WindowPickerService {
             (s) => s.type === "window" && s.name === savedDefault.name
           ) ?? null;
         if (validatedDefault) {
-          log.info(
-            `[WindowPicker] Default source matched by name: "${savedDefault.name}" (new ID: ${validatedDefault.id})`
-          );
         }
       }
     }
@@ -288,16 +260,12 @@ export class WindowPickerService {
     }
 
     mainWindow.webContents.send("recording:show-picker", payload);
-    log.info("[WindowPicker] Sent picker payload to main window");
   }
 
   /**
    * Legacy method kept for compatibility - now a no-op
    */
   async openPicker(_port?: string): Promise<void> {
-    log.info(
-      "[WindowPicker] openPicker called (legacy, now showing in main window)"
-    );
     // Window picker now shows as modal in main window, not separate window
   }
 
@@ -306,7 +274,6 @@ export class WindowPickerService {
    */
   closePicker(): void {
     if (this.pickerWindow) {
-      log.info("[WindowPicker] Closing picker window");
       this.pickerWindow.close();
       this.pickerWindow = null;
     }

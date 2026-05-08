@@ -62,7 +62,6 @@ export class SnapService {
     description?: string,
     workspaceId?: string
   ): Promise<Snap> {
-    log.info("[Snap Service] === CREATE SESSION SNAP START ===");
     const firstScreenshot = sessionData.screenshotPaths[0] ?? "";
     const snap: Snap = {
       id: generateIssueId(),
@@ -84,7 +83,6 @@ export class SnapService {
     (store as any).set("snaps", snaps);
     await storageManager.saveMetadata(snap.id, snap);
 
-    log.info("[Snap Service] ✓ Session snap created:", snap.id);
     return snap;
   }
 
@@ -97,11 +95,6 @@ export class SnapService {
     thumbnailPath?: string,
     workspaceId?: string
   ): Promise<Snap> {
-    log.info("[Snap Service] === CREATE SNAP START ===");
-    log.info("[Snap Service] User ID:", userId);
-    log.info("[Snap Service] Title:", title);
-    log.info("[Snap Service] Type:", type);
-    log.info("[Snap Service] File path:", filePath);
 
     const snap: Snap = {
       id: generateIssueId(),
@@ -117,25 +110,19 @@ export class SnapService {
       workspaceId,
     };
 
-    log.info("[Snap Service] Generated snap ID:", snap.id);
 
     const snaps = (store as any).get("snaps");
     snaps.push(snap);
 
     (store as any).set("snaps", snaps);
-    log.info("[Snap Service] Saved to store, total snaps:", snaps.length);
 
     // Save metadata to file system
-    log.info("[Snap Service] Saving metadata to file system...");
     await storageManager.saveMetadata(snap.id, snap);
 
-    log.info("[Snap Service] ✓ Snap created successfully");
-    log.info("[Snap Service] === CREATE SNAP END ===");
     return snap;
   }
 
   getSnaps(userId?: string, workspaceId?: string): Snap[] {
-    log.info("[Snap Service] Getting snaps for user:", userId || "all");
 
     const snaps = (store as any).get("snaps");
     let filtered = userId
@@ -148,7 +135,6 @@ export class SnapService {
       );
     }
 
-    log.info("[Snap Service] Found", filtered.length, "snaps");
     return filtered;
   }
 
@@ -158,9 +144,6 @@ export class SnapService {
   }
 
   async updateSnap(snapId: string, updates: Partial<Snap>): Promise<Snap> {
-    log.info("[Snap Service] === UPDATE SNAP START ===");
-    log.info("[Snap Service] Snap ID:", snapId);
-    log.info("[Snap Service] Updates:", JSON.stringify(updates));
 
     const snaps = (store as any).get("snaps");
     const index = snaps.findIndex((snap) => snap.id === snapId);
@@ -179,33 +162,23 @@ export class SnapService {
     snaps[index] = updatedSnap;
 
     (store as any).set("snaps", snaps);
-    log.info("[Snap Service] Saved to store");
 
     // Update metadata in file system
-    log.info("[Snap Service] Updating metadata in file system...");
     await storageManager.saveMetadata(snapId, updatedSnap);
 
-    log.info("[Snap Service] ✓ Snap updated successfully");
-    log.info("[Snap Service] === UPDATE SNAP END ===");
     return updatedSnap;
   }
 
   async deleteSnap(snapId: string): Promise<void> {
-    log.info("[Snap Service] === DELETE SNAP START ===");
-    log.info("[Snap Service] Snap ID:", snapId);
 
     const snaps = (store as any).get("snaps");
     const filteredSnaps = snaps.filter((snap) => snap.id !== snapId);
 
     (store as any).set("snaps", filteredSnaps);
-    log.info("[Snap Service] Removed from store");
 
     // Delete from file system
-    log.info("[Snap Service] Deleting from file system...");
     await storageManager.deleteIssue(snapId);
 
-    log.info("[Snap Service] ✓ Snap deleted successfully");
-    log.info("[Snap Service] === DELETE SNAP END ===");
   }
 
   async updateSyncStatus(

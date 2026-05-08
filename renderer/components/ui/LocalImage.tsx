@@ -4,6 +4,12 @@ import clsx from "clsx";
 interface LocalImageProps {
   src: string;
   alt: string;
+  /**
+   * Optional cloud URL fallback. When the local file at `src` cannot be read
+   * (missing file on a new device, deleted, etc.), the component renders an
+   * <img> pointing to this URL instead of the "File not found" placeholder.
+   */
+  cloudFallback?: string;
   className?: string;
   style?: React.CSSProperties;
   onError?: () => void;
@@ -15,13 +21,15 @@ const loggedErrors = new Set<string>();
 export const LocalImage: React.FC<LocalImageProps> = ({
   src,
   alt,
+  cloudFallback,
   className = "",
   style,
   onError,
 }) => {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [localFailed, setLocalFailed] = useState(false);
+  const [cloudFailed, setCloudFailed] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -29,7 +37,18 @@ export const LocalImage: React.FC<LocalImageProps> = ({
     const loadImage = async () => {
       try {
         setLoading(true);
-        setError(false);
+        setLocalFailed(false);
+        setCloudFailed(false);
+        setDataUrl(null);
+
+        // Skip local read entirely when src is empty/falsy — go straight to cloud.
+        if (!src) {
+          if (mounted) {
+            setLocalFailed(true);
+            setLoading(false);
+          }
+          return;
+        }
 
         const result = await window.api.readImageFile(src);
 
@@ -38,7 +57,6 @@ export const LocalImage: React.FC<LocalImageProps> = ({
         if (result.success && result.data) {
           setDataUrl(result.data);
         } else {
-          // Only log once per unique error to reduce console spam
           if (!loggedErrors.has(src)) {
             console.warn(
               `Failed to load image from ${src}:`,
@@ -46,18 +64,18 @@ export const LocalImage: React.FC<LocalImageProps> = ({
             );
             loggedErrors.add(src);
           }
-          setError(true);
-          onError?.();
+          setLocalFailed(true);
+          // Only call onError when there's no cloud fallback to try.
+          if (!cloudFallback) onError?.();
         }
       } catch (err) {
-        // Only log once per unique error to reduce console spam
         if (!loggedErrors.has(src)) {
           console.warn(`Error loading image from ${src}:`, err);
           loggedErrors.add(src);
         }
         if (mounted) {
-          setError(true);
-          onError?.();
+          setLocalFailed(true);
+          if (!cloudFallback) onError?.();
         }
       } finally {
         if (mounted) {
@@ -66,14 +84,12 @@ export const LocalImage: React.FC<LocalImageProps> = ({
       }
     };
 
-    if (src) {
-      loadImage();
-    }
+    loadImage();
 
     return () => {
       mounted = false;
     };
-  }, [src]);
+  }, [src, cloudFallback]);
 
   if (loading) {
     return (
@@ -110,7 +126,27 @@ export const LocalImage: React.FC<LocalImageProps> = ({
     );
   }
 
-  if (error || !dataUrl) {
+  // Local read failed — fall back to cloud URL when one is available.
+  if (localFailed && cloudFallback && !cloudFailed) {
+    return (
+      <img
+        src={cloudFallback}
+        alt={alt}
+        className={clsx(className)}
+        style={{
+          imageRendering: "-webkit-optimize-contrast",
+          ...style,
+        }}
+        loading="eager"
+        onError={() => {
+          setCloudFailed(true);
+          onError?.();
+        }}
+      />
+    );
+  }
+
+  if (localFailed || !dataUrl) {
     return (
       <div
         className={clsx(

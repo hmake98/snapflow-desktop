@@ -33,10 +33,6 @@ export function GitHubConnectorManager() {
   );
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  const log = (message: string, data?: unknown) => {
-    console.log(`[GitHubConnectorManager] ${message}`, data);
-  };
-
   useEffect(() => {
     getWorkspace();
   }, []);
@@ -47,7 +43,6 @@ export function GitHubConnectorManager() {
 
   useEffect(() => {
     const unsubscribe = window.api.onGitHubOAuthSuccess(() => {
-      log("[OAuth] Success event received");
       handleOAuthSuccess();
     });
     return unsubscribe;
@@ -55,7 +50,6 @@ export function GitHubConnectorManager() {
 
   useEffect(() => {
     const unsubscribe = window.api.onGitHubOAuthError((error: string) => {
-      log("[OAuth] Error:", error);
       setPendingAuth((prev) =>
         prev ? { ...prev, error, stage: "idle" } : null
       );
@@ -462,7 +456,7 @@ export function GitHubConnectorManager() {
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                <label className="block text-sm font-medium text-gray-400 mb-1.5">
                   Repository <span className="text-red-400">*</span>
                 </label>
                 <select
@@ -490,7 +484,7 @@ export function GitHubConnectorManager() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                <label className="block text-sm font-medium text-gray-400 mb-1.5">
                   Display name <span className="text-gray-600">(optional)</span>
                 </label>
                 <input

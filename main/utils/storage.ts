@@ -2,7 +2,6 @@ import { app } from "electron";
 import path from "path";
 import fs from "fs/promises";
 import { format } from "date-fns";
-import log from "electron-log";
 
 export class StorageManager {
   private baseDir: string;
@@ -22,7 +21,6 @@ export class StorageManager {
    * Set the current user ID for user-specific storage paths
    */
   setCurrentUser(userId: string): void {
-    log.info("[Storage] Setting current user:", userId);
     this.currentUserId = userId;
   }
 
@@ -30,7 +28,6 @@ export class StorageManager {
    * Clear the current user (on logout)
    */
   clearCurrentUser(): void {
-    log.info("[Storage] Clearing current user");
     this.currentUserId = null;
   }
 
@@ -52,18 +49,14 @@ export class StorageManager {
   }
 
   async ensureDirectories() {
-    log.info("[Storage] Ensuring directories...");
-    // Initialize baseDir if not set
     if (!this.baseDir) {
       this.baseDir = path.join(app.getPath("home"), "SnapFlow");
     }
 
     const userBaseDir = this.getUserBaseDir();
-    log.info("[Storage] User base directory:", userBaseDir);
     await fs.mkdir(userBaseDir, { recursive: true });
     await fs.mkdir(path.join(userBaseDir, "Captures"), { recursive: true });
     await fs.mkdir(path.join(userBaseDir, "screenshots"), { recursive: true });
-    log.info("[Storage] ✓ Directories created");
   }
 
   getCapturePath(issueId: string): string {
@@ -87,11 +80,9 @@ export class StorageManager {
     fileName: string,
     data: Buffer
   ): Promise<string> {
-    log.info("[Storage] Saving capture:", fileName, "for issue:", issueId);
     const dirPath = await this.createIssueDirectory(issueId);
     const filePath = path.join(dirPath, fileName);
     await fs.writeFile(filePath, data);
-    log.info("[Storage] ✓ Capture saved to:", filePath);
     return filePath;
   }
 
@@ -99,11 +90,9 @@ export class StorageManager {
     issueId: string,
     metadata: Record<string, unknown>
   ): Promise<string> {
-    log.info("[Storage] Saving metadata for issue:", issueId);
     const dirPath = await this.createIssueDirectory(issueId);
     const metaPath = path.join(dirPath, "meta.json");
     await fs.writeFile(metaPath, JSON.stringify(metadata, null, 2));
-    log.info("[Storage] ✓ Metadata saved");
     return metaPath;
   }
 
@@ -166,7 +155,6 @@ export class StorageManager {
     const fileName = `recording.${extension}`;
     const filePath = path.join(dirPath, fileName);
     await fs.writeFile(filePath, data);
-    log.info("[Storage] ✓ File saved:", filePath);
     return filePath;
   }
 
@@ -181,7 +169,6 @@ export class StorageManager {
       : "thumbnail.png";
     const filePath = path.join(dirPath, fileName);
     await fs.writeFile(filePath, data);
-    log.info("[Storage] ✓ Thumbnail saved:", filePath);
     return filePath;
   }
 }

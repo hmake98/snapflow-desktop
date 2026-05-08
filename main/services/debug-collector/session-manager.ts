@@ -19,7 +19,6 @@
 import { randomUUID } from "crypto";
 import os from "os";
 import { app, desktopCapturer, screen } from "electron";
-import log from "electron-log";
 import { captureService } from "../capture";
 import { storageManager } from "../../utils/storage";
 import { eventTracker } from "./event-tracker";
@@ -165,7 +164,6 @@ export class SessionManager {
       eventTracker.start();
     }
 
-    log.info("[SessionManager] Session started:", session.id);
     return { ...session };
   }
 
@@ -191,14 +189,6 @@ export class SessionManager {
       eventTracker.stop();
     }
 
-    log.info(
-      "[SessionManager] Session stopped:",
-      finished.id,
-      "events:",
-      finished.events.length,
-      "screenshots:",
-      finished.screenshots.length
-    );
     this.activeSession = null;
     return finished;
   }
@@ -222,9 +212,6 @@ export class SessionManager {
     // Debounce: skip if a capture was taken very recently.
     // Bypassed when force=true (manual/user-triggered captures always proceed).
     if (!force && timestamp - this.lastCaptureTime < MIN_CAPTURE_INTERVAL_MS) {
-      log.info(
-        "[SessionManager] Skipping duplicate capture — too soon after last capture"
-      );
       // Return the last screenshot as a no-op
       const last =
         this.activeSession.screenshots[
@@ -243,9 +230,6 @@ export class SessionManager {
       buffer.slice(0, FINGERPRINT_BYTES)
     ).toString("base64");
     if (!force && fingerprint === this.lastCaptureFingerprint) {
-      log.info(
-        "[SessionManager] Skipping duplicate capture — screen unchanged"
-      );
       const last =
         this.activeSession.screenshots[
           this.activeSession.screenshots.length - 1
@@ -285,7 +269,6 @@ export class SessionManager {
     };
 
     this.activeSession.screenshots.push(screenshot);
-    log.info("[SessionManager] Screenshot captured in session:", screenshotId);
     return screenshot;
   }
 
@@ -357,12 +340,6 @@ export class SessionManager {
       recent_events: recentEvents,
     };
 
-    log.info(
-      "[SessionManager] Snapshot captured:",
-      screenshotId,
-      "recent events:",
-      recentEvents.length
-    );
     return result;
   }
 

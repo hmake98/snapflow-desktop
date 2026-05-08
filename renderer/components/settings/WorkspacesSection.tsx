@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "../ui/Button";
+import { Avatar } from "../ui/Avatar";
 import { useStore } from "../../store/useStore";
 import type {
   Workspace,
@@ -31,12 +32,11 @@ const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 const ROLE_COLORS: Record<UserRole, string> = {
-  owner: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
-  admin: "bg-purple-500/20 text-purple-300 border-purple-500/30",
-  member: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  owner: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+  admin: "bg-purple-500/15 text-purple-400 border-purple-500/30",
+  member: "bg-blue-500/15 text-blue-400 border-blue-500/30",
 };
 
-// Workspace-assignable roles (exclude "owner" which is tenant-level)
 const WORKSPACE_ROLES: UserRole[] = ["admin", "member"];
 
 // ─── WorkspaceMembersPanel ─────────────────────────────────────────────────────
@@ -129,20 +129,17 @@ function WorkspaceMembersPanel({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-gray-900 border border-gray-700/50 rounded-2xl w-full max-w-2xl mx-4 shadow-2xl flex flex-col max-h-[80vh]">
+      <div className="bg-gray-900 border border-gray-700/50 rounded-xl w-full max-w-xl mx-4 shadow-2xl flex flex-col max-h-[80vh] overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-800">
-          <div>
-            <h3 className="text-base font-semibold text-gray-100">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-700/40 flex-shrink-0">
+          <div className="min-w-0">
+            <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
               Members — {workspace.name}
-            </h3>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Manage members and roles for this workspace
-            </p>
+            </span>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg text-gray-500 hover:text-gray-200 hover:bg-gray-800 flex items-center justify-center transition-all"
+            className="w-7 h-7 rounded-md text-gray-500 hover:text-gray-200 hover:bg-gray-800 flex items-center justify-center transition-all"
           >
             <svg
               className="w-4 h-4"
@@ -161,20 +158,19 @@ function WorkspaceMembersPanel({
         </div>
 
         {/* Members list */}
-        <div className="overflow-y-auto flex-1 p-4 space-y-1">
+        <div className="overflow-y-auto flex-1 p-3 space-y-1">
           {loading ? (
             [...Array(3)].map((_, i) => (
               <div
                 key={i}
-                className="animate-pulse flex items-center gap-3 p-3 rounded-xl bg-gray-800/30"
+                className="animate-pulse flex items-center gap-3 p-2.5 rounded-lg bg-gray-800/30"
               >
-                <div className="w-9 h-9 rounded-full bg-gray-700" />
+                <div className="w-8 h-8 rounded-full bg-gray-700" />
                 <div className="flex-1 space-y-1.5">
-                  <div className="h-3.5 bg-gray-700 rounded w-1/3" />
-                  <div className="h-3 bg-gray-700 rounded w-1/2" />
+                  <div className="h-3 bg-gray-700 rounded w-1/3" />
+                  <div className="h-2.5 bg-gray-700 rounded w-1/2" />
                 </div>
-                <div className="w-28 h-8 bg-gray-700 rounded-full" />
-                <div className="w-8 h-8 bg-gray-700 rounded-lg" />
+                <div className="w-24 h-7 bg-gray-700 rounded-full" />
               </div>
             ))
           ) : members.length === 0 ? (
@@ -187,18 +183,22 @@ function WorkspaceMembersPanel({
               return (
                 <div
                   key={member.id}
-                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-800/40 transition-colors"
+                  className="flex items-center gap-3 px-2.5 py-2 rounded-lg hover:bg-gray-800/40 transition-colors"
                 >
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
-                    {(member.user.name || member.user.email)[0].toUpperCase()}
-                  </div>
+                  <Avatar
+                    src={member.user.avatarUrl}
+                    name={member.user.name}
+                    email={member.user.email}
+                    size={32}
+                    className="ring-0"
+                  />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <p className="text-sm font-medium text-gray-100 truncate">
                         {member.user.name || "Unknown"}
                       </p>
                       {isSelf && (
-                        <span className="text-xs px-1.5 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full">
+                        <span className="text-2xs px-1.5 py-0.5 bg-blue-500/15 text-blue-400 border border-blue-500/25 rounded-full">
                           You
                         </span>
                       )}
@@ -208,7 +208,7 @@ function WorkspaceMembersPanel({
                     </p>
                   </div>
                   {/* Role selector */}
-                  <div className="relative w-36">
+                  <div className="relative w-28 flex-shrink-0">
                     <select
                       value={member.role}
                       disabled={isSelf || updatingId === member.userId}
@@ -218,7 +218,7 @@ function WorkspaceMembersPanel({
                           e.target.value as Exclude<UserRole, "owner">
                         )
                       }
-                      className={`w-full h-8 pl-3 pr-7 text-xs font-medium rounded-full border appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500/40 disabled:opacity-60 disabled:cursor-not-allowed transition-all ${ROLE_COLORS[member.role]} bg-transparent`}
+                      className={`w-full h-7 pl-2.5 pr-6 text-2xs font-medium rounded-full border appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500/40 disabled:opacity-60 disabled:cursor-not-allowed transition-all ${ROLE_COLORS[member.role]} bg-transparent`}
                     >
                       {WORKSPACE_ROLES.map((r) => (
                         <option
@@ -230,9 +230,9 @@ function WorkspaceMembersPanel({
                         </option>
                       ))}
                     </select>
-                    <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2">
+                    <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
                       <svg
-                        className="w-3 h-3 opacity-60"
+                        className="w-2.5 h-2.5 opacity-60"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -251,11 +251,11 @@ function WorkspaceMembersPanel({
                     <button
                       disabled={removingId === member.userId}
                       onClick={() => handleRemove(member)}
-                      className="w-8 h-8 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-500/10 flex items-center justify-center transition-all disabled:opacity-40"
+                      className="w-7 h-7 rounded-md text-gray-600 hover:text-red-400 hover:bg-red-500/10 flex items-center justify-center transition-all disabled:opacity-40 flex-shrink-0"
                       title={`Remove ${member.user.name}`}
                     >
                       <svg
-                        className="w-4 h-4"
+                        className="w-3.5 h-3.5"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -264,7 +264,7 @@ function WorkspaceMembersPanel({
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth={2}
-                          d="M13 7a4 4 0 11-8 0 4 4 0 018 0zM9 14a6 6 0 00-6 6v1h12v-1a6 6 0 00-6-6zM21 12h-6"
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
                         />
                       </svg>
                     </button>
@@ -351,7 +351,6 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
         setTenantDisplayName(r.data?.name ?? tenantName.trim());
         setTenantDisplaySlug(r.data?.slug ?? tenantDisplaySlug);
         setEditingTenant(false);
-        // Notify WorkspaceSwitcher (and any other subscriber) to re-fetch
         triggerWorkspaceRefresh();
       } else {
         window.api.showNotification(
@@ -384,7 +383,6 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
           );
           setWorkspaces((p) => [r.data, ...p]);
           closeModal();
-          // New workspace — refresh switcher list
           triggerWorkspaceRefresh();
         } else {
           window.api.showNotification(
@@ -406,12 +404,10 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
           setWorkspaces((p) =>
             p.map((w) => (w.id === editTarget.id ? r.data : w))
           );
-          // If this is the currently active workspace, update its name in the store
           if (activeWorkspace?.id === editTarget.id) {
             setActiveWorkspace({ ...activeWorkspace, ...r.data });
           }
           closeModal();
-          // Refresh switcher so it picks up the new name
           triggerWorkspaceRefresh();
         } else {
           window.api.showNotification(
@@ -439,7 +435,6 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
         );
         setWorkspaces((p) => p.filter((w) => w.id !== confirmDelete.id));
         setConfirmDelete(null);
-        // Refresh switcher list
         triggerWorkspaceRefresh();
       } else {
         window.api.showNotification(
@@ -467,29 +462,66 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
   };
 
   return (
-    <div className="max-w-4xl space-y-8">
-      {/* ── Organization name ─────────────────────────────────────────────── */}
-      <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 border border-gray-700/50 rounded-2xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-base font-semibold text-gray-100">
-              Organization
-            </h3>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Rename your organization (tenant)
-            </p>
-          </div>
+    <div className="max-w-3xl space-y-3">
+      {/* ── Organization card ─────────────────────────────────────────────── */}
+      <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-700/40">
+          <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
+            Organization
+          </span>
           {!editingTenant && (
-            <Button
-              variant="ghost"
-              size="sm"
+            <button
               onClick={() => {
                 setTenantName(tenantDisplayName);
                 setEditingTenant(true);
               }}
-              leftIcon={
+              className="text-xs text-gray-500 hover:text-gray-200 transition-colors"
+            >
+              Edit
+            </button>
+          )}
+        </div>
+
+        <div className="px-4 py-3">
+          {editingTenant ? (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1.5">
+                  Organization Name
+                </label>
+                <input
+                  autoFocus
+                  type="text"
+                  value={tenantName}
+                  onChange={(e) => setTenantName(e.target.value)}
+                  className="w-full h-9 px-3 bg-gray-900/60 border border-gray-600/50 rounded-lg text-sm text-gray-100 focus:outline-none focus:border-blue-500/60 transition-all"
+                  placeholder="Organization name"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={savingTenant || !tenantName.trim()}
+                  onClick={handleSaveTenant}
+                >
+                  {savingTenant ? "Saving…" : "Save"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={savingTenant}
+                  onClick={() => setEditingTenant(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-blue-600/15 border border-blue-500/25 rounded-lg flex items-center justify-center flex-shrink-0">
                 <svg
-                  className="w-4 h-4"
+                  className="w-4 h-4 text-blue-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -498,133 +530,75 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                    d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
                   />
                 </svg>
-              }
-            >
-              Edit
-            </Button>
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-100 truncate">
+                  {tenantDisplayName}
+                </p>
+                <p className="text-2xs text-gray-500 font-mono truncate">
+                  {tenantDisplaySlug}
+                </p>
+              </div>
+            </div>
           )}
         </div>
-
-        {editingTenant ? (
-          <div className="flex items-center gap-3">
-            <input
-              autoFocus
-              type="text"
-              value={tenantName}
-              onChange={(e) => setTenantName(e.target.value)}
-              className="flex-1 h-10 px-4 bg-gray-800/80 border border-gray-600/50 rounded-lg text-sm text-gray-100 focus:outline-none focus:border-blue-500/70 focus:ring-1 focus:ring-blue-500/30 transition-all"
-              placeholder="Organization name"
-            />
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={savingTenant || !tenantName.trim()}
-              onClick={handleSaveTenant}
-            >
-              {savingTenant ? "Saving…" : "Save"}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={savingTenant}
-              onClick={() => setEditingTenant(false)}
-            >
-              Cancel
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-blue-600/20 border border-blue-500/30 rounded-lg flex items-center justify-center">
-              <svg
-                className="w-4 h-4 text-blue-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-                />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-100">
-                {tenantDisplayName}
-              </p>
-              <p className="text-xs text-gray-500 font-mono">
-                {tenantDisplaySlug}
-              </p>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* ── Workspaces list ────────────────────────────────────────────────── */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-base font-semibold text-gray-100">
+      {/* ── Workspaces card ────────────────────────────────────────────────── */}
+      <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-700/40">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
               Workspaces
-            </h3>
-            <p className="text-sm text-gray-500 mt-0.5">
-              {workspaces.length} workspace{workspaces.length !== 1 ? "s" : ""}{" "}
-              in this organization
-            </p>
+            </span>
+            <span className="text-2xs text-gray-600 normal-case font-normal">
+              {workspaces.length} total
+            </span>
           </div>
-          <Button
-            variant="primary"
-            size="sm"
+          <button
             onClick={openAdd}
-            leftIcon={
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-            }
+            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-200 transition-colors"
           >
+            <svg
+              className="w-3 h-3"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
             Add Workspace
-          </Button>
+          </button>
         </div>
 
         {loading ? (
-          <div className="space-y-3">
+          <div className="p-4 space-y-2">
             {[...Array(2)].map((_, i) => (
               <div
                 key={i}
-                className="animate-pulse bg-gray-800/40 border border-gray-700/30 rounded-2xl p-5"
+                className="animate-pulse flex items-center gap-3 p-3 rounded-lg bg-gray-900/40"
               >
-                <div className="flex items-center justify-between">
-                  <div className="space-y-2">
-                    <div className="h-4 bg-gray-700 rounded w-40" />
-                    <div className="h-3 bg-gray-700 rounded w-24" />
-                  </div>
-                  <div className="flex gap-2">
-                    <div className="w-20 h-8 bg-gray-700 rounded-lg" />
-                    <div className="w-20 h-8 bg-gray-700 rounded-lg" />
-                  </div>
+                <div className="w-8 h-8 rounded-md bg-gray-700" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3 bg-gray-700 rounded w-1/3" />
+                  <div className="h-2.5 bg-gray-700 rounded w-1/2" />
                 </div>
               </div>
             ))}
           </div>
         ) : workspaces.length === 0 ? (
-          <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 border border-gray-700/50 rounded-2xl p-10 text-center">
-            <div className="w-14 h-14 bg-gray-700/50 rounded-xl flex items-center justify-center mx-auto mb-4">
+          <div className="p-8 text-center">
+            <div className="w-10 h-10 bg-gray-700/40 rounded-lg flex items-center justify-center mx-auto mb-3">
               <svg
-                className="w-7 h-7 text-gray-500"
+                className="w-5 h-5 text-gray-500"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -637,117 +611,111 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
                 />
               </svg>
             </div>
-            <p className="text-gray-400 font-medium mb-1">No workspaces yet</p>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm font-medium text-gray-400">
+              No workspaces yet
+            </p>
+            <p className="text-xs text-gray-600 mt-0.5">
               Create a workspace to get started.
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="divide-y divide-gray-700/30">
             {workspaces.map((ws) => (
               <div
                 key={ws.id}
-                className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 border border-gray-700/50 rounded-2xl p-5 hover:border-gray-600/50 transition-all"
+                className="flex items-center gap-3 px-4 py-3 hover:bg-gray-900/30 transition-colors"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 bg-indigo-600/20 border border-indigo-500/30 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <svg
-                        className="w-4 h-4 text-indigo-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                        />
-                      </svg>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-100 truncate">
-                        {ws.name}
-                      </p>
-                      {ws.description && (
-                        <p className="text-xs text-gray-500 truncate mt-0.5">
-                          {ws.description}
-                        </p>
-                      )}
-                      <p className="text-xs text-gray-600 font-mono mt-1">
-                        {ws.slug} · Created {formatDate(ws.createdAt)}
-                      </p>
-                    </div>
-                  </div>
+                <div className="w-8 h-8 bg-indigo-600/15 border border-indigo-500/25 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <svg
+                    className="w-4 h-4 text-indigo-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                    />
+                  </svg>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-100 truncate">
+                    {ws.name}
+                  </p>
+                  {ws.description ? (
+                    <p className="text-xs text-gray-500 truncate">
+                      {ws.description}
+                    </p>
+                  ) : (
+                    <p className="text-2xs text-gray-600 font-mono truncate">
+                      {ws.slug} · {formatDate(ws.createdAt)}
+                    </p>
+                  )}
+                </div>
 
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setMembersWorkspace(ws)}
-                      leftIcon={
-                        <svg
-                          className="w-3.5 h-3.5"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
-                          />
-                        </svg>
-                      }
+                <div className="flex items-center gap-0.5 flex-shrink-0">
+                  <button
+                    onClick={() => setMembersWorkspace(ws)}
+                    className="h-7 px-2.5 rounded-md text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-700/60 transition-all flex items-center gap-1.5"
+                    title="Manage members"
+                  >
+                    <svg
+                      className="w-3 h-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
                     >
-                      Members
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openEdit(ws)}
-                      leftIcon={
-                        <svg
-                          className="w-3.5 h-3.5"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                          />
-                        </svg>
-                      }
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                    </svg>
+                    Members
+                  </button>
+                  <button
+                    onClick={() => openEdit(ws)}
+                    className="w-7 h-7 rounded-md text-gray-500 hover:text-gray-100 hover:bg-gray-700/60 flex items-center justify-center transition-all"
+                    title="Edit workspace"
+                  >
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
                     >
-                      Edit
-                    </Button>
-                    <button
-                      onClick={() =>
-                        setConfirmDelete({ id: ws.id, name: ws.name })
-                      }
-                      className="w-8 h-8 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-500/10 flex items-center justify-center transition-all"
-                      title="Delete workspace"
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() =>
+                      setConfirmDelete({ id: ws.id, name: ws.name })
+                    }
+                    className="w-7 h-7 rounded-md text-gray-600 hover:text-red-400 hover:bg-red-500/10 flex items-center justify-center transition-all"
+                    title="Delete workspace"
+                  >
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
                     >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                        />
-                      </svg>
-                    </button>
-                  </div>
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                  </button>
                 </div>
               </div>
             ))}
@@ -758,13 +726,34 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
       {/* ── Add / Edit Workspace Modal ────────────────────────────────────── */}
       {modalMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-gray-900 border border-gray-700/50 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
-            <h3 className="text-base font-semibold text-gray-100 mb-4">
-              {modalMode === "add" ? "Create Workspace" : "Edit Workspace"}
-            </h3>
-            <form onSubmit={handleSaveWorkspace} className="space-y-4">
+          <div className="bg-gray-900 border border-gray-700/50 rounded-xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-700/40">
+              <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
+                {modalMode === "add" ? "Create Workspace" : "Edit Workspace"}
+              </span>
+              <button
+                onClick={closeModal}
+                className="w-7 h-7 rounded-md text-gray-500 hover:text-gray-200 hover:bg-gray-800 flex items-center justify-center transition-all"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveWorkspace} className="p-4 space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                <label className="block text-sm font-medium text-gray-400 mb-1.5">
                   Name *
                 </label>
                 <input
@@ -775,12 +764,12 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
                   onChange={(e) =>
                     setForm((f) => ({ ...f, name: e.target.value }))
                   }
-                  className="w-full h-10 px-4 bg-gray-800/80 border border-gray-600/50 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500/70 focus:ring-1 focus:ring-blue-500/30 transition-all"
+                  className="w-full h-9 px-3 bg-gray-900/60 border border-gray-600/50 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500/60 transition-all"
                   placeholder="e.g. Mobile Team"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                <label className="block text-sm font-medium text-gray-400 mb-1.5">
                   Description
                 </label>
                 <textarea
@@ -789,11 +778,11 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
                   onChange={(e) =>
                     setForm((f) => ({ ...f, description: e.target.value }))
                   }
-                  className="w-full px-4 py-2.5 bg-gray-800/80 border border-gray-600/50 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500/70 focus:ring-1 focus:ring-blue-500/30 transition-all resize-none"
+                  className="w-full px-3 py-2 bg-gray-900/60 border border-gray-600/50 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500/60 transition-all resize-none"
                   placeholder="Optional description"
                 />
               </div>
-              <div className="flex gap-3 justify-end pt-1">
+              <div className="flex gap-2 justify-end pt-1">
                 <Button
                   type="button"
                   variant="ghost"
@@ -824,52 +813,54 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
       {/* ── Delete Confirmation Modal ──────────────────────────────────────── */}
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-gray-900 border border-gray-700/50 rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-red-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
-                <svg
-                  className="w-5 h-5 text-red-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
-                  />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-gray-100">
-                  Delete workspace?
-                </h3>
-                <p className="text-sm text-gray-400 mt-0.5">
-                  <span className="text-gray-200 font-medium">
+          <div className="bg-gray-900 border border-gray-700/50 rounded-xl w-full max-w-sm mx-4 shadow-2xl overflow-hidden">
+            <div className="flex items-center px-4 py-2.5 border-b border-gray-700/40">
+              <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
+                Delete Workspace
+              </span>
+            </div>
+            <div className="p-4">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-8 h-8 bg-red-500/15 border border-red-500/25 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <svg
+                    className="w-4 h-4 text-red-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+                    />
+                  </svg>
+                </div>
+                <p className="text-sm text-gray-300 leading-relaxed">
+                  <span className="font-medium text-gray-100">
                     {confirmDelete.name}
                   </span>{" "}
                   and all its data will be permanently removed.
                 </p>
               </div>
-            </div>
-            <div className="flex gap-3 justify-end">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setConfirmDelete(null)}
-                disabled={deleting}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={handleDelete}
-                disabled={deleting}
-              >
-                {deleting ? "Deleting…" : "Delete"}
-              </Button>
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirmDelete(null)}
+                  disabled={deleting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                >
+                  {deleting ? "Deleting…" : "Delete"}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

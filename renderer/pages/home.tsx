@@ -9,7 +9,6 @@ import { Card, CardContent } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { ChipsInput } from "../components/ui/ChipsInput";
 import { SearchInput } from "../components/ui/SearchInput";
-import { FilterBar, SortControl } from "../components/ui/FilterBar";
 import { Skeleton } from "../components/ui/Skeleton";
 import {
   NoSnapsEmptyState,
@@ -33,7 +32,41 @@ import { OfflineBanner } from "../components/ui/OfflineBanner";
 import { useSyncQueue } from "../hooks/useSyncQueue";
 import type { Issue } from "../types";
 
-// ─── Profile Dropdown ─────────────────────────────────────────────────────────
+// ─── BugReport (mirrors main/services/ai.ts) ──────────────────────────────────
+
+interface BugReport {
+  title: string;
+  summary: string;
+  steps: string[];
+  expected: string;
+  actual: string;
+  severity: "critical" | "high" | "medium" | "low";
+}
+
+/** Render a structured BugReport (returned by the AI service for session
+ *  snaps) into the markdown blob we store in `description`. */
+function formatBugReportMarkdown(report: BugReport): string {
+  const lines: string[] = [];
+  lines.push(`## Summary\n${report.summary ?? ""}`);
+  if (Array.isArray(report.steps) && report.steps.length > 0) {
+    lines.push(
+      `\n## Steps to Reproduce\n${report.steps
+        .map((s, i) => `${i + 1}. ${s}`)
+        .join("\n")}`
+    );
+  }
+  if (report.expected) {
+    lines.push(`\n## Expected Behavior\n${report.expected}`);
+  }
+  if (report.actual) {
+    lines.push(`\n## Actual Behavior\n${report.actual}`);
+  }
+  if (report.severity) {
+    const sev = report.severity.charAt(0).toUpperCase() + report.severity.slice(1);
+    lines.push(`\n## Severity\n${sev}`);
+  }
+  return lines.join("\n");
+}
 
 // ─── Home Page ─────────────────────────────────────────────────────────────────
 
@@ -67,6 +100,21 @@ export default function HomePage() {
   >("all");
   const [sortBy, setSortBy] = useState<"date" | "name">("name");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  // Tracks whether persisted prefs have been hydrated from disk. We don't
+  // want to persist setter calls that fire from defaults during the first
+  // render, since that would overwrite the user's saved prefs with defaults.
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+
+  // Cloud-sync progress (snaps being downloaded from cloud → local). Surfaces
+  // a clear banner so users don't think snaps are missing after switching
+  // accounts or devices.
+  const [cloudSync, setCloudSync] = useState<{
+    active: boolean;
+    current: number;
+    total: number;
+  }>({ active: false, current: 0, total: 0 });
+  const [cloudSyncToast, setCloudSyncToast] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [issueToDelete, setIssueToDelete] = useState<string | null>(null);
@@ -99,6 +147,94 @@ export default function HomePage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Hydrate persisted home-screen prefs once on mount.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await window.api.getHomePrefs();
+        if (cancelled || !result?.success || !result.data) {
+          setPrefsLoaded(true);
+          return;
+        }
+        const prefs = result.data;
+        setViewMode(prefs.viewMode);
+        setSortBy(prefs.sortBy);
+        setSortOrder(prefs.sortOrder);
+        setFilter(prefs.typeFilter);
+        setStatusFilter(prefs.statusFilter);
+      } catch (err) {
+        console.warn("[Home] Failed to load home prefs:", err);
+      } finally {
+        if (!cancelled) setPrefsLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Persist home-screen prefs when any pref changes (after hydration).
+  useEffect(() => {
+    if (!prefsLoaded) return;
+    window.api
+      .setHomePrefs({
+        viewMode,
+        sortBy,
+        sortOrder,
+        typeFilter: filter,
+        statusFilter,
+      })
+      .catch((err) => console.warn("[Home] Failed to save home prefs:", err));
+  }, [prefsLoaded, viewMode, sortBy, sortOrder, filter, statusFilter]);
+
+  // Listen for cloud sync progress events emitted by syncService.fetchFromCloud.
+  useEffect(() => {
+    const unsubscribe = window.api.onCloudSyncProgress?.((data) => {
+      if (data.phase === "start") {
+        setCloudSync({
+          active: true,
+          current: 0,
+          total: data.total ?? 0,
+        });
+        setCloudSyncToast(null);
+      } else if (data.phase === "progress") {
+        setCloudSync((prev) => ({
+          active: true,
+          current: data.current ?? prev.current,
+          total: data.total ?? prev.total,
+        }));
+      } else if (data.phase === "complete") {
+        setCloudSync({ active: false, current: 0, total: 0 });
+        const synced = data.syncedCount ?? 0;
+        const failed = data.failedCount ?? 0;
+        if (synced > 0) {
+          setCloudSyncToast(
+            `Synced ${synced} ${synced === 1 ? "snap" : "snaps"} from cloud${
+              failed > 0 ? ` (${failed} failed)` : ""
+            }`
+          );
+        } else if (failed > 0) {
+          setCloudSyncToast(
+            `Cloud sync finished with ${failed} ${
+              failed === 1 ? "error" : "errors"
+            }`
+          );
+        }
+      }
+    });
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
+  // Auto-dismiss the completion toast after a few seconds.
+  useEffect(() => {
+    if (!cloudSyncToast) return;
+    const timer = setTimeout(() => setCloudSyncToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [cloudSyncToast]);
 
   // Single source of truth for snaps: whenever the active workspace changes,
   // immediately wipe stale data and fetch fresh snaps for the new workspace.
@@ -155,6 +291,34 @@ export default function HomePage() {
       if (connectorsResult.success) {
         setConnectors(connectorsResult.data || []);
       }
+
+      // Pull from cloud in the background — gives a fresh device the snaps
+      // synced from another device. Local list paints first; once the cloud
+      // pull finishes we re-fetch to surface any newly-downloaded snaps.
+      setLoading(false);
+      setIsRefreshing(true);
+      try {
+        const cloudResult = await window.api.syncFromCloud(
+          effectiveUserId,
+          wsId
+        );
+        // Discard if workspace switched while we were pulling
+        if (myToken !== fetchIdRef.current) return;
+        if (cloudResult?.success && cloudResult.data?.syncedCount) {
+          const refreshed = await window.api.listIssues(effectiveUserId, wsId);
+          if (myToken !== fetchIdRef.current) return;
+          if (refreshed.success) {
+            setIssues(refreshed.data || []);
+          }
+        }
+      } catch (err) {
+        console.warn("[Home] Cloud pull failed (non-fatal):", err);
+      } finally {
+        if (myToken === fetchIdRef.current) {
+          setIsRefreshing(false);
+        }
+      }
+      return;
     } catch (error) {
       console.error("[Home] Failed to load snaps for workspace:", error);
     } finally {
@@ -727,7 +891,7 @@ export default function HomePage() {
                                       {connector.name}
                                     </p>
                                     {isAlreadySynced && (
-                                      <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-bold rounded-md uppercase tracking-wide flex-shrink-0">
+                                      <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-2xs font-bold rounded-md uppercase tracking-wide flex-shrink-0">
                                         Synced
                                       </span>
                                     )}
@@ -1140,200 +1304,229 @@ export default function HomePage() {
         {/* Offline / queued sync indicator */}
         <OfflineBanner />
 
-        {/* Main Content */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Enhanced Filters and Search */}
-          <motion.div
-            className="mb-8 space-y-6"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.2 }}
-          >
-            {/* Search and Type Filters */}
-            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-              <FilterBar
-                options={[
-                  {
-                    id: "all",
-                    label: "All",
-                    count: issues.length,
-                    icon: (
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                        />
-                      </svg>
-                    ),
-                  },
-                  {
-                    id: "screenshot",
-                    label: "Screenshots",
-                    count: issues.filter(
-                      (i) => !(i as any).sessionData && i.type === "screenshot"
-                    ).length,
-                    icon: (
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
-                        />
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
-                        />
-                      </svg>
-                    ),
-                  },
-                  {
-                    id: "session",
-                    label: "Sessions",
-                    count: issues.filter((i) => !!(i as any).sessionData)
-                      .length,
-                    icon: (
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
-                        />
-                      </svg>
-                    ),
-                  },
-                ]}
-                activeFilter={filter}
-                onFilterChange={(filterId) => setFilter(filterId as any)}
-                variant="pills"
-                className="flex-shrink-0"
-              />
-
-              <SearchInput
-                value={searchQuery}
-                onChange={setSearchQuery}
-                placeholder="Search your snaps..."
-                className="w-full lg:w-80"
-                variant="glass"
-                suggestions={issues.map((issue) => issue.title).slice(0, 5)}
-              />
+        {/* Cloud sync banner — visible while snaps are being pulled from cloud */}
+        {cloudSync.active && (
+          <div className="bg-blue-600/15 border-b border-blue-500/30 text-blue-200 text-sm">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-center gap-3">
+              <div className="w-3.5 h-3.5 border-2 border-blue-400/30 border-t-blue-300 rounded-full animate-spin flex-shrink-0" />
+              <span className="flex-1 min-w-0 truncate">
+                {cloudSync.total > 0
+                  ? `Syncing snaps from cloud — ${cloudSync.current} of ${cloudSync.total}…`
+                  : "Syncing snaps from cloud…"}
+              </span>
+              {cloudSync.total > 0 && (
+                <div className="hidden sm:block w-32 h-1.5 bg-blue-900/40 rounded-full overflow-hidden flex-shrink-0">
+                  <div
+                    className="h-full bg-blue-400 transition-all duration-200"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.round((cloudSync.current / cloudSync.total) * 100)
+                      )}%`,
+                    }}
+                  />
+                </div>
+              )}
             </div>
+          </div>
+        )}
 
-            {/* Status Filter and Sorting */}
-            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <span className="text-sm text-gray-400 font-medium whitespace-nowrap">
-                  Status:
-                </span>
-                <FilterBar
-                  options={[
-                    { id: "all", label: "All", count: issues.length },
-                    {
-                      id: "github",
-                      label: "GitHub Sync",
-                      count: issues.filter((i) =>
-                        i.syncedTo?.some((s) => s.platform === "github")
-                      ).length,
-                    },
-                    {
-                      id: "zoho",
-                      label: "Zoho Sync",
-                      count: issues.filter((i) =>
-                        i.syncedTo?.some((s) => s.platform === "zoho")
-                      ).length,
-                    },
-                  ]}
-                  activeFilter={statusFilter}
-                  onFilterChange={(filterId) =>
-                    setStatusFilter(filterId as any)
-                  }
-                  variant="pills"
-                  showCounts={true}
-                />
-              </div>
-
-              <SortControl
-                sortBy={sortBy}
-                sortOrder={sortOrder}
-                onSortByChange={(value) => setSortBy(value as any)}
-                onSortOrderChange={setSortOrder}
-                options={[
-                  { value: "date", label: "Date" },
-                  { value: "name", label: "Name" },
-                ]}
-              />
-            </div>
-
-            {/* Tags Filter */}
-            {allTags.length > 0 && (
-              <motion.div
-                className="flex items-start gap-3"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                transition={{ duration: 0.3 }}
+        {/* Cloud sync completion toast — auto-dismisses after a few seconds */}
+        {!cloudSync.active && cloudSyncToast && (
+          <div className="bg-emerald-600/15 border-b border-emerald-500/30 text-emerald-200 text-sm">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-center gap-3">
+              <svg
+                className="w-4 h-4 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                <span className="text-sm text-gray-400 font-medium whitespace-nowrap pt-1.5">
-                  Filter by tags:
-                </span>
-                <div className="flex-1">
-                  <div className="flex flex-wrap gap-1.5">
-                    {allTags.map((tag) => {
-                      const isSelected = tagsFilter.includes(tag);
-                      return (
-                        <motion.button
-                          key={tag}
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => {
-                            if (isSelected) {
-                              setTagsFilter(
-                                tagsFilter.filter((t) => t !== tag)
-                              );
-                            } else {
-                              setTagsFilter([...tagsFilter, tag]);
-                            }
-                          }}
-                          className={`text-xs px-2.5 py-1 rounded-full border transition-all duration-200 ${
-                            isSelected
-                              ? "bg-blue-600/30 text-blue-300 border-blue-600/50 hover:bg-blue-600/40"
-                              : "bg-gray-800/50 hover:bg-gray-700/50 text-gray-400 hover:text-gray-300 border-gray-700/50 hover:border-gray-600/50"
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+              <span className="flex-1 min-w-0 truncate">{cloudSyncToast}</span>
+              <button
+                type="button"
+                onClick={() => setCloudSyncToast(null)}
+                className="text-emerald-300 hover:text-emerald-100 text-xs"
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Main Content */}
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {/* Toolbar — hidden until the user has snaps */}
+          {issues.length > 0 && (() => {
+            const typeCounts = {
+              all: issues.length,
+              screenshot: issues.filter(
+                (i) => !(i as any).sessionData && i.type === "screenshot"
+              ).length,
+              session: issues.filter((i) => !!(i as any).sessionData).length,
+            };
+            const statusCounts = {
+              all: issues.length,
+              github: issues.filter((i) =>
+                i.syncedTo?.some((s) => s.platform === "github")
+              ).length,
+              zoho: issues.filter((i) =>
+                i.syncedTo?.some((s) => s.platform === "zoho")
+              ).length,
+            };
+            const TYPE_OPTIONS: { id: "all" | "screenshot" | "session"; label: string }[] = [
+              { id: "all", label: "All" },
+              { id: "screenshot", label: "Screenshots" },
+              { id: "session", label: "Sessions" },
+            ];
+            const STATUS_OPTIONS: { id: "all" | "github" | "zoho"; label: string }[] = [
+              { id: "all", label: "All" },
+              { id: "github", label: "GitHub" },
+              { id: "zoho", label: "Zoho" },
+            ];
+            const showStatusRow =
+              statusCounts.github > 0 || statusCounts.zoho > 0;
+            return (
+            <motion.div
+              className="mb-6 space-y-3"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.15 }}
+            >
+              {/* Primary toolbar — segmented type + search + sort + view */}
+              <div className="flex flex-col md:flex-row md:items-center gap-3">
+                {/* Type segmented control */}
+                <div
+                  className="inline-flex bg-gray-800/40 border border-gray-700/50 rounded-lg p-0.5 flex-shrink-0"
+                  role="group"
+                  aria-label="Filter by type"
+                >
+                  {TYPE_OPTIONS.map((opt) => {
+                    const active = filter === opt.id;
+                    const count = typeCounts[opt.id];
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setFilter(opt.id as any)}
+                        aria-pressed={active}
+                        className={`h-7 px-3 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 ${
+                          active
+                            ? "bg-blue-600/25 text-blue-200 shadow-sm"
+                            : "text-gray-400 hover:text-gray-200 hover:bg-gray-700/40"
+                        }`}
+                      >
+                        {opt.label}
+                        <span
+                          className={`text-2xs px-1.5 py-0.5 rounded-full font-semibold tabular-nums ${
+                            active
+                              ? "bg-blue-500/30 text-blue-100"
+                              : "bg-gray-700/50 text-gray-500"
                           }`}
                         >
-                          {isSelected && (
-                            <span className="inline-block mr-1">✓</span>
-                          )}
-                          {tag}
-                        </motion.button>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Search */}
+                <div className="flex-1 min-w-0">
+                  <SearchInput
+                    value={searchQuery}
+                    onChange={setSearchQuery}
+                    placeholder="Search your snaps..."
+                    className="w-full max-w-md"
+                    variant="glass"
+                    suggestions={issues.map((issue) => issue.title).slice(0, 5)}
+                  />
+                </div>
+
+                {/* Sort + view toggle */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {/* Compact sort */}
+                  <div
+                    className="inline-flex bg-gray-800/40 border border-gray-700/50 rounded-lg p-0.5"
+                    role="group"
+                    aria-label="Sort by"
+                  >
+                    {[
+                      { value: "date" as const, label: "Date" },
+                      { value: "name" as const, label: "Name" },
+                    ].map((opt) => {
+                      const active = sortBy === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setSortBy(opt.value)}
+                          aria-pressed={active}
+                          className={`h-7 px-2.5 text-xs font-medium rounded-md transition-all ${
+                            active
+                              ? "bg-blue-600/25 text-blue-200"
+                              : "text-gray-400 hover:text-gray-200 hover:bg-gray-700/40"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
                       );
                     })}
                   </div>
-                  {tagsFilter.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSortOrder(sortOrder === "asc" ? "desc" : "asc")
+                    }
+                    title={
+                      sortOrder === "asc"
+                        ? "Sorted ascending — click to flip"
+                        : "Sorted descending — click to flip"
+                    }
+                    className="h-7 w-7 inline-flex items-center justify-center rounded-lg border border-gray-700/50 bg-gray-800/40 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-colors"
+                  >
+                    <svg
+                      className={`w-3.5 h-3.5 transition-transform ${
+                        sortOrder === "desc" ? "rotate-180" : ""
+                      }`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
+                      />
+                    </svg>
+                  </button>
+
+                  <div
+                    className="inline-flex rounded-lg border border-gray-700/50 bg-gray-800/40 p-0.5"
+                    role="group"
+                    aria-label="View mode"
+                  >
                     <button
-                      onClick={() => setTagsFilter([])}
-                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors mt-2 inline-flex items-center"
+                      type="button"
+                      onClick={() => setViewMode("grid")}
+                      aria-pressed={viewMode === "grid"}
+                      title="Grid view"
+                      className={`h-7 w-7 rounded-md flex items-center justify-center transition-colors ${
+                        viewMode === "grid"
+                          ? "bg-blue-600/25 text-blue-200"
+                          : "text-gray-500 hover:text-gray-200"
+                      }`}
                     >
                       <svg
-                        className="w-3 h-3 mr-1"
+                        className="w-3.5 h-3.5"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -1342,16 +1535,115 @@ export default function HomePage() {
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth={2}
-                          d="M6 18L18 6M6 6l12 12"
+                          d="M4 6h6v6H4zM14 6h6v6h-6zM4 16h6v4H4zM14 16h6v4h-6z"
                         />
                       </svg>
-                      Clear all tags
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode("list")}
+                      aria-pressed={viewMode === "list"}
+                      title="List view"
+                      className={`h-7 w-7 rounded-md flex items-center justify-center transition-colors ${
+                        viewMode === "list"
+                          ? "bg-blue-600/25 text-blue-200"
+                          : "text-gray-500 hover:text-gray-200"
+                      }`}
+                    >
+                      <svg
+                        className="w-3.5 h-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 6h16M4 12h16M4 18h16"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Secondary row — sync status chips + tag chips, only when relevant */}
+              {(showStatusRow || allTags.length > 0) && (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
+                  {showStatusRow && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-2xs font-semibold uppercase tracking-wide text-gray-500">
+                        Sync
+                      </span>
+                      {STATUS_OPTIONS.map((opt) => {
+                        const active = statusFilter === opt.id;
+                        const count = statusCounts[opt.id];
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setStatusFilter(opt.id as any)}
+                            aria-pressed={active}
+                            className={`h-6 px-2.5 text-2xs font-medium rounded-full border transition-all flex items-center gap-1 ${
+                              active
+                                ? "bg-blue-500/15 text-blue-300 border-blue-500/40"
+                                : "bg-transparent text-gray-400 border-gray-700/60 hover:border-gray-600 hover:text-gray-200"
+                            }`}
+                          >
+                            {opt.label}
+                            <span className="tabular-nums opacity-70">{count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {allTags.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-2xs font-semibold uppercase tracking-wide text-gray-500">
+                        Tags
+                      </span>
+                      {allTags.map((tag) => {
+                        const isSelected = tagsFilter.includes(tag);
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => {
+                              setTagsFilter(
+                                isSelected
+                                  ? tagsFilter.filter((t) => t !== tag)
+                                  : [...tagsFilter, tag]
+                              );
+                            }}
+                            className={`h-6 px-2.5 text-2xs font-medium rounded-full border transition-all ${
+                              isSelected
+                                ? "bg-blue-500/15 text-blue-300 border-blue-500/40"
+                                : "bg-transparent text-gray-400 border-gray-700/60 hover:border-gray-600 hover:text-gray-200"
+                            }`}
+                          >
+                            {isSelected && <span className="mr-1">✓</span>}
+                            {tag}
+                          </button>
+                        );
+                      })}
+                      {tagsFilter.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setTagsFilter([])}
+                          className="h-6 px-2 text-2xs text-gray-500 hover:text-gray-200 transition-colors"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
-              </motion.div>
-            )}
-          </motion.div>
+              )}
+            </motion.div>
+            );
+          })()}
 
           {/* Issues Grid */}
           {filteredIssues.length === 0 ? (
@@ -1378,230 +1670,327 @@ export default function HomePage() {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                className={
+                  viewMode === "list"
+                    ? "bg-gray-800/20 border border-gray-700/40 rounded-xl overflow-hidden divide-y divide-gray-800/60"
+                    : "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4"
+                }
               >
-                {paginatedIssues.map((issue, index) => (
-                  <motion.div
-                    key={issue.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: Math.min(index * 0.03, 0.12) }}
-                    whileHover={{ y: -4, transition: { duration: 0.15 } }}
-                  >
-                    <Card
-                      className="overflow-hidden h-full flex flex-col group hover:shadow-2xl hover:shadow-blue-500/20 transition-all duration-300"
-                      interactive
-                      variant="elevated"
-                    >
-                      {/* Thumbnail */}
-                      <div
-                        className="relative h-40 bg-gray-800 overflow-hidden cursor-pointer"
-                        onClick={() => openPreview(issue)}
+                {paginatedIssues.map((issue, index) => {
+                  const isSession = !!(issue as any).sessionData;
+                  const typeMeta = isSession
+                    ? {
+                        label: "Session",
+                        cls: "bg-purple-500/15 text-purple-300 border-purple-500/30",
+                        icon: (
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+                          </svg>
+                        ),
+                      }
+                    : issue.type === "screenshot"
+                      ? {
+                          label: "Screenshot",
+                          cls: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+                          icon: (
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          ),
+                        }
+                      : {
+                          label: "Recording",
+                          cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+                          icon: (
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          ),
+                        };
+                  const hasThumb = !!(
+                    issue.thumbnailPath ||
+                    issue.filePath ||
+                    issue.cloudThumbnailUrl ||
+                    issue.cloudFileUrl
+                  );
+                  const isSynced =
+                    !!issue.cloudFileUrl ||
+                    !!issue.cloudThumbnailUrl ||
+                    (issue.syncedTo?.length ?? 0) > 0;
+
+                  // ───────── List row ─────────
+                  if (viewMode === "list") {
+                    return (
+                      <motion.div
+                        key={issue.id}
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: Math.min(index * 0.02, 0.12) }}
+                        className="group flex items-center gap-4 px-3 py-2.5 hover:bg-gray-800/40 transition-colors"
                       >
-                        {issue.thumbnailPath || issue.filePath ? (
-                          <>
+                        {/* Thumb */}
+                        <button
+                          type="button"
+                          onClick={() => openPreview(issue)}
+                          className="relative flex-shrink-0 w-24 h-16 rounded-md bg-gray-800 border border-gray-700/50 overflow-hidden hover:ring-2 hover:ring-blue-500/40 transition-all"
+                        >
+                          {hasThumb ? (
                             <LocalImage
                               src={issue.thumbnailPath || issue.filePath}
+                              cloudFallback={
+                                issue.cloudThumbnailUrl || issue.cloudFileUrl
+                              }
                               alt={issue.title}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            />
-                            {/* Preview overlay */}
-                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all duration-300 flex items-center justify-center">
-                              <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                <div className="bg-white/10 backdrop-blur-sm rounded-full p-4">
-                                  <svg
-                                    className="w-8 h-8 text-white"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"
-                                    />
-                                  </svg>
-                                </div>
-                              </div>
-                            </div>
-                          </>
-                        ) : (
-                          /* issue.type === "recording" && issue.filePath — commented out
-                        ) : issue.type === "recording" && issue.filePath ? (
-                          <>
-                            <video
-                              src={`snapflow://${issue.filePath}`}
                               className="w-full h-full object-cover"
-                              muted
-                              preload="metadata"
                             />
-                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all duration-300 flex items-center justify-center">
-                              <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                <div className="bg-white/10 backdrop-blur-sm rounded-full p-4">
-                                  <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M8 5v14l11-7z" />
-                                  </svg>
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-600">
+                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                            </div>
+                          )}
+                        </button>
+
+                        {/* Title + meta */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3
+                              className="text-sm font-semibold text-gray-100 truncate cursor-pointer hover:text-blue-300 transition-colors"
+                              onClick={() => openPreview(issue)}
+                              title={issue.title}
+                            >
+                              {issue.title}
+                            </h3>
+                            <span
+                              className={`flex-shrink-0 inline-flex items-center gap-1 h-5 px-1.5 text-2xs font-medium rounded-full border ${typeMeta.cls}`}
+                            >
+                              {typeMeta.icon}
+                              {typeMeta.label}
+                            </span>
+                            {isSynced && (
+                              <span
+                                title="Synced to cloud"
+                                className="flex-shrink-0 inline-flex items-center gap-1 h-5 px-1.5 text-2xs font-medium rounded-full border bg-blue-500/10 text-blue-300 border-blue-500/25"
+                              >
+                                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M19.35 10.04A7.49 7.49 0 0012 4 7.5 7.5 0 004.66 9.96 5.5 5.5 0 005.5 21h13.5a4.5 4.5 0 00.35-10.96z" />
+                                </svg>
+                                Synced
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                            <span>
+                              {format(new Date(issue.timestamp), "MMM d, yyyy · h:mm a")}
+                            </span>
+                            {issue.tags && issue.tags.length > 0 && (
+                              <span className="flex items-center gap-1 truncate">
+                                {issue.tags.slice(0, 3).map((tag) => (
+                                  <span
+                                    key={tag}
+                                    className="inline-flex items-center px-1.5 py-0.5 bg-gray-700/40 text-gray-300 rounded text-2xs border border-gray-700/60"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                                {issue.tags.length > 3 && (
+                                  <span className="text-2xs text-gray-600">
+                                    +{issue.tags.length - 3}
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex-shrink-0 flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                          <GitHubSyncDropdown
+                            issue={issue}
+                            connectors={connectors}
+                            className="hover:bg-gray-700/60"
+                          />
+                          <ZohoSyncDropdown
+                            issue={issue}
+                            connectors={connectors}
+                            className="hover:bg-gray-700/60"
+                          />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => confirmDelete(issue.id)}
+                            title="Delete"
+                            className="hover:bg-red-500/10 hover:text-red-400"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </Button>
+                        </div>
+                      </motion.div>
+                    );
+                  }
+
+                  // ───────── Grid card ─────────
+                  return (
+                    <motion.div
+                      key={issue.id}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: Math.min(index * 0.03, 0.12) }}
+                      whileHover={{ y: -2, transition: { duration: 0.15 } }}
+                    >
+                      <Card
+                        className="overflow-hidden h-full flex flex-col group hover:border-gray-600/70 hover:shadow-lg hover:shadow-blue-500/5 transition-all duration-200"
+                        hover={false}
+                        animate={false}
+                        variant="default"
+                      >
+                        {/* Thumbnail */}
+                        <button
+                          type="button"
+                          className="relative w-full aspect-video bg-gray-800 overflow-hidden block"
+                          onClick={() => openPreview(issue)}
+                        >
+                          {hasThumb ? (
+                            <>
+                              <LocalImage
+                                src={issue.thumbnailPath || issue.filePath}
+                                cloudFallback={
+                                  issue.cloudThumbnailUrl || issue.cloudFileUrl
+                                }
+                                alt={issue.title}
+                                className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/10 pointer-events-none" />
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors duration-200 flex items-center justify-center">
+                                <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                  <div className="bg-white/15 backdrop-blur-sm rounded-full p-2.5">
+                                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                                    </svg>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </>
-                        ) : */ <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="text-center">
-                              <svg
-                                className="w-16 h-16 mx-auto mb-2 text-gray-600"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={1.5}
-                                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                                />
+                            </>
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <svg className="w-10 h-10 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                               </svg>
-                              <p className="text-sm text-gray-500">
-                                No preview
-                              </p>
                             </div>
-                          </div>
-                        )}
+                          )}
 
-                        {/* Type Badge Overlay */}
-                        <div className="absolute top-3 right-3">
-                          <Badge
-                            variant={
-                              (issue as any).sessionData
-                                ? "info"
-                                : issue.type === "screenshot"
-                                  ? "primary"
-                                  : "secondary"
-                            }
-                            className="shadow-lg"
+                          {/* Type chip — top-left */}
+                          <span
+                            className={`absolute top-2 left-2 inline-flex items-center gap-1 h-5 px-1.5 text-2xs font-medium rounded-full border backdrop-blur-sm ${typeMeta.cls}`}
                           >
-                            {(issue as any).sessionData
-                              ? "🎬 Session"
-                              : issue.type === "screenshot"
-                                ? "📸 Screenshot"
-                                : "🎥 Recording"}
-                          </Badge>
-                        </div>
-                      </div>
-
-                      <CardContent className="flex-1 flex flex-col p-4 pt-3">
-                        {/* Title */}
-                        <h3 className="font-semibold text-base text-gray-100 mb-2 line-clamp-1 leading-snug">
-                          {issue.title}
-                        </h3>
-
-                        {/* Issue ID */}
-                        <div className="mb-3 pb-3 border-b border-gray-800">
-                          <span className="font-mono bg-gray-800/50 px-2 py-0.5 rounded text-[10px] text-gray-500">
-                            {issue.id}
+                            {typeMeta.icon}
+                            {typeMeta.label}
                           </span>
-                        </div>
 
-                        {/* Date and Time */}
-                        <div className="mb-3 space-y-1.5">
-                          <div className="flex items-center text-xs text-gray-400">
-                            <svg
-                              className="w-3.5 h-3.5 mr-1.5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
+                          {/* Sync dot — top-right */}
+                          {isSynced && (
+                            <span
+                              title="Synced to cloud"
+                              className="absolute top-2 right-2 inline-flex items-center gap-1 h-5 px-1.5 text-2xs font-medium rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/30 backdrop-blur-sm"
                             >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                              />
+                              <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M19.35 10.04A7.49 7.49 0 0012 4 7.5 7.5 0 004.66 9.96 5.5 5.5 0 005.5 21h13.5a4.5 4.5 0 00.35-10.96z" />
+                              </svg>
+                              Synced
+                            </span>
+                          )}
+                        </button>
+
+                        <div className="flex-1 flex flex-col gap-2 px-3.5 pt-3 pb-3">
+                          {/* Title */}
+                          <h3
+                            className="font-semibold text-sm text-gray-100 line-clamp-2 leading-snug cursor-pointer hover:text-blue-300 transition-colors"
+                            onClick={() => openPreview(issue)}
+                            title={`${issue.title} (${issue.id})`}
+                          >
+                            {issue.title}
+                          </h3>
+
+                          {/* Meta — single tight line */}
+                          <div className="flex items-center gap-1.5 text-2xs text-gray-500">
+                            <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
-                            <span>
-                              {format(new Date(issue.timestamp), "MMM d, yyyy")}
+                            <span className="truncate">
+                              {format(new Date(issue.timestamp), "MMM d, yyyy · h:mm a")}
                             </span>
                           </div>
-                          <div className="flex items-center text-xs text-gray-400">
-                            <svg
-                              className="w-3.5 h-3.5 mr-1.5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                              />
-                            </svg>
-                            <span>
-                              {format(new Date(issue.timestamp), "h:mm:ss a")}
-                            </span>
-                          </div>
-                        </div>
 
-                        {/* Tags */}
-                        {issue.tags && issue.tags.length > 0 && (
-                          <div className="mb-3">
-                            <div className="flex flex-wrap gap-1.5">
-                              {issue.tags.map((tag) => (
+                          {/* Tags */}
+                          {issue.tags && issue.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {issue.tags.slice(0, 4).map((tag) => (
                                 <span
                                   key={tag}
-                                  className="inline-flex items-center px-2 py-0.5 bg-blue-600/20 text-blue-300 rounded text-[10px] font-medium border border-blue-600/30"
+                                  className="inline-flex items-center px-1.5 py-0.5 bg-gray-700/40 text-gray-300 rounded text-2xs border border-gray-700/60"
                                 >
                                   {tag}
                                 </span>
                               ))}
+                              {issue.tags.length > 4 && (
+                                <span className="text-2xs text-gray-600 px-1 py-0.5">
+                                  +{issue.tags.length - 4}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Footer — actions */}
+                          <div className="flex items-center justify-between pt-2 mt-auto border-t border-gray-800/60">
+                            <span
+                              className="text-2xs font-mono text-gray-600 truncate"
+                              title={issue.id}
+                            >
+                              {issue.id}
+                            </span>
+                            <div className="flex items-center gap-0.5 -mr-1.5 opacity-70 group-hover:opacity-100 transition-opacity">
+                              <GitHubSyncDropdown
+                                issue={issue}
+                                connectors={connectors}
+                                className="hover:bg-gray-700/60"
+                              />
+                              <ZohoSyncDropdown
+                                issue={issue}
+                                connectors={connectors}
+                                className="hover:bg-gray-700/60"
+                              />
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => confirmDelete(issue.id)}
+                                title="Delete"
+                                className="hover:bg-red-500/10 hover:text-red-400"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </Button>
                             </div>
                           </div>
-                        )}
-
-                        {/* Sync Status and Actions */}
-                        <div className="flex items-center justify-between mt-auto gap-2">
-                          <div className="flex items-center gap-1 flex-wrap">
-                            <Badge variant="primary">☁️ Synced</Badge>
-                          </div>
-
-                          <div className="flex items-center space-x-0.5">
-                            <GitHubSyncDropdown
-                              issue={issue}
-                              connectors={connectors}
-                              className="hover:bg-gray-800"
-                            />
-                            <ZohoSyncDropdown
-                              issue={issue}
-                              connectors={connectors}
-                              className="hover:bg-gray-800"
-                            />
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => confirmDelete(issue.id)}
-                              title="Delete issue"
-                              className="hover:bg-red-500/10 hover:text-red-400"
-                            >
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                />
-                              </svg>
-                            </Button>
-                          </div>
                         </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
+                      </Card>
+                    </motion.div>
+                  );
+                })}
               </motion.div>
 
               {/* Enhanced Pagination */}
@@ -1662,7 +2051,7 @@ export default function HomePage() {
         >
           <DialogContent
             hideCloseButton
-            className="max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] p-0 overflow-hidden bg-gray-950 border-gray-800"
+            className="!top-[calc(50%+1rem)] max-w-[95vw] w-[95vw] max-h-[calc(95vh-2rem)] h-[calc(95vh-2rem)] p-0 overflow-hidden bg-gray-950 border border-gray-800 rounded-xl shadow-2xl"
           >
             <DialogVisuallyHidden>
               <DialogTitle>{previewIssue?.title || "Snap Preview"}</DialogTitle>
@@ -1681,13 +2070,17 @@ export default function HomePage() {
                   0 ? (
                     <SessionScreenshotCarousel
                       paths={(previewIssue as any).sessionData.screenshotPaths}
+                      cloudUrls={
+                        (previewIssue as any).sessionData?.cloudScreenshotUrls
+                      }
                       title={previewIssue.title}
                       onIndexChange={setActiveCarouselIdx}
                     />
-                  ) : previewIssue.filePath ? (
+                  ) : previewIssue.filePath || previewIssue.cloudFileUrl ? (
                     <div className="flex-1 overflow-auto p-4">
                       <LocalImage
                         src={previewIssue.filePath}
+                        cloudFallback={previewIssue.cloudFileUrl}
                         alt={previewIssue.title}
                         className="w-full h-full"
                         style={{
@@ -1721,20 +2114,27 @@ export default function HomePage() {
                 </div>
 
                 {/* Right Sidebar - Details */}
-                <div className="w-full md:w-96 bg-gray-900 border-t md:border-t-0 md:border-l border-gray-800 flex flex-col h-auto md:h-full max-h-[50vh] md:max-h-full shrink-0">
+                <div className="w-full md:w-[520px] bg-gray-900 border-t md:border-t-0 md:border-l border-gray-800 flex flex-col h-auto md:h-full max-h-[50vh] md:max-h-full shrink-0">
                   {/* Header with Close Button */}
-                  <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-800 flex items-center justify-between flex-shrink-0">
-                    <h2 className="text-base sm:text-lg font-semibold text-gray-100">
-                      Snap Details
-                    </h2>
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                  <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between flex-shrink-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h2 className="text-sm font-semibold text-gray-100">
+                        Snap Details
+                      </h2>
+                      <span className="text-2xs text-gray-500 font-mono truncate">
+                        {(previewIssue as any).sessionData
+                          ? `${previewIssue.id}-s${activeCarouselIdx + 1}`
+                          : previewIssue.id}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
                       onClick={() => setPreviewDialogOpen(false)}
-                      className="h-10 w-10 p-0 hover:bg-gray-800"
+                      title="Close"
+                      className="h-7 w-7 inline-flex items-center justify-center rounded-md text-gray-500 hover:text-gray-200 hover:bg-gray-800 transition-colors"
                     >
                       <svg
-                        className="w-6 h-6"
+                        className="w-4 h-4"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -1746,7 +2146,7 @@ export default function HomePage() {
                           d="M6 18L18 6M6 6l12 12"
                         />
                       </svg>
-                    </Button>
+                    </button>
                   </div>
 
                   {/* Scrollable Content */}
@@ -1754,13 +2154,13 @@ export default function HomePage() {
                     {/* Title */}
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
-                        <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                        <label className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
                           Title
                         </label>
                         {!isEditingTitle && (
                           <button
                             onClick={startEditingTitle}
-                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                            className="text-xs text-gray-500 hover:text-gray-200 transition-colors"
                           >
                             Edit
                           </button>
@@ -1773,7 +2173,7 @@ export default function HomePage() {
                             value={editedTitle}
                             onChange={(e) => setEditedTitle(e.target.value)}
                             placeholder="Enter title..."
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-200"
+                            className="w-full h-9 px-3 bg-gray-900/60 border border-gray-600/50 text-gray-100 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500/60 transition-all"
                             autoFocus
                           />
                           <div className="flex gap-2">
@@ -1798,36 +2198,73 @@ export default function HomePage() {
                           </div>
                         </div>
                       ) : (
-                        <p className="text-sm sm:text-base font-medium text-gray-100 break-words">
-                          {previewIssue.title}
-                        </p>
+                        <div className="bg-gray-900/40 border border-gray-700/50 rounded-lg px-4 py-2.5">
+                          <p className="text-sm font-medium text-gray-100 break-words leading-snug">
+                            {previewIssue.title}
+                          </p>
+                        </div>
                       )}
                     </div>
 
                     {/* Description */}
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
-                        <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                        <label className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
                           Description
                         </label>
                         <div className="flex items-center gap-2">
-                          {!isEditingDescription &&
-                            !!(previewIssue as any).sessionData &&
-                            !previewIssue.description && (
+                          {(() => {
+                            // AI button visibility rules:
+                            //  • Session snaps: original behaviour — show when
+                            //    no description exists yet; the timeline gives
+                            //    the AI the context it needs.
+                            //  • Screenshot snaps: only show when the user has
+                            //    written a proper description (≥20 chars). A
+                            //    screenshot alone can't tell the AI what's
+                            //    actually wrong, so we require notes first.
+                            if (isEditingDescription) return null;
+                            const isSession = !!(previewIssue as any)
+                              .sessionData;
+                            const trimmed = (
+                              previewIssue.description ?? ""
+                            ).trim();
+                            const showButton = isSession
+                              ? trimmed.length === 0
+                              : trimmed.length >= 20;
+                            if (!showButton) return null;
+                            const label = isSession
+                              ? "Auto Generate"
+                              : "Improve with AI";
+                            const busyLabel = isSession
+                              ? "Generating…"
+                              : "Refining…";
+                            return (
                               <button
                                 disabled={isGeneratingDescription}
                                 onClick={async () => {
                                   setIsGeneratingDescription(true);
                                   setGenerateDescriptionError(null);
                                   try {
-                                    const result =
-                                      await window.api.aiGenerateDescriptionFromSnap(
-                                        previewIssue.id
-                                      );
+                                    const result = isSession
+                                      ? await window.api.aiGenerateDescriptionFromSnap(
+                                          previewIssue.id
+                                        )
+                                      : await window.api.aiGenerateScreenshotDescription(
+                                          {
+                                            filePath: previewIssue.filePath,
+                                            userNotes:
+                                              previewIssue.description ?? "",
+                                          }
+                                        );
                                     if (result?.success && result.data) {
+                                      const text = isSession
+                                        ? formatBugReportMarkdown(
+                                            result.data as BugReport
+                                          )
+                                        : (result.data as string);
                                       await handleUpdateDescription(
                                         previewIssue.id,
-                                        result.data
+                                        text
                                       );
                                     } else {
                                       setGenerateDescriptionError(
@@ -1865,7 +2302,7 @@ export default function HomePage() {
                                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                                       />
                                     </svg>
-                                    Generating…
+                                    {busyLabel}
                                   </>
                                 ) : (
                                   <>
@@ -1882,15 +2319,16 @@ export default function HomePage() {
                                         d="M13 10V3L4 14h7v7l9-11h-7z"
                                       />
                                     </svg>
-                                    Auto Generate
+                                    {label}
                                   </>
                                 )}
                               </button>
-                            )}
+                            );
+                          })()}
                           {!isEditingDescription && (
                             <button
                               onClick={startEditingDescription}
-                              className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                              className="text-xs text-gray-500 hover:text-gray-200 transition-colors"
                             >
                               {previewIssue.description ? "Edit" : "Add"}
                             </button>
@@ -1910,8 +2348,8 @@ export default function HomePage() {
                               setEditedDescription(e.target.value)
                             }
                             placeholder="Enter description..."
-                            rows={4}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-gray-100 rounded-lg text-xs sm:text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-200"
+                            rows={14}
+                            className="w-full min-h-[240px] px-3 py-2 bg-gray-900/60 border border-gray-600/50 text-gray-100 rounded-lg text-sm placeholder-gray-500 resize-y focus:outline-none focus:border-blue-500/60 transition-all"
                             autoFocus
                           />
                           <div className="flex gap-2">
@@ -1934,189 +2372,203 @@ export default function HomePage() {
                           </div>
                         </div>
                       ) : previewIssue.description ? (
-                        <div className="max-h-32 sm:max-h-40 overflow-y-auto bg-gray-800/30 rounded-lg px-3 py-2">
-                          <p className="text-xs sm:text-sm text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
+                        <div className="max-h-40 overflow-y-auto bg-gray-900/40 border border-gray-700/50 rounded-lg px-4 py-2.5">
+                          <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
                             {previewIssue.description}
                           </p>
                         </div>
                       ) : (
-                        <p className="text-xs text-gray-500 italic">
-                          No description
-                        </p>
+                        <div className="bg-gray-900/40 border border-gray-700/40 border-dashed rounded-lg px-4 py-2.5">
+                          <p className="text-xs text-gray-500 italic">
+                            No description
+                          </p>
+                        </div>
                       )}
                     </div>
 
                     {/* Type */}
                     <div>
-                      <label className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5 block">
+                      <label className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">
                         Type
                       </label>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge
-                          variant={
-                            (previewIssue as any).sessionData
-                              ? "info"
-                              : previewIssue.type === "screenshot"
-                                ? "primary"
-                                : "secondary"
-                          }
-                          className="text-xs"
-                        >
-                          {(previewIssue as any).sessionData
-                            ? "🎬 Session"
-                            : previewIssue.type === "screenshot"
-                              ? "📸 Screenshot"
-                              : "🎥 Recording"}
-                        </Badge>
-                        {(previewIssue as any).sessionData && (
-                          <span className="text-xs text-gray-500">
-                            {(previewIssue as any).sessionData.screenshotCount}{" "}
-                            screenshots ·{" "}
-                            {Math.round(
-                              (previewIssue as any).sessionData.duration / 1000
+                      {(() => {
+                        const isSession = !!(previewIssue as any).sessionData;
+                        const meta = isSession
+                          ? {
+                              label: "Session",
+                              cls: "bg-purple-500/15 text-purple-300 border-purple-500/30",
+                              icon: (
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                    d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+                                </svg>
+                              ),
+                            }
+                          : previewIssue.type === "screenshot"
+                            ? {
+                                label: "Screenshot",
+                                cls: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+                                icon: (
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                      d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                      d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  </svg>
+                                ),
+                              }
+                            : {
+                                label: "Recording",
+                                cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+                                icon: (
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                      d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  </svg>
+                                ),
+                              };
+                        return (
+                          <div className="bg-gray-900/40 border border-gray-700/50 rounded-lg px-4 py-2.5 flex flex-wrap items-center gap-2">
+                            <span
+                              className={`inline-flex items-center gap-1 h-5 px-1.5 text-2xs font-medium rounded-full border ${meta.cls}`}
+                            >
+                              {meta.icon}
+                              {meta.label}
+                            </span>
+                            {isSession && (
+                              <span className="text-xs text-gray-500">
+                                {(previewIssue as any).sessionData.screenshotCount}{" "}
+                                screenshots ·{" "}
+                                {Math.round(
+                                  (previewIssue as any).sessionData.duration / 1000
+                                )}
+                                s
+                              </span>
                             )}
-                            s
-                          </span>
-                        )}
-                      </div>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* External Links - Open in Web */}
                     {previewIssue.syncedTo &&
                       previewIssue.syncedTo.length > 0 && (
                         <div>
-                          <label className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2 block">
+                          <label className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-2 block">
                             External Links
                           </label>
-                          <div className="space-y-2">
-                            {previewIssue.syncedTo.map((sync) => (
-                              <button
-                                key={`${sync.platform}-${sync.externalId}`}
-                                onClick={() => {
-                                  if (sync.url) {
-                                    window.api.openExternalUrl(sync.url);
+                          <div className="space-y-1.5">
+                            {previewIssue.syncedTo.map((sync) => {
+                              const isGithub = sync.platform === "github";
+                              const isZoho = sync.platform === "zoho";
+                              const platformLabel = isGithub
+                                ? "GitHub"
+                                : isZoho
+                                  ? "Zoho"
+                                  : sync.platform;
+                              return (
+                                <button
+                                  key={`${sync.platform}-${sync.externalId}`}
+                                  onClick={() => {
+                                    if (sync.url) {
+                                      window.api.openExternalUrl(sync.url);
+                                    }
+                                  }}
+                                  disabled={!sync.url}
+                                  title={
+                                    !sync.url
+                                      ? `Re-sync to ${platformLabel} to enable this link`
+                                      : `Open in ${platformLabel}`
                                   }
-                                }}
-                                disabled={!sync.url}
-                                title={
-                                  !sync.url
-                                    ? `Re-sync to ${sync.platform === "github" ? "GitHub" : "Zoho"} to enable this link`
-                                    : `Open in ${sync.platform === "github" ? "GitHub" : "Zoho"}`
-                                }
-                                className="w-full px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
-                                style={{
-                                  backgroundColor:
-                                    sync.platform === "github"
-                                      ? "#1f2937"
-                                      : "#7c2d12",
-                                  color:
-                                    sync.platform === "github"
-                                      ? "#60a5fa"
-                                      : "#fb923c",
-                                }}
-                              >
-                                {sync.platform === "github" ? (
-                                  <>
-                                    <svg
-                                      className="w-4 h-4"
-                                      fill="currentColor"
-                                      viewBox="0 0 24 24"
-                                    >
-                                      <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v 3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-                                    </svg>
-                                    Open in GitHub
-                                  </>
-                                ) : sync.platform === "zoho" ? (
-                                  <>
-                                    <svg
-                                      className="w-4 h-4"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      viewBox="0 0 24 24"
-                                      strokeWidth="2"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                                      />
-                                    </svg>
-                                    Open in Zoho
-                                  </>
-                                ) : (
-                                  <>
-                                    <svg
-                                      className="w-4 h-4"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      viewBox="0 0 24 24"
-                                      strokeWidth="2"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                                      />
-                                    </svg>
-                                    Open
-                                  </>
-                                )}
-                              </button>
-                            ))}
+                                  className="group w-full h-9 px-3 bg-gray-800/40 hover:bg-gray-800 border border-gray-700/50 hover:border-gray-600 rounded-lg text-sm text-gray-200 transition-all flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gray-800/40 disabled:hover:border-gray-700/50"
+                                >
+                                  <span className="flex items-center gap-2 min-w-0">
+                                    {isGithub ? (
+                                      <svg
+                                        className="w-4 h-4 text-gray-300 flex-shrink-0"
+                                        fill="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                                      </svg>
+                                    ) : isZoho ? (
+                                      <svg
+                                        className="w-4 h-4 text-orange-400 flex-shrink-0"
+                                        viewBox="0 0 24 24"
+                                        fill="currentColor"
+                                      >
+                                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14H8l5-8H8V8h5l-5 8h5v2z" />
+                                      </svg>
+                                    ) : (
+                                      <svg
+                                        className="w-4 h-4 text-gray-400 flex-shrink-0"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                        strokeWidth={2}
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                                        />
+                                      </svg>
+                                    )}
+                                    <span className="font-medium">
+                                      Open in {platformLabel}
+                                    </span>
+                                  </span>
+                                  <svg
+                                    className="w-3.5 h-3.5 text-gray-500 group-hover:text-gray-300 transition-colors flex-shrink-0"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M14 5l7 7m0 0l-7 7m7-7H3"
+                                    />
+                                  </svg>
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
 
-                    {/* Date & Time - Compact */}
+                    {/* Date & Time */}
                     <div>
-                      <label className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5 block">
+                      <label className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">
                         Created At
                       </label>
-                      <div className="space-y-1">
-                        <div className="flex items-center text-xs sm:text-sm text-gray-300">
-                          <svg
-                            className="w-3.5 h-3.5 mr-1.5 text-gray-400 flex-shrink-0"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                            />
-                          </svg>
-                          <span className="truncate">
-                            {format(
-                              new Date(previewIssue.timestamp),
-                              "MMM d, yyyy"
-                            )}
-                          </span>
-                          <span className="mx-2 text-gray-600">•</span>
-                          <svg
-                            className="w-3.5 h-3.5 mr-1.5 text-gray-400 flex-shrink-0"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                            />
-                          </svg>
-                          <span className="truncate">
-                            {format(new Date(previewIssue.timestamp), "h:mm a")}
-                          </span>
-                        </div>
+                      <div className="bg-gray-900/40 border border-gray-700/50 rounded-lg px-4 py-2.5 flex items-center gap-2 text-sm text-gray-300">
+                        <svg
+                          className="w-3.5 h-3.5 text-gray-500 flex-shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                          />
+                        </svg>
+                        <span>
+                          {format(
+                            new Date(previewIssue.timestamp),
+                            "MMM d, yyyy · h:mm a"
+                          )}
+                        </span>
                       </div>
                     </div>
 
                     {/* Tags */}
                     <div>
-                      <label className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5 block">
+                      <label className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">
                         Tags
                       </label>
                       <ChipsInput
@@ -2128,25 +2580,12 @@ export default function HomePage() {
                       />
                     </div>
 
-                    {/* ID */}
-                    <div>
-                      <label className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5 block">
-                        ID
-                      </label>
-                      <p className="text-xs text-gray-300 font-mono bg-gray-800/50 px-2.5 py-1.5 rounded-lg break-all">
-                        {(previewIssue as any).sessionData
-                          ? `${previewIssue.id}-s${activeCarouselIdx + 1}`
-                          : previewIssue.id}
-                      </p>
-                    </div>
-
-
-                    {/* File Path - Collapsible on mobile */}
+                    {/* File Path - Collapsible */}
                     <details className="group">
-                      <summary className="text-xs font-medium text-gray-400 uppercase tracking-wider cursor-pointer list-none flex items-center justify-between">
+                      <summary className="text-sm font-semibold text-gray-400 uppercase tracking-wide cursor-pointer list-none flex items-center justify-between hover:text-gray-300 transition-colors">
                         <span>File Location</span>
                         <svg
-                          className="w-4 h-4 transition-transform group-open:rotate-180"
+                          className="w-3.5 h-3.5 text-gray-500 transition-transform group-open:rotate-180"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -2159,7 +2598,7 @@ export default function HomePage() {
                           />
                         </svg>
                       </summary>
-                      <p className="text-xs text-gray-400 font-mono bg-gray-800/30 px-2.5 py-1.5 rounded-lg break-all mt-1.5">
+                      <p className="text-2xs text-gray-400 font-mono bg-gray-900/40 border border-gray-700/50 px-4 py-2.5 rounded-lg break-all mt-2 leading-relaxed">
                         {(previewIssue as any).sessionData?.screenshotPaths?.[
                           activeCarouselIdx
                         ] ?? previewIssue.filePath}
@@ -2168,24 +2607,10 @@ export default function HomePage() {
                   </div>
 
                   {/* Action Buttons - Footer */}
-                  <div className="px-4 sm:px-6 py-2.5 sm:py-3 border-t border-gray-800 flex-shrink-0">
-                    <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                      <div className="flex-1">
-                        <GitHubSyncDropdown
-                          issue={previewIssue}
-                          connectors={connectors}
-                          className="w-full justify-center text-xs h-9 bg-blue-600 hover:bg-blue-700 text-white"
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <ZohoSyncDropdown
-                          issue={previewIssue}
-                          connectors={connectors}
-                          className="w-full justify-center text-xs h-9 bg-orange-600 hover:bg-orange-700 text-white"
-                        />
-                      </div>
+                  <div className="px-5 py-3 border-t border-gray-800 flex-shrink-0 bg-gray-900/60">
+                    <div className="flex items-center gap-2">
                       <Button
-                        variant="outline"
+                        variant="primary"
                         size="sm"
                         disabled={isPastingBug}
                         onClick={async () => {
@@ -2200,7 +2625,10 @@ export default function HomePage() {
                               syncedTo: previewIssue.syncedTo,
                             });
                             if (result.success) {
-                              window.api.showNotification("Copied", "Bug report copied to clipboard");
+                              window.api.showNotification(
+                                "Copied",
+                                "Bug report copied to clipboard"
+                              );
                             } else {
                               window.api.showNotification(
                                 "Copy Failed",
@@ -2211,7 +2639,7 @@ export default function HomePage() {
                             setIsPastingBug(false);
                           }
                         }}
-                        className="w-full text-xs h-9"
+                        className="flex-1 h-9"
                       >
                         <svg
                           className="w-3.5 h-3.5 mr-1.5"
@@ -2226,19 +2654,29 @@ export default function HomePage() {
                             d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
                           />
                         </svg>
-                        {isPastingBug ? "Copying..." : "Paste Bug"}
+                        {isPastingBug ? "Copying…" : "Copy bug report"}
                       </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
+                      <GitHubSyncDropdown
+                        issue={previewIssue}
+                        connectors={connectors}
+                        className="hover:bg-gray-800"
+                      />
+                      <ZohoSyncDropdown
+                        issue={previewIssue}
+                        connectors={connectors}
+                        className="hover:bg-gray-800"
+                      />
+                      <button
+                        type="button"
+                        title="Delete snap"
                         onClick={() => {
                           setPreviewDialogOpen(false);
                           confirmDelete(previewIssue.id);
                         }}
-                        className="w-full text-xs h-9"
+                        className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-red-300 hover:bg-red-500/10 border border-gray-700/50 hover:border-red-500/40 transition-colors"
                       >
                         <svg
-                          className="w-3.5 h-3.5 mr-1.5"
+                          className="w-4 h-4"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -2250,8 +2688,7 @@ export default function HomePage() {
                             d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
                           />
                         </svg>
-                        Delete
-                      </Button>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -2270,10 +2707,14 @@ export default function HomePage() {
 
 function SessionScreenshotCarousel({
   paths,
+  cloudUrls,
   title,
   onIndexChange,
 }: {
   paths: string[];
+  /** Parallel array of cloud URLs (one per path). Used as fallback when the
+   *  local file is missing — e.g. snap synced from a different device. */
+  cloudUrls?: string[];
   title: string;
   onIndexChange?: (idx: number) => void;
 }) {
@@ -2294,6 +2735,7 @@ function SessionScreenshotCarousel({
         <LocalImage
           key={paths[activeIdx]}
           src={paths[activeIdx]}
+          cloudFallback={cloudUrls?.[activeIdx]}
           alt={`${title} – screenshot ${activeIdx + 1}`}
           className="max-w-full max-h-full object-contain rounded-lg"
           style={{ imageRendering: "crisp-edges" as any }}
@@ -2366,6 +2808,7 @@ function SessionScreenshotCarousel({
               >
                 <LocalImage
                   src={p}
+                  cloudFallback={cloudUrls?.[i]}
                   alt={`Thumbnail ${i + 1}`}
                   className="w-full h-full object-cover"
                 />

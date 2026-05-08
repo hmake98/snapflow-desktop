@@ -27,7 +27,9 @@ import { sessionManager as debugCollector } from "./services/debug-collector";
 import {
   recordingSettingsService,
   captureScreenSettings,
+  homeScreenSettings,
 } from "./services/settings";
+import type { HomeScreenPrefs } from "./services/settings";
 import { aiService, AiService } from "./services/ai";
 import { storageManager } from "./utils/storage";
 import { sessionManager } from "./utils/session";
@@ -44,7 +46,6 @@ const {
   Menu,
   nativeImage,
   BrowserWindow,
-  Notification,
   protocol,
   dialog,
   shell,
@@ -70,7 +71,6 @@ if (!isProd) {
   // __dirname points inside app.asar and cannot be used to reach extraResources.
   const envPath = path.join(process.resourcesPath, ".env");
   if (fs.existsSync(envPath)) {
-    log.info("[Startup] Loading .env from resources");
     dotenv.config({ path: envPath });
   } else {
     log.warn("[Startup] .env not found at resources path:", envPath);
@@ -203,15 +203,10 @@ async function getPostAuthNavigationTarget(
           .maybeSingle();
 
         if (!existingMember) {
-          log.info(
-            "[Auth] Pending invite found, navigating to /join-workspace:",
-            invite.workspace_id
-          );
           return `/join-workspace?workspaceId=${invite.workspace_id}&role=${invite.role}`;
         }
       }
 
-      log.info("[Auth] All pending invites already accepted, navigating home");
       return "/home";
     }
   }
@@ -246,7 +241,6 @@ if (isProd) {
 
   // In development, quit app when terminal process is killed
   process.on("SIGTERM", () => {
-    log.info("SIGTERM received, quitting app...");
     isQuitting = true;
     if (mainWindow && mainWindow.setQuitting) {
       mainWindow.setQuitting(true);
@@ -255,7 +249,6 @@ if (isProd) {
   });
 
   process.on("SIGINT", () => {
-    log.info("SIGINT received, quitting app...");
     isQuitting = true;
     if (mainWindow && mainWindow.setQuitting) {
       mainWindow.setQuitting(true);
@@ -265,7 +258,6 @@ if (isProd) {
 
   // Also handle parent process exit (when npm run dev is killed)
   process.on("disconnect", () => {
-    log.info("Parent process disconnected, quitting app...");
     isQuitting = true;
     if (mainWindow && mainWindow.setQuitting) {
       mainWindow.setQuitting(true);
@@ -366,7 +358,6 @@ async function createMainWindow() {
 
   // Handle window focus event
   mainWindow.on("focus", async () => {
-    log.info("[Window] Window focused");
   });
 
   return mainWindow;
@@ -402,7 +393,6 @@ function createSystemTray() {
 
   // Initialize tray icon manager
   trayIconManager = new TrayIconManager(tray, isProd);
-  log.info("[Tray] TrayIconManager initialized");
 
   updateTrayMenu();
 
@@ -410,7 +400,6 @@ function createSystemTray() {
 
   // Add double-click handler for recording toggle (Windows/Linux)
   tray.on("double-click", async () => {
-    log.info("[Tray] Double-click detected");
     const state = recorderService.getState();
     if (state === "recording") {
       await handleStopRecording();
@@ -426,9 +415,6 @@ function registerGlobalShortcuts() {
   const fullScreenRegistered = globalShortcut.register(
     fullScreenShortcut,
     async () => {
-      log.info(
-        `[Shortcuts] ${fullScreenShortcut} pressed - Capture Full Screen`
-      );
       await handleScreenshotCapture("fullscreen");
     }
   );
@@ -441,9 +427,6 @@ function registerGlobalShortcuts() {
   const currentScreenRegistered = globalShortcut.register(
     currentScreenShortcut,
     async () => {
-      log.info(
-        `[Shortcuts] ${currentScreenShortcut} pressed - Capture Current App Screen`
-      );
       await handleCaptureCurrentScreen();
     }
   );
@@ -454,7 +437,6 @@ function registerGlobalShortcuts() {
   // 3 — Capture Screen Area (region selection overlay)
   const areaShortcut = "Control+Shift+3";
   const areaRegistered = globalShortcut.register(areaShortcut, async () => {
-    log.info(`[Shortcuts] ${areaShortcut} pressed - Capture Screen Area`);
     await handleScreenshotCapture("region");
   });
   if (!areaRegistered) {
@@ -464,7 +446,6 @@ function registerGlobalShortcuts() {
   // 4 — Capture Session toggle (start / stop) — F9
   const sessionShortcut = "F9";
   const sessionRegistered = globalShortcut.register(sessionShortcut, () => {
-    log.info(`[Shortcuts] ${sessionShortcut} pressed - Capture Session toggle`);
     handleCaptureSessionToggle();
   });
   if (!sessionRegistered) {
@@ -476,15 +457,11 @@ function registerGlobalShortcuts() {
   const sessionSnapRegistered = globalShortcut.register(
     sessionSnapShortcut,
     async () => {
-      log.info(
-        `[Shortcuts] ${sessionSnapShortcut} pressed - Session screenshot`
-      );
       const activeSession = debugCollector.getActiveSession();
       if (!activeSession) return; // only active during a session
       try {
         // force=true: keyboard-triggered snaps are always intentional
         const shot = await debugCollector.captureScreenshot(true, true);
-        log.info("[Session] In-session screenshot captured:", shot.id);
         // Pulse the HUD screenshot count (status interval will update within 1s)
       } catch (err) {
         log.error("[Session] In-session screenshot failed:", err);
@@ -495,18 +472,6 @@ function registerGlobalShortcuts() {
     log.error(`[Shortcuts] Failed to register ${sessionSnapShortcut}`);
   }
 
-  log.info(
-    "[Shortcuts] Registered — Full Screen:",
-    globalShortcut.isRegistered(fullScreenShortcut),
-    "Current Screen:",
-    globalShortcut.isRegistered(currentScreenShortcut),
-    "Area:",
-    globalShortcut.isRegistered(areaShortcut),
-    "Session:",
-    globalShortcut.isRegistered(sessionShortcut),
-    "Session Snap:",
-    globalShortcut.isRegistered(sessionSnapShortcut)
-  );
 }
 
 function updateTrayMenu() {
@@ -601,7 +566,6 @@ function updateTrayMenu() {
       enabled: !isRestrictedRoute,
       click: async () => {
         try {
-          log.info("[Tray] View My Snaps clicked");
 
           // Show the main window first
           await showMainWindow();
@@ -628,17 +592,14 @@ function updateTrayMenu() {
 
           // Wait for the page to be ready before navigation
           if (mainWindow.webContents.isLoading()) {
-            log.info("[Tray] Waiting for page to finish loading...");
             await new Promise<void>((resolve) => {
               mainWindow!.webContents.once("did-finish-load", () => {
-                log.info("[Tray] Page loaded, ready to navigate");
                 resolve();
               });
             });
           }
 
           // Navigate to home page
-          log.info("[Tray] Navigating to /home");
           mainWindow.webContents.send("navigate", "/home");
         } catch (error) {
           log.error("[Tray] Failed to show snaps:", error);
@@ -698,7 +659,6 @@ function restoreMainWindowAfterCapture() {
 async function showMainWindow() {
   // Prevent concurrent calls to showMainWindow
   if (isShowingWindow) {
-    log.info("[App] Already showing window, skipping duplicate call");
     return;
   }
 
@@ -707,18 +667,15 @@ async function showMainWindow() {
   try {
     // Check if window exists and is not destroyed
     if (!mainWindow || mainWindow.isDestroyed()) {
-      log.info("[App] Main window destroyed, recreating...");
       await createMainWindow();
     } else {
       // Handle minimized state
       if (mainWindow.isMinimized()) {
-        log.info("[App] Restoring minimized window");
         mainWindow.restore();
       }
 
       // Handle hidden state
       if (!mainWindow.isVisible()) {
-        log.info("[App] Showing hidden window");
         mainWindow.show();
       }
 
@@ -729,7 +686,6 @@ async function showMainWindow() {
     log.error("[App] Failed to show main window:", error);
     // If showing fails, try to recreate the window
     try {
-      log.info("[App] Attempting to recreate window after error...");
       mainWindow = null; // Clear the reference
       await createMainWindow();
     } catch (recreateError) {
@@ -1016,17 +972,12 @@ async function handleScreenshotCapture(
 
     if (mode === "fullscreen" && screen.getAllDisplays().length > 1) {
       resolvedMode = "all-screens";
-      log.info(
-        "[Tray] Multiple displays detected — upgrading fullscreen to all-screens"
-      );
     }
 
-    log.info("[Tray] Starting", resolvedMode, "capture...");
 
     hideMainWindowForCapture();
     await new Promise((resolve) => setTimeout(resolve, 300));
 
-    log.info("[Tray] Capturing screenshot...");
     const captureOptions: {
       mode:
         | "fullscreen"
@@ -1042,26 +993,18 @@ async function handleScreenshotCapture(
     }
 
     const { dataUrl } = await captureService.captureScreenshot(captureOptions);
-    log.info(
-      "[Tray] Screenshot captured, dataUrl length:",
-      dataUrl?.length || 0
-    );
 
     // Store screenshot data globally so annotate page can retrieve it
     pendingScreenshot = { dataUrl, mode };
-    log.info("[Tray] Screenshot stored in pendingScreenshot");
 
     // Navigate to annotate page using client-side navigation (preserves app state)
-    log.info("[Tray] Navigating to annotate page...");
     if (mainWindow && mainWindow.webContents) {
       mainWindow.webContents.send("navigate", "/annotate");
-      log.info("[Tray] Navigation complete");
     }
 
     // Then show and focus the window, restoring maximized/fullscreen state
     restoreMainWindowAfterCapture();
     mainWindow?.focus();
-    log.info("[Tray] Window shown and focused");
   } catch (error) {
     log.error("[Tray] Failed to capture screenshot:", error);
   }
@@ -1097,7 +1040,6 @@ async function handleCaptureCurrentScreen() {
     if (savedId !== null) {
       const saved = allDisplays.find((d) => d.id === savedId);
       if (saved) {
-        log.info("[Tray] Capturing user-selected default screen:", savedId);
         await handleCurrentAppScreenCapture(saved.id);
         return;
       }
@@ -1109,7 +1051,6 @@ async function handleCaptureCurrentScreen() {
     // 2. Fallback — display where the cursor currently is
     const cursorPoint = screen.getCursorScreenPoint();
     const display = screen.getDisplayNearestPoint(cursorPoint);
-    log.info("[Tray] No default screen set, using cursor screen:", display.id);
     await handleCurrentAppScreenCapture(display.id);
   } catch (error) {
     log.error("[Tray] Failed to capture current app screen:", error);
@@ -1136,12 +1077,6 @@ function handleCaptureSessionToggle() {
       }
 
       const session = debugCollector.stopSession();
-      log.info(
-        "[Session] Capture session stopped. Events:",
-        session.events.length,
-        "Screenshots:",
-        session.screenshots.length
-      );
 
       closeSessionHudWindow();
 
@@ -1179,7 +1114,6 @@ function handleCaptureSessionToggle() {
   } else {
     try {
       debugCollector.startSession();
-      log.info("[Session] Capture session started");
       if (mainWindow && mainWindow.webContents) {
         mainWindow.webContents.send("collector:session-started");
       }
@@ -1270,7 +1204,6 @@ async function handleStartRecordingFlow() {
   }
   isStartingRecordingFlow = true;
   try {
-    log.info("[Recording] Starting recording flow");
 
     const savedDefault = recordingSettingsService.getDefaultSource();
 
@@ -1281,10 +1214,6 @@ async function handleStartRecordingFlow() {
 
       if (payload.validatedDefault) {
         // Default is live — start immediately without showing picker
-        log.info(
-          "[Recording] Default source valid, starting immediately:",
-          payload.validatedDefault.name
-        );
         await handleStartRecordingWithSource(
           payload.validatedDefault.id,
           payload.validatedDefault.displayBounds ?? null
@@ -1301,7 +1230,6 @@ async function handleStartRecordingFlow() {
       }
     } else {
       // No default saved — fetch sources and show picker
-      log.info("[Recording] No default source, showing picker");
       const payload = await windowPickerService.getSourcesWithDefault(null);
       await handleStartRecordingWithSelection(payload);
     }
@@ -1349,7 +1277,6 @@ async function handleStartRecordingWithSelection(
   payload: SourcesWithDefaultPayload
 ) {
   try {
-    log.info("[Recording] Starting recording with selection");
     recorderService.setState("selecting");
     updateTrayMenu();
 
@@ -1445,12 +1372,6 @@ async function handleStartRecordingWithSource(
   bounds: { x: number; y: number; width: number; height: number } | null
 ) {
   try {
-    log.info(
-      "[Recording] Starting recording with source:",
-      sourceId,
-      "bounds:",
-      bounds
-    );
 
     recorderService.setState("recording");
     recordingState = "recording";
@@ -1476,7 +1397,6 @@ async function handleStartRecordingWithSource(
       app.dock?.show();
     }
 
-    log.info("[Recording] Recording started successfully");
   } catch (error) {
     log.error("[Recording] Failed to start recording with source:", error);
 
@@ -1503,7 +1423,6 @@ async function handleRecordingAreaSelected(bounds: {
   height: number;
 }) {
   try {
-    log.info("[Recording] Area selected:", bounds);
     recordingBounds = bounds;
 
     // Close area selector first
@@ -1513,7 +1432,6 @@ async function handleRecordingAreaSelected(bounds: {
     }
 
     // Start recording immediately after area selection
-    log.info("[Recording] Starting recording with selected bounds");
     recorderService.setState("recording");
     recordingState = "recording";
 
@@ -1532,7 +1450,6 @@ async function handleRecordingAreaSelected(bounds: {
       app.dock?.show();
     }
 
-    log.info("[Recording] Recording started. Click tray icon to stop.");
   } catch (error) {
     log.error("[Recording] Failed to start recording:", error);
     overlayService.hide();
@@ -1554,7 +1471,6 @@ async function handleRecordingAreaSelected(bounds: {
 
 async function handleStopRecording() {
   try {
-    log.info("[Recording] Stopping recording");
 
     // Hide overlay
     overlayService.hide();
@@ -1568,7 +1484,6 @@ async function handleStopRecording() {
 
     // Stop recording and get result
     const result = await captureService.stopRecording();
-    log.info("[Recording] Recording stopped:", result);
 
     // Store recording data including thumbnail path
     pendingRecording = {
@@ -1593,7 +1508,6 @@ async function handleStopRecording() {
       await mainWindow?.loadURL(`http://localhost:${port}/annotate-recording`);
     }
 
-    log.info("[Recording] Navigated to annotate-recording page");
   } catch (error) {
     log.error("[Recording] Failed to stop recording:", error);
 
@@ -1615,7 +1529,6 @@ async function handleStopRecording() {
 }
 
 async function handleCancelRecording() {
-  log.info("[Recording] Canceling recording");
 
   // Reset state
   recordingState = "idle";
@@ -1646,7 +1559,6 @@ async function handleCancelRecording() {
  * We just need to ensure navigation happens after the user is set.
  */
 const handleOAuthCallback = async (url: string) => {
-  log.info("[OAuth] Handling callback URL:", url);
 
   try {
     // Supabase v2 uses PKCE by default: callback has ?code=... in query params.
@@ -1657,13 +1569,11 @@ const handleOAuthCallback = async (url: string) => {
 
     if (code) {
       // PKCE flow — exchange authorization code for session
-      log.info("[OAuth] PKCE flow detected, exchanging code for session");
       const session = await authService.exchangeCodeForSession(url);
       if (!session) {
         log.error("[OAuth] Failed to exchange code for session");
         return;
       }
-      log.info("[OAuth] Session exchanged successfully");
       // PKCE flow is handled by Supabase and will trigger auth listener
     } else {
       // Implicit flow — extract tokens from hash fragment
@@ -1677,24 +1587,11 @@ const handleOAuthCallback = async (url: string) => {
         return;
       }
 
-      log.info("[OAuth] Implicit flow detected, setting session from tokens");
       try {
         // Set session - this returns both session and user object
-        log.info("[OAuth] Calling setSession...");
         const result = await authService.setSession(accessToken, refreshToken);
-        log.info(
-          "[OAuth] setSession returned, session exists:",
-          !!result.session
-        );
         if (result.user) {
-          log.info(
-            "[OAuth] Applying user directly from setSession:",
-            result.user.email
-          );
           await sessionManager.setUser(result.user);
-          log.info(
-            "[OAuth] User applied successfully, skipping auth listener wait"
-          );
         }
       } catch (setSessionError) {
         log.error("[OAuth] Error in setSession:", setSessionError);
@@ -1729,21 +1626,12 @@ const handleOAuthCallback = async (url: string) => {
       );
     }
 
-    log.info("[OAuth] Attempting to send navigate event...");
-    log.info("[OAuth] mainWindow exists:", !!mainWindow);
     if (mainWindow) {
-      log.info("[OAuth] mainWindow destroyed:", mainWindow.isDestroyed());
-      log.info(
-        "[OAuth] mainWindow.webContents exists:",
-        !!mainWindow.webContents
-      );
     }
 
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
       try {
-        log.info(`[OAuth] Sending navigate event to renderer: ${navigateTo}`);
         mainWindow.webContents.send("navigate", navigateTo);
-        log.info("[OAuth] Navigate event sent successfully ✓");
       } catch (sendError) {
         log.error("[OAuth] Error sending navigate event:", sendError);
       }
@@ -1751,7 +1639,6 @@ const handleOAuthCallback = async (url: string) => {
       log.warn("[OAuth] Cannot send navigate event - mainWindow not available");
     }
 
-    log.info("[OAuth] ✓ OAuth callback handled");
   } catch (error) {
     log.error("[OAuth] Unexpected error handling OAuth callback:", error);
   }
@@ -1761,13 +1648,9 @@ const handleOAuthCallback = async (url: string) => {
  * Handle Zoho OAuth callback
  */
 const handleZohoCallback = async (url: string) => {
-  log.info("[Zoho OAuth] ========== CALLBACK HANDLER START ==========");
-  log.info("[Zoho OAuth] Full callback URL:", url);
 
   try {
     const parsedUrl = new URL(url);
-    log.info("[Zoho OAuth] Parsed URL pathname:", parsedUrl.pathname);
-    log.info("[Zoho OAuth] Parsed URL search:", parsedUrl.search);
 
     const code = parsedUrl.searchParams.get("code");
     const error = parsedUrl.searchParams.get("error");
@@ -1775,14 +1658,6 @@ const handleZohoCallback = async (url: string) => {
     const accountsServer = parsedUrl.searchParams.get("accounts-server");
     const location = parsedUrl.searchParams.get("location");
 
-    log.info(
-      "[Zoho OAuth] Code extracted:",
-      code ? `${code.substring(0, 20)}...` : "NULL"
-    );
-    log.info("[Zoho OAuth] Error extracted:", error || "NULL");
-    log.info("[Zoho OAuth] Error description:", errorDescription || "NULL");
-    log.info("[Zoho OAuth] Accounts server:", accountsServer || "NULL");
-    log.info("[Zoho OAuth] Location:", location || "NULL");
 
     if (error) {
       log.warn(
@@ -1812,36 +1687,15 @@ const handleZohoCallback = async (url: string) => {
 
     // Handle data center region mismatch - set the correct accounts server before token exchange
     if (accountsServer) {
-      log.info(
-        "[Zoho OAuth] Setting Zoho service to use region-specific server:",
-        accountsServer
-      );
       zohoService.setAccountsServer(accountsServer);
     }
 
-    log.info("[Zoho OAuth] ✓ Code validation passed, proceeding to exchange");
-    log.info("[Zoho OAuth] Calling zohoService.exchangeCodeForTokens()");
 
     const tokens = await zohoService.exchangeCodeForTokens(code);
 
-    log.info("[Zoho OAuth] ✓ Token exchange succeeded");
-    log.info(
-      "[Zoho OAuth] Received tokens - AccessToken length:",
-      tokens.accessToken.length
-    );
-    log.info(
-      "[Zoho OAuth] Received tokens - RefreshToken length:",
-      tokens.refreshToken.length
-    );
-    log.info("[Zoho OAuth] Received tokens - ExpiresIn:", tokens.expiresIn);
-    log.info(
-      "[Zoho OAuth] API Domain from response:",
-      tokens.apiDomain || "NOT PROVIDED"
-    );
 
     // Update API domain if provided in token response
     if (tokens.apiDomain) {
-      log.info("[Zoho OAuth] Updating API domain with response value");
       zohoService.setAccountsServer(
         accountsServer || "https://accounts.zoho.com",
         tokens.apiDomain
@@ -1856,10 +1710,6 @@ const handleZohoCallback = async (url: string) => {
         try {
           const url = new URL(normalizedApiDomain);
           normalizedApiDomain = url.hostname;
-          log.info(
-            "[Zoho OAuth] Normalized api_domain from URL to hostname:",
-            normalizedApiDomain
-          );
         } catch (_e) {
           log.warn(
             "[Zoho OAuth] Failed to parse api_domain as URL, using as-is:",
@@ -1871,10 +1721,6 @@ const handleZohoCallback = async (url: string) => {
       // Remove www. prefix if present
       if (normalizedApiDomain && normalizedApiDomain.startsWith("www.")) {
         normalizedApiDomain = normalizedApiDomain.replace("www.", "");
-        log.info(
-          "[Zoho OAuth] Removed www. prefix from api_domain:",
-          normalizedApiDomain
-        );
       }
     }
 
@@ -1889,21 +1735,12 @@ const handleZohoCallback = async (url: string) => {
         (accountsServer ? accountsServer.replace("accounts.", "") : undefined),
     };
 
-    log.info("[Zoho OAuth] ✓ Tokens stored in memory");
-    log.info(
-      "[Zoho OAuth] Stored accounts server:",
-      pendingZohoTokens.accountsServer
-    );
-    log.info("[Zoho OAuth] Stored API domain:", pendingZohoTokens.apiDomain);
 
     // Notify renderer that OAuth is complete
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
-      log.info("[Zoho OAuth] Sending 'zoho-oauth-success' event to renderer");
       mainWindow.webContents.send("zoho-oauth-success");
     }
 
-    log.info("[Zoho OAuth] ✓ OAuth callback handled successfully");
-    log.info("[Zoho OAuth] ========== CALLBACK HANDLER END ==========");
   } catch (error) {
     log.error("[Zoho OAuth] ✗ Error handling callback");
     log.error(
@@ -1921,7 +1758,6 @@ const handleZohoCallback = async (url: string) => {
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
       mainWindow.webContents.send("zoho-oauth-error", errorMsg);
     }
-    log.info("[Zoho OAuth] ========== CALLBACK HANDLER END (ERROR) ==========");
   }
 };
 
@@ -1929,7 +1765,6 @@ const handleZohoCallback = async (url: string) => {
  * Handle GitHub OAuth callback
  */
 const handleGitHubCallback = async (url: string) => {
-  log.info("[GitHub OAuth] Handling callback URL");
 
   try {
     const parsedUrl = new URL(url);
@@ -1958,7 +1793,6 @@ const handleGitHubCallback = async (url: string) => {
       return;
     }
 
-    log.info("[GitHub OAuth] Exchanging authorization code for token");
     const tokens = await githubService.exchangeCodeForToken(code);
 
     // Store token temporarily in memory until connector is saved
@@ -1967,14 +1801,12 @@ const handleGitHubCallback = async (url: string) => {
       expiresAt: Date.now() + (tokens.expiresIn || 28800) * 1000,
     };
 
-    log.info("[GitHub OAuth] ✓ Token received and stored");
 
     // Notify renderer that OAuth is complete
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
       mainWindow.webContents.send("github-oauth-success");
     }
 
-    log.info("[GitHub OAuth] ✓ OAuth callback handled");
   } catch (error) {
     log.error("[GitHub OAuth] Error handling callback:", error.message);
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
@@ -2007,7 +1839,6 @@ if (app && app.requestSingleInstanceLock) {
     // Zoho and GitHub OAuth now use localhost HTTP callbacks
     app.on("open-url", (event, url) => {
       event.preventDefault();
-      log.info("[Deep Link] Received deep link:", url);
       if (url.startsWith("snapflow://auth/callback")) {
         handleOAuthCallback(url);
       }
@@ -2020,11 +1851,9 @@ if (app && app.requestSingleInstanceLock) {
         arg.startsWith("snapflow://auth/callback")
       );
       if (callbackUrl) {
-        log.info("[Deep Link] Second instance Google OAuth callback detected");
         handleOAuthCallback(callbackUrl);
       } else {
         // Regular second instance - just focus the window
-        log.info("[Deep Link] Second instance focus");
         await showMainWindow();
       }
     });
@@ -2049,10 +1878,6 @@ if (app && app.requestSingleInstanceLock) {
         // Pass Google OAuth callback URLs through — do not try to serve them as files.
         // (Zoho and GitHub OAuth now use localhost HTTP callbacks, not custom protocols)
         if (rawUrl.startsWith("snapflow://auth/")) {
-          log.info(
-            "[Protocol] Skipping file-serve for Google OAuth callback URL:",
-            rawUrl
-          );
           // Trigger the OAuth callback handler directly from here as a safety net,
           // because on macOS the open-url event fires before the app is ready in
           // some cases and can be missed.
@@ -2071,7 +1896,6 @@ if (app && app.requestSingleInstanceLock) {
 
         try {
           const decodedPath = decodeURIComponent(url);
-          log.info("Loading file:", decodedPath);
 
           // Check if file exists
           if (fs.existsSync(decodedPath)) {
@@ -2117,7 +1941,6 @@ if (app && app.requestSingleInstanceLock) {
 
       // Listen for display changes to update tray menu and self-heal preferences
       screen.on("display-added", (_event, display) => {
-        log.info("[Display] Display added:", display.id, "— updating tray menu");
         updateTrayMenu();
         // Notify renderer so DisplaysSection refreshes automatically
         mainWindow?.webContents.send("displays:changed", {
@@ -2126,16 +1949,12 @@ if (app && app.requestSingleInstanceLock) {
       });
 
       screen.on("display-removed", (_event, display) => {
-        log.info("[Display] Display removed:", display.id, "— updating tray menu");
         updateTrayMenu();
 
         // If the removed display was the user's saved default, clear the stale
         // preference so captures fall back to cursor-based auto-detection.
         const savedId = captureScreenSettings.getDefaultScreenId();
         if (savedId !== null && savedId === display.id) {
-          log.info(
-            "[Display] Saved default display was removed — clearing stale preference"
-          );
           captureScreenSettings.clearDefaultScreenId();
           mainWindow?.webContents.send("displays:default-cleared", {
             removedDisplayId: display.id,
@@ -2149,7 +1968,6 @@ if (app && app.requestSingleInstanceLock) {
       });
 
       screen.on("display-metrics-changed", () => {
-        log.info("[Display] Display metrics changed, updating tray menu");
         updateTrayMenu();
         mainWindow?.webContents.send("displays:changed", {
           displays: captureService.getAvailableDisplays(),
@@ -2168,7 +1986,6 @@ if (app && app.requestSingleInstanceLock) {
               log.warn("[Update] Background check failed:", err.message)
             );
         }, 3000);
-        log.info("[Update] Auto-updater initialized");
       }
     })();
   }
@@ -2182,7 +1999,6 @@ if (app && app.on) {
 
   // Unregister all shortcuts before quit
   app.on("will-quit", () => {
-    log.info("[Shortcuts] Unregistering all global shortcuts");
     globalShortcut.unregisterAll();
   });
 }
@@ -2204,11 +2020,6 @@ function startSessionExpiryMonitor() {
 
     // Warn if expiring in next 30 minutes but not yet expired
     if (timeUntilExpiry > 0 && timeUntilExpiry <= 30 * 60 * 1000) {
-      log.info(
-        "[Session] Token expiring soon (",
-        Math.round(timeUntilExpiry / 60000),
-        "minutes)"
-      );
       mainWindow.webContents.send("session-expiring-soon", expiresAt);
     }
 
@@ -2224,14 +2035,12 @@ function startSessionExpiryMonitor() {
     }
   }, 60 * 1000); // Check every minute
 
-  log.info("[Session] Session expiry monitor started");
 }
 
 function _stopSessionExpiryMonitor() {
   if (sessionExpiryCheckInterval) {
     clearInterval(sessionExpiryCheckInterval);
     sessionExpiryCheckInterval = null;
-    log.info("[Session] Session expiry monitor stopped");
   }
 }
 
@@ -2241,7 +2050,6 @@ let oauthCallbackServer: http.Server | null = null;
 
 function startOAuthCallbackServer() {
   if (oauthCallbackServer) {
-    log.info("[OAuth Server] Already running on port 3000");
     return;
   }
 
@@ -2249,28 +2057,14 @@ function startOAuthCallbackServer() {
     const url = new URL(req.url || "/", "http://localhost:3000");
     const pathname = url.pathname;
 
-    log.info("[OAuth Server] Request:", pathname);
 
     // Handle Zoho OAuth callback
     if (pathname === "/auth/zoho/callback") {
-      log.info("[OAuth Server] ========== ZOHO CALLBACK RECEIVED ==========");
-      log.info("[OAuth Server] Request URL:", req.url);
-      log.info(
-        "[OAuth Server] Full callback:",
-        `http://localhost:3000${req.url}`
-      );
 
       const code = url.searchParams.get("code");
       const error = url.searchParams.get("error");
       const errorDescription = url.searchParams.get("error_description");
 
-      log.info(
-        "[OAuth Server] Code present:",
-        !!code,
-        code ? `(${code.substring(0, 20)}...)` : ""
-      );
-      log.info("[OAuth Server] Error present:", !!error, error || "");
-      log.info("[OAuth Server] Error description:", errorDescription || "");
 
       if (error) {
         log.warn(
@@ -2294,8 +2088,6 @@ function startOAuthCallbackServer() {
         return;
       }
 
-      log.info("[OAuth Server] ✓ Zoho callback validation passed");
-      log.info("[OAuth Server] Triggering handleZohoCallback async handler");
       // Trigger the Zoho handler with the full URL
       const fullUrl = `http://localhost:3000${req.url}`;
       handleZohoCallback(fullUrl).catch((err) => {
@@ -2336,7 +2128,6 @@ function startOAuthCallbackServer() {
         return;
       }
 
-      log.info("[OAuth Server] GitHub callback received with code");
       // Trigger the GitHub handler with the full URL
       handleGitHubCallback(`http://localhost:3000${req.url}`);
 
@@ -2354,7 +2145,6 @@ function startOAuthCallbackServer() {
   });
 
   oauthCallbackServer.listen(3000, "localhost", () => {
-    log.info("[OAuth Server] ✓ Listening on http://localhost:3000");
   });
 
   oauthCallbackServer.on("error", (err) => {
@@ -2366,7 +2156,6 @@ function _stopOAuthCallbackServer() {
   if (oauthCallbackServer) {
     oauthCallbackServer.close();
     oauthCallbackServer = null;
-    log.info("[OAuth Server] Stopped");
   }
 }
 
@@ -2398,20 +2187,8 @@ function setupIPCHandlers() {
 
   ipcMain.handle("user:login", async (_event, { email, password }) => {
     try {
-      log.info("[IPC] Login attempt for:", email);
-      log.info(
-        "[ENV] SUPABASE_URL:",
-        process.env.SUPABASE_URL ? "SET" : "NOT SET"
-      );
-      log.info(
-        "[ENV] SUPABASE_ANON_KEY:",
-        process.env.SUPABASE_ANON_KEY
-          ? "SET (length: " + process.env.SUPABASE_ANON_KEY.length + ")"
-          : "NOT SET"
-      );
 
       const user = await authService.login(email, password);
-      log.info("[IPC] Login successful for:", user.email);
 
       // Store user in session
       await sessionManager.setUser(user);
@@ -2585,6 +2362,19 @@ function setupIPCHandlers() {
     }
   });
 
+  ipcMain.handle("user:github-signin", async () => {
+    try {
+      const oauthUrl = await authService.githubSignIn();
+      shell.openExternal(oauthUrl);
+      return { success: true, data: { url: oauthUrl } };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      log.error("GitHub signin error:", error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
   // Tenant handlers
   ipcMain.handle("tenant:create", async (_event, { name, description }) => {
     try {
@@ -2646,14 +2436,17 @@ function setupIPCHandlers() {
     }
   );
 
-  // Active workspace tracking (persisted in main process for full-page-reload scenarios)
+  // Active workspace tracking (persisted to disk so it survives app restarts)
   ipcMain.handle("workspace:set-active", (_event, { workspaceId }) => {
     activeWorkspaceId = workspaceId ?? null;
-    log.info("[Workspace] Active workspace set:", activeWorkspaceId);
+    homeScreenSettings.update({ activeWorkspaceId });
     return { success: true };
   });
 
   ipcMain.handle("workspace:get-active", () => {
+    if (activeWorkspaceId == null) {
+      activeWorkspaceId = homeScreenSettings.get().activeWorkspaceId;
+    }
     return { success: true, data: activeWorkspaceId };
   });
 
@@ -2799,9 +2592,6 @@ function setupIPCHandlers() {
           .update({ accepted_at: new Date().toISOString() })
           .eq("email", userEmail)
           .eq("workspace_id", workspaceId);
-        log.info(
-          `[workspace:join] Marked pending_invite accepted for ${userEmail} / ${workspaceId}`
-        );
       };
 
       const getAlreadyOnboarded = async () => {
@@ -2894,9 +2684,6 @@ function setupIPCHandlers() {
       // renderer can navigate directly to the next join-workspace page.
       const nextPendingInvite = await getNextPendingInvite();
 
-      log.info(
-        `[workspace:join] User ${userId} joined workspace ${workspaceId}, alreadyOnboarded=${alreadyOnboarded}, nextPendingInvite=${nextPendingInvite?.workspaceId ?? "none"}`
-      );
       return { success: true, data: { alreadyOnboarded, nextPendingInvite } };
     } catch (error) {
       const errorMessage =
@@ -3026,9 +2813,6 @@ function setupIPCHandlers() {
             // Load workspace info for invited members
             invitedWorkspace = await workspaceService.getWorkspaceById(
               memberData.workspace_id
-            );
-            log.info(
-              "[Onboarding] User is an invited workspace member, returning member mode status"
             );
           }
         }
@@ -3202,17 +2986,9 @@ function setupIPCHandlers() {
         syncService
           .syncAllToCloud(userId, workspaceId)
           .then((result) => {
-            log.info("[AutoSync] Sync completed. Result:", {
-              success: result.success,
-              syncedCount: result.syncedCount,
-              failedCount: result.failedCount,
-            });
             // Always notify renderer so the UI reflects the updated syncStatus,
             // even on partial failures (some items may have synced successfully).
             if (mainWindow && mainWindow.webContents) {
-              log.info(
-                "[AutoSync] Sending auto-sync-completed event to renderer"
-              );
               mainWindow.webContents.send("auto-sync-completed", {
                 userId,
                 syncedCount: result.syncedCount,
@@ -3260,7 +3036,6 @@ function setupIPCHandlers() {
 
       // Update Supabase with metadata changes
       if (hasMetadataUpdates) {
-        log.info("[Update] Syncing metadata changes to database...");
         await syncService.updateSnapMetadata(issueId, issue.userId, {
           title: updates.title,
           description: updates.description,
@@ -3287,9 +3062,6 @@ function setupIPCHandlers() {
                 type: issue.type,
                 sessionData: (issue as any).sessionData,
               });
-              log.info(
-                `[Update] GitHub issue #${githubSync.externalId} updated`
-              );
             }
           } catch (error) {
             log.warn(
@@ -3316,7 +3088,6 @@ function setupIPCHandlers() {
                   tags: updates.tags,
                 }
               );
-              log.info(`[Update] Zoho bug ${zohoSync.externalId} updated`);
             }
           } catch (error) {
             log.warn(
@@ -3380,7 +3151,6 @@ function setupIPCHandlers() {
               if (connector && connector.enabled) {
                 const issueNumber = parseInt(sync.externalId, 10);
                 await connectorService.closeGitHubIssue(connector, issueNumber);
-                log.info(`[Delete] Closed GitHub issue #${issueNumber}`);
               }
             } else if (sync.platform === "zoho") {
               // Get Zoho connector
@@ -3392,7 +3162,6 @@ function setupIPCHandlers() {
                   connector,
                   sync.externalId
                 );
-                log.info(`[Delete] Deleted Zoho bug ${sync.externalId}`);
               }
             }
           } catch (platformError) {
@@ -3504,7 +3273,6 @@ function setupIPCHandlers() {
 
         // Store screenshot data globally
         pendingScreenshot = { dataUrl: result.dataUrl, mode };
-        log.info("[IPC Capture] Screenshot stored in pendingScreenshot");
 
         // Navigate to annotate page using client-side navigation (preserves app state)
         restoreMainWindowAfterCapture();
@@ -3645,10 +3413,30 @@ function setupIPCHandlers() {
     }
   });
 
+  // Home screen preferences (view mode, sort, filter, last active workspace)
+  ipcMain.handle("home-prefs:get", () => {
+    try {
+      return { success: true, data: homeScreenSettings.get() };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle(
+    "home-prefs:set",
+    (_event, { patch }: { patch: Partial<HomeScreenPrefs> }) => {
+      try {
+        const next = homeScreenSettings.update(patch);
+        return { success: true, data: next };
+      } catch (error) {
+        return { success: false, error: (error as Error).message };
+      }
+    }
+  );
+
   // Handle window selection from overlay
   ipcMain.handle("capture:select-window", async (_event, { windowId }) => {
     try {
-      log.info("[Window Capture] Selected window ID:", windowId);
 
       // Close the overlay
       if (windowCaptureOverlay) {
@@ -3660,32 +3448,22 @@ function setupIPCHandlers() {
       // Wait a bit for overlay to close
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      log.info("[Window Capture] Capturing window screenshot...");
       // Capture the selected window
       const result = await captureService.captureScreenshot({
         mode: "window",
         windowId,
       });
 
-      log.info(
-        "[Window Capture] Screenshot captured, dataUrl length:",
-        result.dataUrl?.length || 0
-      );
 
       // Store screenshot data globally
       pendingScreenshot = { dataUrl: result.dataUrl, mode: "window" };
-      log.info("[Window Capture] Stored pending screenshot");
 
       // Navigate to annotate page using client-side navigation (preserves app state)
-      log.info(
-        "[Window Capture] Showing main window and navigating to annotate page..."
-      );
       restoreMainWindowAfterCapture();
       mainWindow?.focus();
       if (mainWindow && mainWindow.webContents) {
         mainWindow.webContents.send("navigate", "/annotate");
       }
-      log.info("[Window Capture] Navigation complete");
 
       return { success: true, data: result };
     } catch (error) {
@@ -3733,7 +3511,6 @@ function setupIPCHandlers() {
 
   // Recording handlers
   ipcMain.handle("recording:area-selected", async (_event, { bounds }) => {
-    log.info("[IPC] Recording area selected:", bounds);
     try {
       await handleRecordingAreaSelected(bounds);
       return { success: true };
@@ -3788,7 +3565,6 @@ function setupIPCHandlers() {
   });
 
   ipcMain.handle("recording:cancel", async () => {
-    log.info("[IPC] Recording cancel requested");
     try {
       await handleCancelRecording();
       return { success: true };
@@ -3802,7 +3578,6 @@ function setupIPCHandlers() {
 
   // Get available recording sources (screens + windows)
   ipcMain.handle("recording:get-sources", async () => {
-    log.info("[IPC] Getting recording sources");
     try {
       const sources = await windowPickerService.getSources();
       return { success: true, data: sources };
@@ -3818,7 +3593,6 @@ function setupIPCHandlers() {
   ipcMain.handle(
     "recording:start-with-source",
     async (_event, { sourceId, sourceName, displayBounds, setAsDefault }) => {
-      log.info("[IPC] Starting recording with source:", sourceId);
       try {
         windowPickerService.closePicker();
 
@@ -3830,10 +3604,6 @@ function setupIPCHandlers() {
           const primaryDisplay = screen.getPrimaryDisplay();
           actualSourceId = `screen:${primaryDisplay.id}:0`;
           actualBounds = primaryDisplay.bounds;
-          log.info(
-            "[IPC] Full screen selected, using primary display:",
-            actualSourceId
-          );
         }
 
         // Defensive check: verify the window source is still live before starting
@@ -3857,9 +3627,6 @@ function setupIPCHandlers() {
           }
           // Update actualSourceId in case it was matched by name with a new ID
           if (stillLive.id !== actualSourceId) {
-            log.info(
-              `[Recording] Source ID updated via name match: ${actualSourceId} → ${stillLive.id}`
-            );
             actualSourceId = stillLive.id;
           }
         }
@@ -3890,7 +3657,6 @@ function setupIPCHandlers() {
 
   // Get default recording source
   ipcMain.handle("recording:get-default-source", async () => {
-    log.info("[IPC] Getting default recording source");
     try {
       const source = recordingSettingsService.getDefaultSource();
       return { success: true, data: source };
@@ -3904,7 +3670,6 @@ function setupIPCHandlers() {
 
   // Set default recording source
   ipcMain.handle("recording:set-default-source", async (_event, source) => {
-    log.info("[IPC] Setting default recording source");
     try {
       recordingSettingsService.setDefaultSource(source);
       return { success: true };
@@ -3918,7 +3683,6 @@ function setupIPCHandlers() {
 
   // Clear default recording source
   ipcMain.handle("recording:clear-default-source", async () => {
-    log.info("[IPC] Clearing default recording source");
     try {
       recordingSettingsService.clearDefaultSource();
       return { success: true };
@@ -3932,7 +3696,6 @@ function setupIPCHandlers() {
 
   // Get all active recording sources plus validated default in a single call
   ipcMain.handle("recording:get-sources-with-default", async () => {
-    log.info("[IPC] Getting recording sources with default");
     try {
       const savedDefault = recordingSettingsService.getDefaultSource();
       const payload = await windowPickerService.getSourcesWithDefault(
@@ -3949,7 +3712,6 @@ function setupIPCHandlers() {
 
   // Copy bug report to clipboard by snap ID (snap must already be in local store)
   ipcMain.handle("clipboard:paste-bug", async (_event, { snapId }) => {
-    log.info("[IPC] Copying bug report to clipboard for snap:", snapId);
     try {
       let snap = await issueService.getSnapById(snapId);
       if (!snap) {
@@ -3988,7 +3750,6 @@ function setupIPCHandlers() {
       _event,
       { title, description, cloudFileUrl, type, filePath, syncedTo }
     ) => {
-      log.info("[IPC] Copying bug report from raw data to clipboard");
       try {
         clipboardService.copyBugReport({
           id: "temp",
@@ -4012,25 +3773,18 @@ function setupIPCHandlers() {
   );
 
   ipcMain.handle("capture:get-pending", async () => {
-    log.info("[IPC] Getting pending screenshot, exists:", !!pendingScreenshot);
     if (pendingScreenshot) {
       const data = pendingScreenshot;
       pendingScreenshot = null; // Clear after retrieval
-      log.info(
-        "[IPC] Returning pending screenshot, length:",
-        data.dataUrl?.length || 0
-      );
       return { success: true, data };
     }
     return { success: false, error: "No pending screenshot" };
   });
 
   ipcMain.handle("recording:get-pending", async () => {
-    log.info("[IPC] Getting pending recording, exists:", !!pendingRecording);
     if (pendingRecording) {
       const data = pendingRecording;
       pendingRecording = null; // Clear after retrieval
-      log.info("[IPC] Returning pending recording");
       return { success: true, data };
     }
     return { success: false, error: "No pending recording" };
@@ -4069,18 +3823,8 @@ function setupIPCHandlers() {
 
         // If this is a GitHub connector and we have pending tokens, update the connector
         if (connector.type === "github") {
-          log.info("[Connector:Add] GitHub connector created");
-          log.info(
-            "[Connector:Add] Incoming connector token:",
-            connector.config?.accessToken ? "present" : "empty"
-          );
-          log.info(
-            "[Connector:Add] Pending GitHub tokens exist:",
-            !!pendingGitHubTokens
-          );
 
           if (pendingGitHubTokens) {
-            log.info("[Connector:Add] Updating connector with pending tokens");
             newConnector = await connectorService.updateConnector(
               newConnector.id,
               {
@@ -4092,9 +3836,6 @@ function setupIPCHandlers() {
             );
             // Clear pending tokens
             pendingGitHubTokens = null;
-            log.info(
-              "[Connector:Add] Connector updated and pending tokens cleared"
-            );
           } else {
             log.warn(
               "[Connector:Add] No pending tokens, connector has token from renderer:",
@@ -4105,18 +3846,8 @@ function setupIPCHandlers() {
 
         // If this is a Zoho connector and we have pending tokens, update the connector
         if (connector.type === "zoho") {
-          log.info("[Connector:Add] Zoho connector created");
-          log.info(
-            "[Connector:Add] Incoming connector token:",
-            connector.config?.accessToken ? "present" : "empty"
-          );
-          log.info(
-            "[Connector:Add] Pending Zoho tokens exist:",
-            !!pendingZohoTokens
-          );
 
           if (pendingZohoTokens) {
-            log.info("[Connector:Add] Updating connector with pending tokens");
             newConnector = await connectorService.updateConnector(
               newConnector.id,
               {
@@ -4131,9 +3862,6 @@ function setupIPCHandlers() {
             );
             // Clear pending tokens
             pendingZohoTokens = null;
-            log.info(
-              "[Connector:Add] Connector updated and pending tokens cleared"
-            );
           } else {
             log.warn(
               "[Connector:Add] No pending tokens, connector has token from renderer:",
@@ -4312,7 +4040,11 @@ function setupIPCHandlers() {
   ipcMain.handle("sync:from-cloud", async (_event, { userId, workspaceId }) => {
     try {
       const wsId = workspaceId ?? activeWorkspaceId ?? undefined;
-      const result = await syncService.fetchFromCloud(userId, wsId);
+      const result = await syncService.fetchFromCloud(userId, wsId, (event) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("sync:from-cloud:progress", event);
+        }
+      });
       return { success: result.success, data: result };
     } catch (error) {
       const errorMessage =
@@ -4365,7 +4097,6 @@ function setupIPCHandlers() {
     async (_event, { enabled }: { enabled: boolean }) => {
       try {
         appSettingsStore.set("autoSync", enabled);
-        log.info("[Settings] Auto-sync setting updated to:", enabled);
         return { success: true };
       } catch (error) {
         const errorMessage =
@@ -4438,14 +4169,9 @@ function setupIPCHandlers() {
 
   // Zoho OAuth Sign In
   ipcMain.handle("connector:zoho-signin", async () => {
-    log.info("[Zoho OAuth] IPC Handler: connector:zoho-signin called");
     try {
-      log.info("[Zoho OAuth] Generating authorization URL");
       const url = zohoService.getAuthUrl();
-      log.info("[Zoho OAuth] ✓ Auth URL generated, length:", url.length);
-      log.info("[Zoho OAuth] Opening browser to OAuth consent screen");
       await shell.openExternal(url);
-      log.info("[Zoho OAuth] ✓ Browser opened successfully");
       return { success: true };
     } catch (error) {
       const errorMessage =
@@ -4589,11 +4315,6 @@ function setupIPCHandlers() {
   // Get GitHub Access Token
   ipcMain.handle("connector:get-github-token", async () => {
     try {
-      log.info("[GitHub Token] Request to get GitHub access token");
-      log.info(
-        "[GitHub Token] pendingGitHubTokens exists:",
-        !!pendingGitHubTokens
-      );
 
       if (!pendingGitHubTokens) {
         log.warn("[GitHub Token] No pending GitHub tokens available");
@@ -4603,7 +4324,6 @@ function setupIPCHandlers() {
         };
       }
 
-      log.info("[GitHub Token] Returning access token");
       return { success: true, accessToken: pendingGitHubTokens.accessToken };
     } catch (error) {
       const errorMessage =
@@ -4616,8 +4336,6 @@ function setupIPCHandlers() {
   // Get Zoho Access Token
   ipcMain.handle("connector:get-zoho-token", async () => {
     try {
-      log.info("[Zoho Token] Request to get Zoho access token");
-      log.info("[Zoho Token] pendingZohoTokens exists:", !!pendingZohoTokens);
 
       if (!pendingZohoTokens) {
         log.warn("[Zoho Token] No pending Zoho tokens available");
@@ -4627,7 +4345,6 @@ function setupIPCHandlers() {
         };
       }
 
-      log.info("[Zoho Token] Returning Zoho tokens");
       return {
         success: true,
         accessToken: pendingZohoTokens.accessToken,
@@ -4647,7 +4364,6 @@ function setupIPCHandlers() {
   // File access handler
   ipcMain.handle("file:read-image", async (_event, { filePath }) => {
     try {
-      log.info("[File] Reading image:", filePath);
 
       // Validate file path
       if (!filePath || typeof filePath !== "string") {
@@ -4677,7 +4393,6 @@ function setupIPCHandlers() {
                 : "image/png";
       const dataUrl = `data:${mimeType};base64,${base64}`;
 
-      log.info("[File] Successfully read image, size:", buffer.length, "bytes");
       return { success: true, data: dataUrl };
     } catch (error) {
       log.error("[File] Error reading image:", filePath, error);
@@ -4726,20 +4441,10 @@ function setupIPCHandlers() {
     }
   });
 
-  ipcMain.handle(
-    "util:show-notification",
-    (_event, { title, body }: { title: string; body?: string }) => {
-      try {
-        if (Notification.isSupported()) {
-          new Notification({ title, body }).show();
-        }
-        return { success: true };
-      } catch (error) {
-        log.error("[Util] Failed to show notification:", error);
-        return { success: false };
-      }
-    }
-  );
+  // Native notifications were replaced by an in-app toast (see ToastHost in
+  // _app.tsx). The renderer's `window.api.showNotification` now dispatches a
+  // CustomEvent directly. Keep this handler as a no-op for any stragglers.
+  ipcMain.handle("util:show-notification", () => ({ success: true }));
 
   // Window control handlers
   ipcMain.handle("window:close", () => {
@@ -4909,7 +4614,6 @@ function setupIPCHandlers() {
       // force=true bypasses debounce and fingerprint dedup — manual snaps
       // from the HUD should always produce a new screenshot entry.
       const shot = await debugCollector.captureScreenshot(true, true);
-      log.info("[Session] HUD-triggered screenshot:", shot.id);
       return { success: true, data: shot };
     } catch (error) {
       return { success: false, error: (error as Error).message };
@@ -5122,6 +4826,45 @@ function setupIPCHandlers() {
     }
   );
 
+  // ── AI: generate / refine description for a single screenshot ──────────────
+  ipcMain.handle(
+    "ai:generate-screenshot-description",
+    async (
+      _,
+      input: {
+        filePath?: string;
+        dataUrl?: string;
+        snapId?: string;
+        userNotes?: string;
+      }
+    ) => {
+      try {
+        let resolved: {
+          filePath?: string;
+          dataUrl?: string;
+          userNotes?: string;
+        } = {
+          filePath: input.filePath,
+          dataUrl: input.dataUrl,
+          userNotes: input.userNotes,
+        };
+        if (!resolved.filePath && !resolved.dataUrl && input.snapId) {
+          const snap = issueService.getSnapById(input.snapId);
+          if (!snap) {
+            return { success: false, error: "Snap not found" };
+          }
+          resolved.filePath = snap.filePath;
+        }
+        const description =
+          await aiService.generateScreenshotDescription(resolved);
+        return { success: true, data: description };
+      } catch (error) {
+        log.warn("[AI] Failed to generate screenshot description:", error);
+        return { success: false, error: AiService.friendlyError(error) };
+      }
+    }
+  );
+
   ipcMain.handle("ai:is-configured", () => {
     return { success: true, data: aiService.isConfigured() };
   });
@@ -5168,20 +4911,13 @@ function setupIPCHandlers() {
 
   ipcMain.handle("debug:test-capture", async () => {
     try {
-      log.info("[Debug] Testing screen capture...");
       const hasPermission =
         await captureService.checkScreenRecordingPermission();
-      log.info("[Debug] Permission status:", hasPermission);
 
       if (hasPermission) {
-        log.info("[Debug] Permission granted, attempting test capture...");
         const result = await captureService.captureScreenshot({
           mode: "fullscreen",
         });
-        log.info(
-          "[Debug] Test capture successful! Buffer size:",
-          result.buffer.length
-        );
         return {
           success: true,
           data: {
@@ -5191,7 +4927,6 @@ function setupIPCHandlers() {
           },
         };
       } else {
-        log.info("[Debug] No permission detected");
         return { success: false, error: "No screen recording permission" };
       }
     } catch (error) {
@@ -5208,7 +4943,6 @@ function setupIPCHandlers() {
 if (app && app.on) {
   // Set isQuitting flag before quit begins (handles CMD+Q, dock quit, etc.)
   app.on("before-quit", () => {
-    log.info("[App] before-quit event - setting isQuitting to true");
     isQuitting = true;
     // Also notify the main window that we're quitting
     if (mainWindow && mainWindow.setQuitting) {
@@ -5218,7 +4952,6 @@ if (app && app.on) {
 
   // Handle activate event (macOS) - show window when clicking dock icon
   app.on("activate", async () => {
-    log.info("[App] activate event - showing window");
     if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) {
       await showMainWindow();
     }

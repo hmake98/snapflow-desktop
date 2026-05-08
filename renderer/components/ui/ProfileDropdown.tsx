@@ -1,5 +1,5 @@
 import React from "react";
-import { AVATAR_PLACEHOLDER } from "../../utils/avatar";
+import { Avatar } from "./Avatar";
 
 export function ProfileDropdown({
   user,
@@ -28,10 +28,12 @@ export function ProfileDropdown({
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2 h-7 px-2 rounded-md hover:bg-gray-800/70 transition-all group"
       >
-        <img
-          src={user?.avatarUrl ?? AVATAR_PLACEHOLDER}
-          alt={user?.name ?? ""}
-          className="w-6 h-6 rounded-full object-cover flex-shrink-0"
+        <Avatar
+          src={user?.avatarUrl}
+          name={user?.name}
+          email={user?.email}
+          size={24}
+          className="ring-0"
         />
         <span className="text-sm text-gray-400 group-hover:text-gray-200 max-w-[120px] truncate transition-colors">
           {user?.name ?? ""}
@@ -55,10 +57,12 @@ export function ProfileDropdown({
         <div className="absolute right-0 top-full mt-2 w-56 bg-gray-900 border border-gray-700/50 rounded-xl shadow-2xl z-50 overflow-hidden">
           {/* User info */}
           <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-3">
-            <img
-              src={user?.avatarUrl ?? AVATAR_PLACEHOLDER}
-              alt={user?.name ?? ""}
-              className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+            <Avatar
+              src={user?.avatarUrl}
+              name={user?.name}
+              email={user?.email}
+              size={32}
+              className="ring-0"
             />
             <div className="min-w-0">
               <p className="text-sm font-medium text-gray-200 truncate">

@@ -112,41 +112,77 @@ function ProviderCard({ provider, status, onSave, onClear, onSetActive }: Provid
   };
 
   const isConfigured = !!status.maskedKey;
+  const canActivate = isConfigured && !status.isActive;
+
+  // Header is the radio target — clicking it activates this provider when
+  // configured. Only one provider can be active at a time (enforced by the
+  // backend `activeProvider` store key).
+  const handleHeaderClick = () => {
+    if (canActivate) onSetActive(provider);
+  };
 
   return (
-    <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-700/40">
+    <div
+      className={`bg-gray-800/40 border rounded-lg overflow-hidden transition-colors ${
+        status.isActive
+          ? "border-blue-500/40 ring-1 ring-blue-500/20"
+          : "border-gray-700/50"
+      }`}
+    >
+      {/* Header — acts as radio selector */}
+      <button
+        type="button"
+        onClick={handleHeaderClick}
+        disabled={!canActivate}
+        className={`w-full flex items-center gap-3 px-4 py-2.5 border-b border-gray-700/40 text-left transition-colors ${
+          canActivate ? "hover:bg-gray-800/70 cursor-pointer" : "cursor-default"
+        }`}
+        title={
+          status.isActive
+            ? "Active provider"
+            : canActivate
+              ? "Click to make active"
+              : "Add an API key to activate"
+        }
+      >
+        {/* Radio indicator */}
+        <span
+          className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+            status.isActive
+              ? "border-blue-400"
+              : isConfigured
+                ? "border-gray-500"
+                : "border-gray-700"
+          }`}
+        >
+          {status.isActive && (
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+          )}
+        </span>
+
         <div className="w-5 h-5 bg-gray-700/60 border border-gray-600/50 rounded flex items-center justify-center flex-shrink-0 text-gray-400">
           {meta.icon}
         </div>
         <div className="flex-1 min-w-0">
-          <span className="text-xs font-semibold text-gray-300">{meta.label}</span>
+          <span className="text-sm font-semibold text-gray-300">{meta.label}</span>
           <span className="text-xs text-gray-600 ml-2 font-normal">{meta.description}</span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {status.isActive && (
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/25">
+          {status.isActive ? (
+            <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/25">
               Active
             </span>
+          ) : (
+            <span className={`text-2xs font-medium px-2 py-0.5 rounded-full border ${
+              isConfigured
+                ? "bg-gray-700/50 text-gray-400 border-gray-600/40"
+                : "bg-gray-800/60 text-gray-600 border-gray-700/30"
+            }`}>
+              {isConfigured ? "Configured" : "Not set"}
+            </span>
           )}
-          {isConfigured && !status.isActive && (
-            <button
-              onClick={() => onSetActive(provider)}
-              className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
-            >
-              Set active
-            </button>
-          )}
-          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
-            isConfigured
-              ? "bg-gray-700/50 text-gray-400 border-gray-600/40"
-              : "bg-gray-800/60 text-gray-600 border-gray-700/30"
-          }`}>
-            {isConfigured ? "Configured" : "Not set"}
-          </span>
         </div>
-      </div>
+      </button>
 
       {/* Body */}
       <div className="px-4 py-3 space-y-2.5">
@@ -156,11 +192,11 @@ function ProviderCard({ provider, status, onSave, onClear, onSetActive }: Provid
             <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
             </svg>
-            <span className="text-[11px] text-gray-500 font-mono flex-1 min-w-0 truncate">{status.maskedKey}</span>
+            <span className="text-2xs text-gray-500 font-mono flex-1 min-w-0 truncate">{status.maskedKey}</span>
             <button
               onClick={handleClear}
               disabled={clearing}
-              className="text-[11px] text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors flex-shrink-0"
+              className="text-2xs text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors flex-shrink-0"
             >
               {clearing ? "Removing…" : "Remove"}
             </button>
@@ -218,7 +254,7 @@ function ProviderCard({ provider, status, onSave, onClear, onSetActive }: Provid
         </div>
 
         {/* Docs hint */}
-        <p className="text-[10px] text-gray-600">
+        <p className="text-2xs text-gray-600">
           Get your key at <span className="text-gray-500">{meta.docsHint}</span>
         </p>
       </div>
@@ -270,11 +306,11 @@ export function AiSection() {
       {/* Section header */}
       <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg px-4 py-3">
         <div className="flex items-center justify-between mb-1">
-          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">AI Providers</span>
-          <span className="text-[11px] text-gray-600">{configuredCount} of 4 configured</span>
+          <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">AI Providers</span>
+          <span className="text-xs text-gray-600">{configuredCount} of 4 configured</span>
         </div>
-        <p className="text-xs text-gray-500 leading-relaxed">
-          Configure one or more providers. The <span className="text-gray-300">active</span> provider is used to auto-generate bug report descriptions in session review. Keys are stored locally and never sent to SnapFlow servers.
+        <p className="text-sm text-gray-500 leading-relaxed">
+          Configure any provider by adding its API key, then select <span className="text-gray-300">one</span> as the active provider. Only one can be active at a time — it's used to auto-generate bug report descriptions in session review. Keys are stored locally and never sent to SnapFlow servers.
         </p>
       </div>
 

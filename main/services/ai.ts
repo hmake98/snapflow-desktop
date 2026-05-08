@@ -111,7 +111,6 @@ export class AiService {
     if (!aiStore.get("activeProvider")) {
       aiStore.set("activeProvider", provider);
     }
-    log.info(`[AI] ${provider} API key saved`);
   }
 
   clearApiKey(provider: Provider): void {
@@ -121,7 +120,6 @@ export class AiService {
       const next = this.firstConfiguredProvider([provider]);
       aiStore.set("activeProvider", next);
     }
-    log.info(`[AI] ${provider} API key cleared`);
   }
 
   getStoredApiKey(provider: Provider): string | null {
@@ -159,7 +157,6 @@ export class AiService {
 
   setActiveProvider(provider: Provider): void {
     aiStore.set("activeProvider", provider);
-    log.info(`[AI] Active provider set to: ${provider}`);
   }
 
   getAllStatus(): Record<Provider, { maskedKey: string | null; isActive: boolean }> {
@@ -191,12 +188,173 @@ export class AiService {
     }
 
     const apiKey = this.getStoredApiKey(provider)!;
-    log.info(`[AI] Generating with provider: ${provider}`);
 
     if (provider === "anthropic") {
       return this.generateWithAnthropic(apiKey, params);
     }
     return this.generateWithOpenAICompat(provider, apiKey, params);
+  }
+
+  /**
+   * Refine a user-written bug note + screenshot into a structured bug report.
+   *
+   * **Requires `userNotes`.** A screenshot alone doesn't carry intent —
+   * the AI has no way to know what the user was doing, what they expected,
+   * or whether anything is actually wrong. The notes are the source of
+   * truth for that; the screenshot grounds visual specifics (error text,
+   * UI state). If notes are missing or too short this method throws so
+   * the UI can keep the button hidden / show a clear message.
+   *
+   * Accepts either an absolute `filePath` on disk or a base64 `dataUrl`
+   * (what the annotate page holds before the snap is saved).
+   * Returns markdown text the caller drops straight into the description
+   * field.
+   */
+  static readonly MIN_NOTES_LENGTH = 20;
+
+  async generateScreenshotDescription(input: {
+    filePath?: string;
+    dataUrl?: string;
+    userNotes?: string;
+  }): Promise<string> {
+    const trimmedNotes = (input.userNotes ?? "").trim();
+    if (trimmedNotes.length < AiService.MIN_NOTES_LENGTH) {
+      throw new Error(
+        `Write a description first (at least ${AiService.MIN_NOTES_LENGTH} characters) — the AI needs your notes to know what's actually going wrong.`
+      );
+    }
+
+    const provider = this.getActiveProvider();
+    if (!provider) {
+      throw new Error(
+        "No AI provider configured. Add an API key in Settings → AI."
+      );
+    }
+
+    const apiKey = this.getStoredApiKey(provider)!;
+
+    // Resolve image bytes to a data URL (works for all OpenAI-compat providers)
+    let dataUrl = input.dataUrl;
+    let base64: string | null = null;
+    let mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" =
+      "image/png";
+
+    if (!dataUrl && input.filePath) {
+      try {
+        const buf = fs.readFileSync(input.filePath);
+        base64 = buf.toString("base64");
+        const lower = input.filePath.toLowerCase();
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg"))
+          mediaType = "image/jpeg";
+        else if (lower.endsWith(".gif")) mediaType = "image/gif";
+        else if (lower.endsWith(".webp")) mediaType = "image/webp";
+        dataUrl = `data:${mediaType};base64,${base64}`;
+      } catch (err) {
+        throw new Error(`Could not read screenshot: ${(err as Error).message}`, {
+          cause: err,
+        });
+      }
+    }
+
+    if (!dataUrl) {
+      throw new Error("No screenshot provided.");
+    }
+
+    // Extract base64 + media type from the data URL when we got one directly
+    if (!base64) {
+      const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        const mt = match[1] as typeof mediaType;
+        if (
+          mt === "image/png" ||
+          mt === "image/jpeg" ||
+          mt === "image/gif" ||
+          mt === "image/webp"
+        ) {
+          mediaType = mt;
+        }
+        base64 = match[2];
+      }
+    }
+
+    const prompt = `You are a senior QA engineer turning a tester's rough notes plus a screenshot into a clean, structured bug report.
+
+The tester wrote these notes (this is the SOURCE OF TRUTH for intent, expected behaviour, and what they observed — preserve their meaning):
+
+"""
+${trimmedNotes}
+"""
+
+The attached screenshot shows the on-screen state. Use it to ground visual specifics — exact error text, button labels, visible values, layout problems — but do NOT invent intent or steps that aren't in the notes or visible in the image.
+
+Reply with markdown only — no preamble, no code fences. Use this exact structure, and OMIT any section the inputs don't support (don't fabricate to fill it in):
+
+## Summary
+<2–3 sentences combining the tester's notes with what the screenshot confirms>
+
+## Steps to Reproduce
+1. <only steps the tester mentioned or that are clearly implied>
+2. ...
+
+## Expected Behavior
+<one sentence — only if the notes describe an expectation>
+
+## Actual Behavior
+<one sentence — describe the defect using notes + on-screen evidence>
+
+## Severity
+<critical | high | medium | low — pick based on impact described or visible>
+
+Severity guide: critical = crash/data loss/security; high = core feature broken; medium = partial/has workaround; low = cosmetic.`;
+
+
+    if (provider === "anthropic") {
+      const client = new Anthropic({ apiKey });
+      const response = await client.messages.create({
+        model: PROVIDERS.anthropic.model,
+        max_tokens: 400,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image",
+                source: { type: "base64", media_type: mediaType, data: base64! },
+              },
+              { type: "text", text: prompt },
+            ],
+          },
+        ],
+      });
+      const text =
+        response.content.find((b) => b.type === "text")?.text?.trim() ?? "";
+      if (!text) throw new Error("Empty response from Claude.");
+      return text;
+    }
+
+    const config = PROVIDERS[provider];
+    const client = new OpenAI({
+      apiKey,
+      ...(config.baseURL ? { baseURL: config.baseURL } : {}),
+    });
+
+    const response = await client.chat.completions.create({
+      model: config.model,
+      max_tokens: 400,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "image_url", image_url: { url: dataUrl } },
+            { type: "text", text: prompt },
+          ],
+        },
+      ],
+    });
+
+    const raw = response.choices[0]?.message?.content?.trim();
+    if (!raw) throw new Error(`Empty response from ${config.label}.`);
+    return raw;
   }
 
   // ── OpenAI-compatible providers (Groq, OpenAI, Gemini) ─────────────────
@@ -382,7 +540,6 @@ Write in past tense. Be specific and factual.`;
       ? report.severity
       : "medium";
 
-    log.info("[AI] Bug report generated — severity:", report.severity);
     return report;
   }
 

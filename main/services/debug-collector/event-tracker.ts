@@ -106,7 +106,6 @@ export class EventTracker extends EventEmitter {
 
       uIOhook.start();
       this.active = true;
-      log.info("[EventTracker] Started (uiohook-napi)");
     } catch (err) {
       log.error("[EventTracker] Failed to start uiohook-napi:", err);
     }
@@ -122,7 +121,6 @@ export class EventTracker extends EventEmitter {
     }
     this.uiohook = null;
     this.active = false;
-    log.info("[EventTracker] Stopped");
   }
 
   /** Register a handler for every new event (used during a session). */

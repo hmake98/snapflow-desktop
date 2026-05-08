@@ -19,15 +19,12 @@ function ensureFFmpegReady() {
   // Try multiple approaches to find FFmpeg
   const pathsToTry: string[] = [];
 
-  log.info("[Recording] __dirname:", __dirname);
-  log.info("[Recording] process.cwd():", process.cwd());
 
   // Approach 1: Direct path from ffmpeg-static (works in development)
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const ffmpegStatic = require("ffmpeg-static") as string;
     if (ffmpegStatic && typeof ffmpegStatic === "string") {
-      log.info("[Recording] Found ffmpeg-static require() at:", ffmpegStatic);
       pathsToTry.push(ffmpegStatic);
     }
   } catch (_e) {
@@ -95,16 +92,13 @@ function ensureFFmpegReady() {
     log.warn("[Recording] Could not construct home path");
   }
 
-  log.info("[Recording] Searching for FFmpeg in paths:", pathsToTry);
 
   // Try each path
   for (const ffmpegPath of pathsToTry) {
     if (fs.existsSync(ffmpegPath)) {
-      log.info("[Recording] Using FFmpeg from:", ffmpegPath);
       ffmpeg.setFfmpegPath(ffmpegPath);
       return true;
     } else {
-      log.info("[Recording] Path does not exist:", ffmpegPath);
     }
   }
 
@@ -120,7 +114,6 @@ function ensureFFmpegReady() {
       }
     ).trim();
     if (ffmpegPath && fs.existsSync(ffmpegPath)) {
-      log.info("[Recording] Using system FFmpeg from:", ffmpegPath);
       ffmpeg.setFfmpegPath(ffmpegPath);
       return true;
     }
@@ -215,11 +208,6 @@ export class CaptureService extends EventEmitter {
     try {
       const cursorPoint = screen.getCursorScreenPoint();
       const cursorDisplay = screen.getDisplayNearestPoint(cursorPoint);
-      log.info(
-        "[Capture] Multi-display auto-select: cursor on display",
-        cursorDisplay.id,
-        `(${cursorDisplay.bounds.width}×${cursorDisplay.bounds.height})`
-      );
       return cursorDisplay;
     } catch {
       return screen.getPrimaryDisplay();
@@ -233,10 +221,6 @@ export class CaptureService extends EventEmitter {
     options: CaptureOptions
   ): Promise<{ dataUrl: string; buffer: Buffer }> {
     try {
-      log.info(
-        "[Capture] Starting screenshot capture with options:",
-        JSON.stringify(options)
-      );
 
       // ── Multi-display fullscreen: auto-route to cursor display ────────────
       // On multi-monitor setups the legacy code always picked the primary
@@ -247,10 +231,6 @@ export class CaptureService extends EventEmitter {
         screen.getAllDisplays().length > 1
       ) {
         const targetDisplay = this.getFullscreenTargetDisplay();
-        log.info(
-          "[Capture] Multi-display fullscreen → routing to display",
-          targetDisplay.id
-        );
         return this.captureSpecificScreen(targetDisplay.id);
       }
 
@@ -258,14 +238,6 @@ export class CaptureService extends EventEmitter {
       const scaleFactor = primaryDisplay.scaleFactor || 1;
       const { width, height } = primaryDisplay.size;
 
-      log.info(
-        "[Capture] Display info - width:",
-        width,
-        "height:",
-        height,
-        "scaleFactor:",
-        scaleFactor
-      );
 
       // Handle special multi-screen modes before fetching sources
       if (options.mode === "all-screens") {
@@ -286,9 +258,6 @@ export class CaptureService extends EventEmitter {
       let buffer = Buffer.alloc(0);
 
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        log.info(
-          `[Capture] Requesting desktop sources (attempt ${attempt}/${MAX_RETRIES})...`
-        );
         const sources = await desktopCapturer.getSources({
           types: ["screen", "window"],
           thumbnailSize: {
@@ -298,12 +267,7 @@ export class CaptureService extends EventEmitter {
           fetchWindowIcons: false,
         });
 
-        log.info("[Capture] Retrieved", sources.length, "sources");
         if (sources.length > 0) {
-          log.info(
-            "[Capture] Available sources:",
-            sources.map((s) => ({ id: s.id, name: s.name }))
-          );
         }
 
         if (sources.length === 0) {
@@ -314,13 +278,9 @@ export class CaptureService extends EventEmitter {
         }
 
         if (options.mode === "window" && options.windowId) {
-          log.info("[Capture] Looking for window with ID:", options.windowId);
           source = sources.find((s) => s.id === options.windowId);
-          log.info("[Capture] Window source found:", !!source);
         } else {
-          log.info("[Capture] Looking for screen source...");
           source = sources.find((s) => s.id.startsWith("screen"));
-          log.info("[Capture] Screen source found:", source?.id);
         }
 
         if (!source) {
@@ -329,12 +289,10 @@ export class CaptureService extends EventEmitter {
         }
 
         buffer = source.thumbnail.toPNG();
-        log.info(`[Capture] Thumbnail size: ${JSON.stringify(source.thumbnail.getSize())}, buffer: ${buffer.length} bytes`);
 
         if (buffer.length >= 1000) break;
 
         if (attempt < MAX_RETRIES) {
-          log.info(`[Capture] Empty thumbnail on attempt ${attempt}, retrying in ${RETRY_DELAY_MS}ms…`);
           await new Promise<void>((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
         }
       }
@@ -347,12 +305,6 @@ export class CaptureService extends EventEmitter {
 
       // Handle region capture
       if (options.mode === "region" && options.bounds) {
-        log.info(
-          "[Capture] Region mode - bounds:",
-          options.bounds,
-          "originOffset:",
-          options.originOffset
-        );
 
         // The bounds are in physical pixels relative to the overlay window origin.
         // Convert back to logical screen coordinates so we can find the display.
@@ -416,12 +368,6 @@ export class CaptureService extends EventEmitter {
           height: Math.floor(options.bounds.height),
         };
 
-        log.info(
-          "[Capture] Region on display",
-          targetDisplay.id,
-          "cropRect:",
-          cropRect
-        );
 
         const croppedImage = regionSource.thumbnail.crop(cropRect);
         const regionBuffer = croppedImage.toPNG();
@@ -434,15 +380,11 @@ export class CaptureService extends EventEmitter {
       }
 
       // Fullscreen or window capture — buffer already fetched in the retry loop above
-      log.info("[Capture] Processing", options.mode, "capture...");
 
       // Copy to clipboard
       clipboard.writeImage(source.thumbnail);
-      log.info("[Capture] Image copied to clipboard");
 
       const dataUrl = `data:image/png;base64,${buffer.toString("base64")}`;
-      log.info("[Capture] DataUrl length:", dataUrl.length);
-      log.info("[Capture] Screenshot capture completed successfully");
 
       return { dataUrl, buffer };
     } catch (error) {
@@ -531,10 +473,8 @@ export class CaptureService extends EventEmitter {
    */
   async captureAllScreens(): Promise<{ dataUrl: string; buffer: Buffer }> {
     try {
-      log.info("[Capture] Starting all screens capture...");
 
       const displays = screen.getAllDisplays();
-      log.info("[Capture] Found", displays.length, "displays");
 
       if (displays.length === 1) {
         return this.captureScreenshot({ mode: "fullscreen" });
@@ -619,14 +559,6 @@ export class CaptureService extends EventEmitter {
       const totalHeight = Math.max(...captured.map((c) => c.physicalHeight));
       const CHANNELS = 4; // RGBA
 
-      log.info(
-        "[Capture] Stitching",
-        captured.length,
-        "displays into",
-        totalWidth,
-        "×",
-        totalHeight
-      );
 
       const output = Buffer.alloc(totalWidth * totalHeight * CHANNELS, 0);
 
@@ -653,7 +585,6 @@ export class CaptureService extends EventEmitter {
       const buffer = stitched.toPNG();
       clipboard.writeImage(stitched);
 
-      log.info("[Capture] All screens stitched, buffer size:", buffer.length);
       return {
         dataUrl: `data:image/png;base64,${buffer.toString("base64")}`,
         buffer,
@@ -674,12 +605,6 @@ export class CaptureService extends EventEmitter {
     cropDock = false
   ): Promise<{ dataUrl: string; buffer: Buffer }> {
     try {
-      log.info(
-        "[Capture] Capturing specific screen:",
-        displayId,
-        "cropDock:",
-        cropDock
-      );
 
       const displays = screen.getAllDisplays();
       const targetDisplay = displays.find((d) => d.id === displayId);
@@ -739,7 +664,6 @@ export class CaptureService extends EventEmitter {
           cropRect.height < imgSize.height;
 
         if (needsCrop && cropRect.width > 0 && cropRect.height > 0) {
-          log.info("[Capture] Cropping dock — rect:", cropRect);
           image = image.crop(cropRect);
         }
       }
@@ -754,7 +678,6 @@ export class CaptureService extends EventEmitter {
 
       clipboard.writeImage(image);
 
-      log.info("[Capture] Specific screen capture completed");
       return {
         dataUrl: `data:image/png;base64,${buffer.toString("base64")}`,
         buffer,
@@ -775,9 +698,6 @@ export class CaptureService extends EventEmitter {
     // Check permission first to avoid triggering permission dialog in a loop
     const hasPermission = await this.checkScreenRecordingPermission();
     if (!hasPermission) {
-      log.info(
-        "[Capture] No screen recording permission, returning empty windows list"
-      );
       return [];
     }
 
@@ -816,7 +736,6 @@ export class CaptureService extends EventEmitter {
       throw new Error("Recording already in progress");
     }
 
-    log.info("[Recording] Starting FFmpeg recording with bounds:", bounds);
 
     this.recordingBounds = bounds;
     this.recordingStartTime = Date.now();
@@ -852,13 +771,6 @@ export class CaptureService extends EventEmitter {
       const adjustedWidth = Math.floor(bounds.width * scaleFactor);
       const adjustedHeight = Math.floor(bounds.height * scaleFactor);
 
-      log.info("[Recording] Adjusted bounds:", {
-        x: adjustedX,
-        y: adjustedY,
-        width: adjustedWidth,
-        height: adjustedHeight,
-        scaleFactor,
-      });
 
       // Configure FFmpeg command based on platform
       let ffmpegCmd = ffmpeg();
@@ -871,7 +783,6 @@ export class CaptureService extends EventEmitter {
         // external cameras (iPhone Continuity Camera, USB cameras) are connected,
         // causing the wrong device to be recorded.  The name "Capture screen 0"
         // always refers to the primary display regardless of connected cameras.
-        log.info("[Recording] Capturing full screen on macOS (AVFoundation)");
 
         ffmpegCmd = ffmpeg()
           .input("Capture screen 0:none") // primary display, no audio
@@ -937,7 +848,6 @@ export class CaptureService extends EventEmitter {
           msg.includes("SIGKILL") ||
           msg.includes("killed with signal")
         ) {
-          log.info("[Recording] FFmpeg stopped via signal:", msg);
         } else {
           log.error("[Recording] FFmpeg error:", err);
         }
@@ -945,15 +855,12 @@ export class CaptureService extends EventEmitter {
       });
 
       ffmpegCmd.on("end", () => {
-        log.info("[Recording] FFmpeg process finished");
       });
 
       // Start recording
-      log.info("[Recording] Starting FFmpeg process...");
       this.ffmpegProcess = ffmpegCmd;
       ffmpegCmd.run();
 
-      log.info("[Recording] FFmpeg recording started successfully");
     } catch (error) {
       this.ffmpegProcess = null;
       this.recordingOutputPath = null;
@@ -981,7 +888,6 @@ export class CaptureService extends EventEmitter {
       throw new Error("No recording in progress");
     }
 
-    log.info("[Recording] Stopping FFmpeg recording");
 
     const duration = this.recordingStartTime
       ? Date.now() - this.recordingStartTime
@@ -999,7 +905,6 @@ export class CaptureService extends EventEmitter {
       // FFmpeg to stop encoding and finalize the output file — equivalent to
       // pressing Ctrl+C. The existing "error" event handler sets
       // this.ffmpegProcess = null, which the check interval uses to confirm exit.
-      log.info("[Recording] Sending SIGINT to FFmpeg for graceful stop...");
       await new Promise<void>((resolve) => {
         let resolved = false;
         const done = () => {
@@ -1034,7 +939,6 @@ export class CaptureService extends EventEmitter {
         // Send SIGINT — FFmpeg finalizes WebM index and exits cleanly
         try {
           this.ffmpegProcess?.kill("SIGINT");
-          log.info("[Recording] SIGINT sent to FFmpeg");
         } catch (e) {
           log.warn("[Recording] Failed to send SIGINT, trying SIGKILL:", e);
           try {
@@ -1045,7 +949,6 @@ export class CaptureService extends EventEmitter {
         }
       });
 
-      log.info("[Recording] FFmpeg process stopped");
 
       // Verify output file exists and has data
       const fs = await import("fs");
@@ -1054,7 +957,6 @@ export class CaptureService extends EventEmitter {
       }
 
       const fileSize = fs.statSync(outputPath).size;
-      log.info("[Recording] Video file created, size:", fileSize, "bytes");
 
       if (fileSize === 0) {
         throw new Error(
@@ -1068,7 +970,6 @@ export class CaptureService extends EventEmitter {
         issueId
       );
 
-      log.info("[Recording] Thumbnail saved to:", thumbnailPath);
 
       // Clean up
       this.ffmpegProcess = null;
@@ -1113,7 +1014,6 @@ export class CaptureService extends EventEmitter {
     videoPath: string,
     issueId: string
   ): Promise<string> {
-    log.info("[Recording] Creating thumbnail from video:", videoPath);
 
     // Ensure the thumbnail directory exists
     const thumbnailPath = storageManager.getThumbnailPath(issueId);
@@ -1150,7 +1050,6 @@ export class CaptureService extends EventEmitter {
         throw new Error("FFmpeg wrote an empty or missing thumbnail file");
       }
 
-      log.info("[Recording] Thumbnail created successfully:", thumbnailPath);
       return thumbnailPath;
     } catch (error) {
       log.error("[Recording] Failed to create thumbnail:", error);
@@ -1158,7 +1057,6 @@ export class CaptureService extends EventEmitter {
       // Fallback: write an empty placeholder so the rest of the flow doesn't break
       const placeholderBuffer = nativeImage.createEmpty().toPNG();
       fs.writeFileSync(thumbnailPath, placeholderBuffer);
-      log.info("[Recording] Wrote placeholder thumbnail:", thumbnailPath);
       return thumbnailPath;
     }
   }

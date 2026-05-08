@@ -19,12 +19,8 @@ export class TrayIconManager {
    * Note: Only updates icon if it exists. Recording state is shown in menu instead.
    */
   setState(state: TrayState): void {
-    if (this.currentState === state) {
-      log.info(`[TrayIcon] State already ${state}, skipping update`);
-      return;
-    }
+    if (this.currentState === state) return;
 
-    log.info(`[TrayIcon] Changing state from ${this.currentState} to ${state}`);
     this.currentState = state;
 
     // Only update icon for "normal" state to avoid missing icon files
@@ -38,13 +34,11 @@ export class TrayIconManager {
         return;
       }
 
-      // Resize for tray
       const resized = image.resize({ width: 16, height: 16 });
       resized.setTemplateImage(true);
 
       if (this.tray) {
         this.tray.setImage(resized);
-        log.info(`[TrayIcon] Icon updated to normal state`);
       }
     }
   }
@@ -96,8 +90,6 @@ export class TrayIconManager {
             : "tray-icon.png";
     }
 
-    const fullPath = path.join(basePath, iconName);
-    log.info(`[TrayIcon] Icon path for ${state}:`, fullPath);
-    return fullPath;
+    return path.join(basePath, iconName);
   }
 }

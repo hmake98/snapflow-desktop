@@ -42,10 +42,6 @@ export function ZohoConnectorManager() {
   const [pendingAuth, setPendingAuth] = useState<PendingZohoAuth | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  const log = (message: string, data?: unknown) => {
-    console.log(`[ZohoConnectorManager] ${message}`, data);
-  };
-
   useEffect(() => {
     getWorkspace();
   }, []);
@@ -56,7 +52,6 @@ export function ZohoConnectorManager() {
 
   useEffect(() => {
     const unsubscribe = window.api.onZohoOAuthSuccess(() => {
-      log("[OAuth] Success event received");
       handleOAuthSuccess();
     });
     return unsubscribe;
@@ -64,7 +59,6 @@ export function ZohoConnectorManager() {
 
   useEffect(() => {
     const unsubscribe = window.api.onZohoOAuthError((error: string) => {
-      log("[OAuth] Error:", error);
       setPendingAuth((prev) =>
         prev ? { ...prev, error, stage: "idle" } : null
       );
@@ -502,7 +496,7 @@ export function ZohoConnectorManager() {
             <div className="space-y-3">
               {/* Portal select */}
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                <label className="block text-sm font-medium text-gray-400 mb-1.5">
                   Portal <span className="text-red-400">*</span>
                 </label>
                 <select
@@ -531,7 +525,7 @@ export function ZohoConnectorManager() {
               {/* Project select — shown after portal chosen */}
               {pendingAuth.selectedPortalId && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                  <label className="block text-sm font-medium text-gray-400 mb-1.5">
                     Project <span className="text-red-400">*</span>
                   </label>
                   <select
@@ -566,7 +560,7 @@ export function ZohoConnectorManager() {
 
               {/* Display name */}
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                <label className="block text-sm font-medium text-gray-400 mb-1.5">
                   Display name <span className="text-gray-600">(optional)</span>
                 </label>
                 <input

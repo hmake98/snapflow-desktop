@@ -18,10 +18,6 @@ export class ConnectorService {
    * Get all connectors for a workspace (excludes soft-deleted)
    */
   async getConnectors(workspaceId: string): Promise<Connector[]> {
-    log.info(
-      "[Connector Service] Fetching connectors for workspace:",
-      workspaceId
-    );
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -42,7 +38,6 @@ export class ConnectorService {
     }
 
     const connectors = (data || []).map((c) => this.mapSupabaseConnector(c));
-    log.info("[Connector Service] ✓ Found", connectors.length, "connectors");
     return connectors;
   }
 
@@ -50,7 +45,6 @@ export class ConnectorService {
    * Get connector by ID (excludes soft-deleted)
    */
   async getConnectorById(id: string): Promise<Connector | null> {
-    log.info("[Connector Service] Fetching connector by ID:", id);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -67,7 +61,6 @@ export class ConnectorService {
 
     if (error) {
       if (error.code === "PGRST116") {
-        log.info("[Connector Service] Connector not found");
         return null;
       }
       log.error("[Connector Service] ✗ Failed to fetch connector:", error);
@@ -84,12 +77,6 @@ export class ConnectorService {
     workspaceId: string,
     type: "github" | "zoho"
   ): Promise<Connector[]> {
-    log.info(
-      "[Connector Service] Fetching",
-      type,
-      "connectors for workspace:",
-      workspaceId
-    );
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -112,12 +99,6 @@ export class ConnectorService {
     }
 
     const connectors = (data || []).map((c) => this.mapSupabaseConnector(c));
-    log.info(
-      "[Connector Service] ✓ Found",
-      connectors.length,
-      type,
-      "connectors"
-    );
     return connectors;
   }
 
@@ -129,12 +110,6 @@ export class ConnectorService {
     owner: string,
     repo: string
   ): Promise<Connector | null> {
-    log.info(
-      "[Connector Service] Fetching GitHub connector for repo:",
-      owner,
-      "/",
-      repo
-    );
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -154,7 +129,6 @@ export class ConnectorService {
 
     if (error) {
       if (error.code === "PGRST116") {
-        log.info("[Connector Service] GitHub connector not found");
         return null;
       }
       log.error(
@@ -190,10 +164,6 @@ export class ConnectorService {
       "id" | "workspaceId" | "createdBy" | "createdAt" | "updatedAt"
     >
   ): Promise<Connector> {
-    log.info("[Connector Service] === ADD CONNECTOR START ===");
-    log.info("[Connector Service] User ID:", userId);
-    log.info("[Connector Service] Workspace ID:", workspaceId);
-    log.info("[Connector Service] Type:", connector.type);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -243,7 +213,6 @@ export class ConnectorService {
       config: connector.config,
     };
 
-    log.info("[Connector Service] Inserting connector:", id);
     const { data, error } = await supabase
       .from("connectors")
       .insert([newConnector])
@@ -275,8 +244,6 @@ export class ConnectorService {
     }
 
     const result = this.mapSupabaseConnector(data);
-    log.info("[Connector Service] ✓ Connector added successfully");
-    log.info("[Connector Service] === ADD CONNECTOR END ===");
     return result;
   }
 
@@ -287,7 +254,6 @@ export class ConnectorService {
     id: string,
     updates: Partial<Pick<Connector, "enabled" | "name" | "config">>
   ): Promise<Connector> {
-    log.info("[Connector Service] Updating connector:", id);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -312,7 +278,6 @@ export class ConnectorService {
       throw new Error("Connector not found");
     }
 
-    log.info("[Connector Service] ✓ Connector updated successfully");
     return this.mapSupabaseConnector(data);
   }
 
@@ -320,7 +285,6 @@ export class ConnectorService {
    * Delete a connector (soft delete - sets deleted_at timestamp)
    */
   async deleteConnector(id: string): Promise<void> {
-    log.info("[Connector Service] Deleting connector:", id);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -338,7 +302,6 @@ export class ConnectorService {
       throw new Error("Failed to delete connector");
     }
 
-    log.info("[Connector Service] ✓ Connector deleted successfully");
   }
 
   /**
@@ -349,12 +312,6 @@ export class ConnectorService {
     owner: string,
     repo: string
   ): Promise<boolean> {
-    log.info(
-      "[Connector Service] Validating GitHub connector for:",
-      owner,
-      "/",
-      repo
-    );
 
     try {
       const response = await axios.get(
@@ -372,7 +329,6 @@ export class ConnectorService {
       const canPush = permissions?.push === true || permissions?.admin === true;
 
       if (canPush) {
-        log.info("[Connector Service] ✓ GitHub connector validation passed");
       } else {
         log.warn(
           "[Connector Service] ✗ Insufficient permissions on repository"
@@ -393,10 +349,6 @@ export class ConnectorService {
     accessToken: string,
     portalId: string
   ): Promise<boolean> {
-    log.info(
-      "[Connector Service] Validating Zoho connector for portal:",
-      portalId
-    );
 
     try {
       // Stub: In a real implementation, this would call Zoho API
@@ -417,7 +369,6 @@ export class ConnectorService {
       // );
       // return response.status === 200;
 
-      log.info("[Connector Service] ✓ Zoho connector validation passed (stub)");
       return true;
     } catch (error) {
       log.error("[Connector Service] ✗ Zoho validation error:", error);
@@ -434,14 +385,12 @@ export class ConnectorService {
     issueNumber: number
   ): Promise<string | null> {
     try {
-      log.info("[GitHub] Reading screenshot file:", filePath);
       const fileBuffer = await fs.readFile(filePath);
       const fileName = path.basename(filePath);
       const base64Content = fileBuffer.toString("base64");
 
       const screenshotPath = `.snapflow-screenshots/issue-${issueNumber}-${fileName}`;
 
-      log.info("[GitHub] Uploading screenshot to repository:", screenshotPath);
 
       // Check if file already exists
       let sha: string | undefined;
@@ -461,9 +410,7 @@ export class ConnectorService {
           }
         );
         sha = existingFile.data.sha;
-        log.info("[GitHub] File already exists, will update it");
       } catch {
-        log.info("[GitHub] File does not exist, will create new");
       }
 
       const config = connector.config as {
@@ -493,7 +440,6 @@ export class ConnectorService {
       );
 
       const downloadUrl = uploadResponse.data.content.download_url;
-      log.info("[GitHub] Screenshot uploaded successfully:", downloadUrl);
       return downloadUrl;
     } catch (error) {
       log.error(
@@ -512,18 +458,8 @@ export class ConnectorService {
             : "image/jpeg";
           const base64Content = fileBuffer.toString("base64");
           const dataUri = `data:${mimeType};base64,${base64Content}`;
-          log.info(
-            "[GitHub] Using data URI fallback for screenshot (file size:",
-            fileBuffer.length,
-            "bytes)"
-          );
           return dataUri;
         } else {
-          log.info(
-            "[GitHub] Screenshot too large for data URI fallback:",
-            fileBuffer.length,
-            "bytes"
-          );
         }
       } catch (fallbackError) {
         log.error("[GitHub] Fallback data URI also failed:", fallbackError);
@@ -590,10 +526,6 @@ export class ConnectorService {
       }
 
       if (issueNumber) {
-        log.info(
-          "[GitHub] Issue already exists, updating issue #",
-          issueNumber
-        );
 
         try {
           const isRecording = issue.type === "recording";
@@ -608,7 +540,6 @@ export class ConnectorService {
             // Single screenshot / recording fallback
             let mediaUrl = issue.cloudFileUrl;
             if (!mediaUrl && issue.filePath && !isRecording) {
-              log.info("[GitHub] Attempting to upload screenshot...");
               mediaUrl = await this.uploadScreenshotToGitHub(
                 connector,
                 issue.filePath,
@@ -640,7 +571,6 @@ export class ConnectorService {
             }
           );
 
-          log.info("[GitHub] Issue updated:", response.data.html_url);
           return {
             issueNumber: response.data.number,
             url: response.data.html_url,
@@ -648,11 +578,6 @@ export class ConnectorService {
           };
         } catch (updateError) {
           if (updateError.response?.status === 410) {
-            log.info(
-              "[GitHub] Issue #",
-              issueNumber,
-              "was deleted, creating a new issue..."
-            );
             // Fall through to create new issue
           } else {
             throw updateError;
@@ -662,10 +587,6 @@ export class ConnectorService {
 
       // Create new issue
       {
-        log.info(
-          "[GitHub] Creating new issue in",
-          `${config.owner}/${config.repo}`
-        );
 
         const response = await axios.post(
           `https://api.github.com/repos/${config.owner}/${config.repo}/issues`,
@@ -685,7 +606,6 @@ export class ConnectorService {
 
         const newIssueNumber = response.data.number;
         const issueUrl = response.data.html_url;
-        log.info("[GitHub] Issue created:", issueUrl);
 
         const isRecording = issue.type === "recording";
         let updatedBody = body;
@@ -700,7 +620,6 @@ export class ConnectorService {
           // Single screenshot / recording fallback
           let mediaUrl = issue.cloudFileUrl;
           if (!mediaUrl && issue.filePath && !isRecording) {
-            log.info("[GitHub] Attempting to upload screenshot...");
             mediaUrl = await this.uploadScreenshotToGitHub(
               connector,
               issue.filePath,
@@ -726,7 +645,6 @@ export class ConnectorService {
               },
             }
           );
-          log.info("[GitHub] Issue body updated with media");
         }
 
         return {
@@ -813,9 +731,6 @@ export class ConnectorService {
       );
 
       if (existingSync) {
-        log.info(
-          "[Zoho] Issue already synced to this project, skipping duplicate creation"
-        );
         return {
           bugId: existingSync.externalId,
           url: existingSync.url || "",
@@ -886,7 +801,6 @@ export class ConnectorService {
           }
         );
 
-        log.info("[Zoho] Bug created successfully:", result.bugId);
         return {
           bugId: result.bugId,
           url: result.url,
@@ -895,7 +809,6 @@ export class ConnectorService {
       } catch (error) {
         // If we get a 401, try to refresh the token
         if (error.response?.status === 401 && config.refreshToken) {
-          log.info("[Zoho] Access token expired, attempting to refresh...");
 
           try {
             const newAccessToken = await zohoService.refreshAccessToken(
@@ -923,10 +836,6 @@ export class ConnectorService {
               }
             );
 
-            log.info(
-              "[Zoho] Bug created successfully after token refresh:",
-              result.bugId
-            );
             return {
               bugId: result.bugId,
               url: result.url,
@@ -986,12 +895,6 @@ export class ConnectorService {
     }
 
     try {
-      log.info(
-        "[GitHub] Closing issue #",
-        issueNumber,
-        "in",
-        `${config.owner}/${config.repo}`
-      );
 
       await axios.patch(
         `https://api.github.com/repos/${config.owner}/${config.repo}/issues/${issueNumber}`,
@@ -1005,7 +908,6 @@ export class ConnectorService {
         }
       );
 
-      log.info("[GitHub] ✓ Issue #", issueNumber, "closed successfully");
     } catch (error) {
       log.error(
         "[GitHub] ✗ Failed to close issue:",
@@ -1075,11 +977,9 @@ export class ConnectorService {
           updateData
         );
 
-        log.info("[Zoho] ✓ Bug updated successfully");
       } catch (error) {
         // If we get a 401, try to refresh the token
         if (error.response?.status === 401 && config.refreshToken) {
-          log.info("[Zoho] Access token expired, attempting to refresh...");
 
           try {
             const newAccessToken = await zohoService.refreshAccessToken(
@@ -1110,7 +1010,6 @@ export class ConnectorService {
               updateData
             );
 
-            log.info("[Zoho] ✓ Bug updated successfully after token refresh");
           } catch (refreshError) {
             log.error("[Zoho] Failed to refresh access token:", refreshError);
             throw new Error(
@@ -1184,11 +1083,9 @@ export class ConnectorService {
           bugId
         );
 
-        log.info("[Zoho] ✓ Bug deleted successfully");
       } catch (error) {
         // If we get a 401, try to refresh the token
         if (error.response?.status === 401 && config.refreshToken) {
-          log.info("[Zoho] Access token expired, attempting to refresh...");
 
           try {
             const newAccessToken = await zohoService.refreshAccessToken(
@@ -1213,7 +1110,6 @@ export class ConnectorService {
               bugId
             );
 
-            log.info("[Zoho] ✓ Bug deleted successfully after token refresh");
           } catch (refreshError) {
             log.error("[Zoho] Failed to refresh access token:", refreshError);
             throw new Error(

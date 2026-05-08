@@ -136,54 +136,90 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
 // Preset empty states for common scenarios
 export const NoSnapsEmptyState: React.FC<{ onCapture?: () => void }> = ({
   onCapture: _onCapture,
-}) => (
-  <div className="text-center py-32">
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
-      className="space-y-6 max-w-md mx-auto"
-    >
-      {/* Simple Icon */}
-      <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ delay: 0.1, duration: 0.3 }}
-      >
-        <div className="w-20 h-20 bg-gray-800/50 border border-gray-700/50 rounded-2xl flex items-center justify-center mx-auto">
-          <svg
-            className="w-10 h-10 text-gray-500"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-            />
-          </svg>
-        </div>
-      </motion.div>
+}) => {
+  const isMac =
+    typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
+  const mod = isMac ? "⌘" : "Ctrl";
+  const alt = isMac ? "⌥" : "Alt";
+  const shortcuts: { keys: string; label: string }[] = [
+    { keys: `${mod}${alt} + 1`, label: "Capture full screen" },
+    { keys: `${mod}${alt} + 2`, label: "Capture current screen" },
+    { keys: `${mod}${alt} + A`, label: "Capture area" },
+  ];
 
-      {/* Simple Text */}
+  return (
+    <div className="text-center py-24">
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2, duration: 0.3 }}
-        className="space-y-3"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="space-y-7 max-w-md mx-auto"
       >
-        <h3 className="text-xl font-semibold text-gray-100">
-          No screenshots yet
-        </h3>
-        <p className="text-sm text-gray-500 leading-relaxed">
-          Use the system tray menu to capture your first screenshot
-        </p>
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.1, duration: 0.3 }}
+        >
+          <div className="w-20 h-20 bg-gradient-to-br from-blue-500/10 to-blue-600/5 border border-blue-500/20 rounded-2xl flex items-center justify-center mx-auto">
+            <svg
+              className="w-10 h-10 text-blue-400/80"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+            </svg>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2, duration: 0.3 }}
+          className="space-y-2"
+        >
+          <h3 className="text-xl font-semibold text-gray-100">
+            Capture your first snap
+          </h3>
+          <p className="text-sm text-gray-500 leading-relaxed">
+            Open the SnapFlow tray icon, or use a keyboard shortcut to get
+            started.
+          </p>
+        </motion.div>
+
+        <motion.ul
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.3 }}
+          className="bg-gray-800/40 border border-gray-700/50 rounded-xl divide-y divide-gray-700/40 text-left overflow-hidden"
+        >
+          {shortcuts.map((s) => (
+            <li
+              key={s.keys}
+              className="flex items-center justify-between px-4 py-2.5"
+            >
+              <span className="text-sm text-gray-300">{s.label}</span>
+              <kbd className="text-2xs font-mono text-gray-300 bg-gray-900/70 border border-gray-700/60 rounded px-2 py-0.5">
+                {s.keys}
+              </kbd>
+            </li>
+          ))}
+        </motion.ul>
       </motion.div>
-    </motion.div>
-  </div>
-);
+    </div>
+  );
+};
 
 export const NoResultsEmptyState: React.FC<{ onClearFilters?: () => void }> = ({
   onClearFilters,

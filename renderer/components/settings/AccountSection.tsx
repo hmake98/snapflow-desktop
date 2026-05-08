@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { AVATAR_PLACEHOLDER } from "../../utils/avatar";
 import { Button } from "../ui/Button";
+import { Avatar } from "../ui/Avatar";
 import { WorkspacesSection } from "./WorkspacesSection";
 import { UsersSection } from "./UsersSection";
 import { useStore } from "../../store/useStore";
@@ -16,15 +16,6 @@ interface User {
 }
 
 type Tab = "profile" | "workspaces" | "team";
-
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-}
 
 export const AccountSection: React.FC = () => {
   // Pull role + workspace from the Zustand store so settings always reflect
@@ -271,64 +262,73 @@ export const AccountSection: React.FC = () => {
 
         {/* Profile tab */}
         {activeTab === "profile" && (
-          <div className="max-w-2xl space-y-4">
-            {/* Avatar upload */}
-            <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg px-4 py-4 flex items-center gap-4">
-              <div className="relative flex-shrink-0 group">
-                <img
-                  src={avatarPreview ?? user.avatarUrl ?? AVATAR_PLACEHOLDER}
-                  alt="Profile"
-                  className="w-16 h-16 rounded-full object-cover ring-2 ring-gray-700/60"
-                />
-                {/* Overlay on hover */}
-                <button
-                  onClick={() => avatarInputRef.current?.click()}
-                  disabled={avatarUploading}
-                  className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center disabled:cursor-not-allowed"
-                  title="Change avatar"
-                >
-                  {avatarUploading ? (
-                    <svg className="w-5 h-5 text-white animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                  )}
-                </button>
-                <input
-                  ref={avatarInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/gif,image/webp"
-                  className="hidden"
-                  onChange={handleAvatarFileChange}
-                />
+          <div className="max-w-3xl space-y-3">
+            {/* Avatar card */}
+            <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-700/40">
+                <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
+                  Profile Photo
+                </span>
+                {(avatarPreview || user.avatarUrl) && !avatarUploading && (
+                  <button
+                    onClick={handleRemoveAvatar}
+                    className="text-xs text-gray-500 hover:text-red-300 transition-colors"
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-200 truncate">{user.name}</p>
-                <p className="text-xs text-gray-500 mt-0.5">JPG, PNG, GIF or WebP — max 2 MB</p>
-                <div className="flex items-center gap-2 mt-2">
+              <div className="px-4 py-3 flex items-center gap-4">
+                <div className="relative flex-shrink-0 group">
+                  {avatarPreview ? (
+                    <img
+                      src={avatarPreview}
+                      alt="Profile"
+                      className="w-14 h-14 rounded-full object-cover ring-2 ring-gray-700/60"
+                    />
+                  ) : (
+                    <Avatar
+                      src={user.avatarUrl}
+                      name={user.name}
+                      email={user.email}
+                      size={56}
+                    />
+                  )}
                   <button
                     onClick={() => avatarInputRef.current?.click()}
                     disabled={avatarUploading}
-                    className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50 transition-colors"
+                    className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center disabled:cursor-not-allowed"
+                    title="Change avatar"
+                  >
+                    {avatarUploading ? (
+                      <svg className="w-4 h-4 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    )}
+                  </button>
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/gif,image/webp"
+                    className="hidden"
+                    onChange={handleAvatarFileChange}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <button
+                    onClick={() => avatarInputRef.current?.click()}
+                    disabled={avatarUploading}
+                    className="text-xs font-medium text-blue-400 hover:text-blue-300 disabled:opacity-50 transition-colors"
                   >
                     {avatarUploading ? "Uploading…" : "Change photo"}
                   </button>
-                  {(avatarPreview || user.avatarUrl) && !avatarUploading && (
-                    <>
-                      <span className="text-gray-700">·</span>
-                      <button
-                        onClick={handleRemoveAvatar}
-                        className="text-xs text-red-400 hover:text-red-300 transition-colors"
-                      >
-                        Remove
-                      </button>
-                    </>
-                  )}
+                  <p className="text-2xs text-gray-500 mt-0.5">JPG, PNG, GIF or WebP — max 2 MB</p>
                 </div>
               </div>
             </div>
@@ -336,7 +336,7 @@ export const AccountSection: React.FC = () => {
             {/* Profile fields */}
             <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg overflow-hidden">
               <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-700/40">
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
                   Profile Information
                 </span>
                 {!editing && (
@@ -352,7 +352,7 @@ export const AccountSection: React.FC = () => {
               {editing ? (
                 <div className="p-4 space-y-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                    <label className="block text-sm font-medium text-gray-400 mb-1.5">
                       Full Name
                     </label>
                     <input
@@ -365,7 +365,7 @@ export const AccountSection: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                    <label className="block text-sm font-medium text-gray-400 mb-1.5">
                       Email Address
                     </label>
                     <input
@@ -407,12 +407,12 @@ export const AccountSection: React.FC = () => {
                     { label: "User ID", value: user.id, mono: true },
                   ].map(({ label, value, mono }) => (
                     <div key={label} className="flex items-center justify-between px-4 py-2.5 gap-4">
-                      <span className="text-xs text-gray-500 flex-shrink-0 w-24">{label}</span>
+                      <span className="text-sm text-gray-500 flex-shrink-0 w-28">{label}</span>
                       <span
                         className={
                           mono
-                            ? "text-[11px] font-mono text-gray-500 bg-gray-900/50 px-2 py-0.5 rounded truncate max-w-[240px]"
-                            : "text-sm text-gray-200 text-right"
+                            ? "text-2xs font-mono text-gray-500 bg-gray-900/50 px-2 py-0.5 rounded truncate max-w-[240px]"
+                            : "text-sm text-gray-200 text-right truncate"
                         }
                       >
                         {value}
@@ -421,8 +421,8 @@ export const AccountSection: React.FC = () => {
                   ))}
                   {/* Role row */}
                   <div className="flex items-center justify-between px-4 py-2.5 gap-4">
-                    <span className="text-xs text-gray-500 flex-shrink-0 w-24">Role</span>
-                    <span className={`text-[11px] font-medium px-2 py-0.5 border rounded-full ${roleBadge.cls}`}>
+                    <span className="text-sm text-gray-500 flex-shrink-0 w-28">Role</span>
+                    <span className={`text-2xs font-medium px-2 py-0.5 border rounded-full ${roleBadge.cls}`}>
                       {roleBadge.label}
                     </span>
                   </div>
@@ -437,15 +437,17 @@ export const AccountSection: React.FC = () => {
           tenant ? (
             <WorkspacesSection tenant={tenant} currentUserId={user.id} />
           ) : (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-10 h-10 bg-gray-800/60 rounded-lg flex items-center justify-center mb-3">
-                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                </svg>
+            <div className="max-w-3xl">
+              <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-8 text-center">
+                <div className="w-10 h-10 bg-gray-700/40 rounded-lg flex items-center justify-center mx-auto mb-3">
+                  <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-gray-400">Organisation not found</p>
+                <p className="text-xs text-gray-600 mt-1">Complete onboarding to manage workspaces.</p>
               </div>
-              <p className="text-sm font-medium text-gray-400">Organisation not found</p>
-              <p className="text-xs text-gray-600 mt-1">Complete onboarding to manage workspaces.</p>
             </div>
           )
         )}
@@ -460,15 +462,17 @@ export const AccountSection: React.FC = () => {
               isTenantOwner={isTenantOwner}
             />
           ) : (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-10 h-10 bg-gray-800/60 rounded-lg flex items-center justify-center mb-3">
-                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
+            <div className="max-w-3xl">
+              <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-8 text-center">
+                <div className="w-10 h-10 bg-gray-700/40 rounded-lg flex items-center justify-center mx-auto mb-3">
+                  <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-gray-400">Workspace not found</p>
+                <p className="text-xs text-gray-600 mt-1">Complete onboarding to manage team members.</p>
               </div>
-              <p className="text-sm font-medium text-gray-400">Workspace not found</p>
-              <p className="text-xs text-gray-600 mt-1">Complete onboarding to manage team members.</p>
             </div>
           )
         )}

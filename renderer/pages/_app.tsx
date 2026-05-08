@@ -3,6 +3,7 @@ import type { AppProps } from "next/app";
 import { useRouter } from "next/router";
 import { TooltipProvider } from "../components/ui/Tooltip";
 import { SplashScreen } from "../components/ui/SplashScreen";
+import { ToastHost } from "../components/ui/Toast";
 // import { WindowPickerModal } from "../components/WindowPickerModal";
 import { useStore } from "../store/useStore";
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
@@ -67,20 +68,16 @@ function MyApp({ Component, pageProps }: AppProps) {
   useEffect(() => {
     // Setup OAuth callback listener
     const unsubscribeNavigate = window.api.onNavigate((route: string) => {
-      console.log("[App] Received navigate event:", route);
-      console.log("[App] Current pathname:", router.pathname);
       router.push(route);
     });
 
     // Session expiry — wipe all state and redirect to login so the next user
     // starts with a completely clean store instead of stale data.
     const unsubscribeExpired = window.api.onSessionExpired?.(() => {
-      console.log("[App] Session expired — resetting store and redirecting");
       resetStore();
       router.push("/auth");
     });
 
-    console.log("[App] onNavigate listener set up");
     return () => {
       unsubscribeNavigate();
       unsubscribeExpired?.();
@@ -136,26 +133,13 @@ function MyApp({ Component, pageProps }: AppProps) {
         const userResult = await window.api.getUser();
         const isAuthenticated = userResult.success && userResult.data;
 
-        console.log(
-          "[App] Auth check - isAuthenticated:",
-          isAuthenticated,
-          "pathname:",
-          router.pathname
-        );
 
         // If user IS authenticated but on auth page, redirect to home/onboarding
         if (isAuthenticated && router.pathname === "/auth") {
-          console.log(
-            "[App] User authenticated on /auth, checking onboarding status"
-          );
           const onboardingResult = await window.api.getOnboardingStatus();
           if (onboardingResult.success && !onboardingResult.data?.isComplete) {
-            console.log(
-              "[App] Onboarding incomplete, redirecting to /onboarding"
-            );
             await router.push("/onboarding");
           } else {
-            console.log("[App] Onboarding complete, redirecting to /home");
             await router.push("/home");
           }
           return;
@@ -163,7 +147,6 @@ function MyApp({ Component, pageProps }: AppProps) {
 
         // Skip further auth checks for public routes
         if (publicRoutes.includes(router.pathname)) {
-          console.log("[App] Public route, auth check skipped");
           setAuthChecked(true);
           setHasInitialized(true);
           return;
@@ -171,9 +154,6 @@ function MyApp({ Component, pageProps }: AppProps) {
 
         // User is NOT authenticated on protected route, redirect to auth
         if (!isAuthenticated) {
-          console.log(
-            "[App] Not authenticated on protected route, redirecting to /auth"
-          );
           await router.push("/auth");
           setAuthChecked(true);
           setHasInitialized(true);
@@ -182,7 +162,6 @@ function MyApp({ Component, pageProps }: AppProps) {
 
         // User is authenticated on semi-protected route, skip onboarding check
         if (semiProtectedRoutes.includes(router.pathname)) {
-          console.log("[App] Semi-protected route, auth check passed");
           setAuthChecked(true);
           setHasInitialized(true);
           return;
@@ -192,14 +171,10 @@ function MyApp({ Component, pageProps }: AppProps) {
         if (
           !["/onboarding", ...semiProtectedRoutes].includes(router.pathname)
         ) {
-          console.log("[App] Checking onboarding status");
           const onboardingResult = await window.api.getOnboardingStatus();
 
           if (onboardingResult.success && !onboardingResult.data?.isComplete) {
             // Onboarding incomplete, redirect to onboarding
-            console.log(
-              "[App] Onboarding incomplete, redirecting to /onboarding"
-            );
             await router.push("/onboarding");
             return;
           }
@@ -233,7 +208,6 @@ function MyApp({ Component, pageProps }: AppProps) {
           console.error("[App] Failed to load user context into store:", ctxErr);
         }
 
-        console.log("[App] Auth check passed, setting authChecked to true");
         setAuthChecked(true);
         setHasInitialized(true);
       } catch (err) {
@@ -255,6 +229,8 @@ function MyApp({ Component, pageProps }: AppProps) {
         />
       )}
       {!authChecked ? <SplashScreen /> : <Component {...pageProps} />}
+      {/* In-app toast host — replaces native desktop notifications */}
+      {!isOverlay && <ToastHost />}
       {/* Recording picker modal — commented out
       <WindowPickerModal
         isOpen={showRecordingPicker}

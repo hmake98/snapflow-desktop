@@ -115,9 +115,6 @@ export class ClipboardService {
             // - html:  Teams/Notion pick this and render text + embedded image
             // - text:  plain text fallback for text-only fields
             clipboard.write({ text: message, html, image });
-            log.info(
-              `[Clipboard] Copied bug report + embedded image for "${snap.title}"`
-            );
             return message;
           }
         }
@@ -130,7 +127,6 @@ export class ClipboardService {
     }
 
     clipboard.writeText(message);
-    log.info(`[Clipboard] Copied bug report for "${snap.title}" (${snap.id})`);
     return message;
   }
 }

@@ -52,8 +52,8 @@ export const ChipsInput = React.forwardRef<HTMLDivElement, ChipsInputProps>(
       <div
         ref={ref}
         className={clsx(
-          "flex flex-wrap gap-2 items-center min-h-[42px] rounded-lg border bg-gray-900 px-3 py-2 text-sm transition-all duration-200",
-          "border-gray-800 focus-within:border-blue-500",
+          "flex flex-wrap gap-1.5 items-center min-h-[40px] rounded-lg border bg-gray-900/40 px-3.5 py-2 text-sm transition-all duration-200",
+          "border-gray-700/50 focus-within:border-blue-500/60",
           disabled && "opacity-50 cursor-not-allowed",
           className
         )}
@@ -61,7 +61,7 @@ export const ChipsInput = React.forwardRef<HTMLDivElement, ChipsInputProps>(
         {value.map((tag) => (
           <div
             key={tag}
-            className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-600/20 text-blue-300 rounded-md text-xs font-medium border border-blue-600/30 animate-in fade-in duration-200"
+            className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-500/15 text-blue-300 rounded-full text-2xs font-medium border border-blue-500/30 animate-in fade-in duration-200"
           >
             <span>{tag}</span>
             {!disabled && (

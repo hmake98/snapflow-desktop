@@ -63,10 +63,6 @@ export class GitHubService {
     });
 
     const url = `${this.authBaseUrl}/authorize?${params.toString()}`;
-    log.info(
-      "[GitHub] Generated OAuth URL:",
-      url.replace(/client_id=[^&]*/, "client_id=***")
-    );
     return url;
   }
 
@@ -80,7 +76,6 @@ export class GitHubService {
       );
     }
 
-    log.info("[GitHub] Exchanging authorization code for access token");
 
     try {
       const response = await axios.post(
@@ -108,7 +103,6 @@ export class GitHubService {
         throw new Error("No access token in response");
       }
 
-      log.info("[GitHub] ✓ Successfully exchanged code for access token");
 
       return {
         accessToken: access_token,
@@ -130,7 +124,6 @@ export class GitHubService {
    * Fetch authenticated user's profile
    */
   async getCurrentUser(accessToken: string): Promise<GitHubUser> {
-    log.info("[GitHub] Fetching current user profile");
 
     try {
       const response = await axios.get(`${this.apiBaseUrl}/user`, {
@@ -146,7 +139,6 @@ export class GitHubService {
         avatar_url: response.data.avatar_url,
       };
 
-      log.info("[GitHub] ✓ Fetched user profile:", user.login);
       return user;
     } catch (error) {
       log.error(
@@ -164,7 +156,6 @@ export class GitHubService {
    * Fetch user's accessible repositories
    */
   async getRepositories(accessToken: string): Promise<GitHubRepository[]> {
-    log.info("[GitHub] Fetching user repositories");
 
     try {
       const repos: GitHubRepository[] = [];
@@ -191,7 +182,6 @@ export class GitHubService {
         page++;
       }
 
-      log.info("[GitHub] ✓ Fetched", repos.length, "repositories");
       return repos;
     } catch (error) {
       log.error(
@@ -214,7 +204,6 @@ export class GitHubService {
     repo: string
   ): Promise<boolean> {
     try {
-      log.info("[GitHub] Validating access token for repo:", owner, "/", repo);
 
       const response = await axios.get(
         `${this.apiBaseUrl}/repos/${owner}/${repo}`,
@@ -231,7 +220,6 @@ export class GitHubService {
       const canPush = permissions?.push === true || permissions?.admin === true;
 
       if (canPush) {
-        log.info("[GitHub] ✓ Token has required permissions");
       } else {
         log.warn("[GitHub] ✗ Token lacks push/admin permissions");
       }

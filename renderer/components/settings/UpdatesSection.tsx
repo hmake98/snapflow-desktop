@@ -32,7 +32,6 @@ export function UpdatesSection() {
   useEffect(() => {
     // Listen for update status events from main process
     const removeListener = window.api.onUpdateStatus((status) => {
-      console.log("[UpdatesSection] Received update status:", status);
 
       switch (status.event) {
         case "checking-for-update":
@@ -309,7 +308,7 @@ export function UpdatesSection() {
     <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg overflow-hidden">
       {/* Card header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-700/40">
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+        <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
           Software Updates
         </span>
         <button

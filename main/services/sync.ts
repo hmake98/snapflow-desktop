@@ -43,7 +43,6 @@ export class SyncService {
     try {
       // Instead of listing buckets (which requires admin permissions),
       // try to list files in the bucket to verify it exists and is accessible
-      log.info("[Sync] Verifying bucket access...");
       const { error } = await supabase.storage
         .from(BUCKET_NAME)
         .list("", { limit: 1 });
@@ -72,16 +71,13 @@ export class SyncService {
           "[Sync] Bucket verification returned error (bucket may still exist):",
           error
         );
-        log.info("[Sync] Proceeding with upload attempt...");
         return true;
       }
 
-      log.info("[Sync] Bucket is accessible:", BUCKET_NAME);
       return true;
     } catch (error) {
       log.error("[Sync] Error checking bucket:", error);
       // Assume bucket exists if we get an unexpected error
-      log.info("[Sync] Proceeding with upload attempt...");
       return true;
     }
   }
@@ -131,7 +127,6 @@ export class SyncService {
         return null;
       }
 
-      log.info(`[Sync] Created sync history record: ${data.id}`);
       return data.id;
     } catch (error) {
       log.error("[Sync] Error creating sync history:", error);
@@ -171,7 +166,6 @@ export class SyncService {
       if (error) {
         log.error("[Sync] Failed to update sync history:", error);
       } else {
-        log.info(`[Sync] Updated sync history record: ${syncHistoryId}`);
       }
     } catch (error) {
       log.error("[Sync] Error updating sync history:", error);
@@ -236,7 +230,6 @@ export class SyncService {
       }
 
       // Read the file
-      log.info(`[Sync] Reading file: ${filePath}`);
       const fileBuffer = await fs.readFile(filePath);
       const fileName = path.basename(filePath);
       const fileExt = path.extname(fileName);
@@ -244,9 +237,6 @@ export class SyncService {
       // Create a unique path in the bucket: userId/issueId/filename
       const storagePath = `${userId}/${issueId}/${fileName}`;
 
-      log.info(`[Sync] Uploading to storage path: ${storagePath}`);
-      log.info(`[Sync] File size: ${fileBuffer.length} bytes`);
-      log.info(`[Sync] Content type: ${this.getContentType(fileExt)}`);
 
       // Upload to Supabase storage
       const { data, error } = await supabase.storage
@@ -262,14 +252,12 @@ export class SyncService {
         return null;
       }
 
-      log.info(`[Sync] Upload successful, data:`, data);
 
       // Get public URL
       const { data: urlData } = supabase.storage
         .from(BUCKET_NAME)
         .getPublicUrl(storagePath);
 
-      log.info(`[Sync] Generated public URL: ${urlData.publicUrl}`);
       return urlData.publicUrl;
     } catch (error) {
       log.error("[Sync] File upload error:", error);
@@ -333,7 +321,6 @@ export class SyncService {
     fileName: string
   ): Promise<string | null> {
     try {
-      log.info(`[Sync] Downloading file from cloud: ${cloudUrl}`);
 
       // Fetch file from URL
       const response = await fetch(cloudUrl);
@@ -348,7 +335,6 @@ export class SyncService {
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
-      log.info(`[Sync] Downloaded ${buffer.length} bytes`);
 
       // Import storage manager to save the file
       const { storageManager } = await import("../utils/storage");
@@ -360,7 +346,6 @@ export class SyncService {
         buffer
       );
 
-      log.info(`[Sync] ✓ File saved to local storage: ${filePath}`);
       return filePath;
     } catch (error) {
       log.error("[Sync] Error downloading file from cloud:", error);
@@ -387,7 +372,6 @@ export class SyncService {
       }
 
       // Delete from Supabase database
-      log.info(`[Sync] Deleting snap ${issueId} from database...`);
       const { error: dbError } = await supabase
         .from("snaps")
         .delete()
@@ -397,11 +381,9 @@ export class SyncService {
       if (dbError) {
         log.error("[Sync] Failed to delete from database:", dbError);
       } else {
-        log.info("[Sync] ✓ Deleted from database");
       }
 
       // Delete from Supabase storage
-      log.info(`[Sync] Deleting snap files from storage...`);
       const storagePath = `${userId}/${issueId}`;
 
       // List all files under this path
@@ -418,7 +400,6 @@ export class SyncService {
           .map((f) => `${storagePath}/${f.name}`);
 
         if (filePaths.length > 0) {
-          log.info(`[Sync] Removing ${filePaths.length} files from storage...`);
           const { error: deleteError } = await supabase.storage
             .from(BUCKET_NAME)
             .remove(filePaths);
@@ -426,12 +407,10 @@ export class SyncService {
           if (deleteError) {
             log.warn("[Sync] Failed to delete from storage:", deleteError);
           } else {
-            log.info("[Sync] ✓ Deleted files from storage");
           }
         }
       }
 
-      log.info("[Sync] ✓ Cloud deletion complete");
     } catch (error) {
       log.error("[Sync] Error deleting from cloud:", error);
       // Fail gracefully - log the error but don't throw
@@ -463,17 +442,6 @@ export class SyncService {
     };
 
     // Ensure storage bucket exists
-    log.info("[Sync] ==========================================");
-    log.info("[Sync] Starting cloud sync for user:", userId);
-    log.info(
-      "[Sync] Supabase URL:",
-      process.env.SUPABASE_URL ? "Configured" : "NOT CONFIGURED"
-    );
-    log.info(
-      "[Sync] Supabase Key:",
-      process.env.SUPABASE_ANON_KEY ? "Configured" : "NOT CONFIGURED"
-    );
-    log.info("[Sync] Checking if storage bucket exists...");
 
     const bucketReady = await this.ensureBucketExists();
     if (!bucketReady) {
@@ -484,7 +452,6 @@ export class SyncService {
       result.errors.push(error);
       return result;
     }
-    log.info("[Sync] Storage bucket is ready!");
 
     // Get workspace ID — use provided value or derive from user
     const resolvedWorkspaceId =
@@ -497,7 +464,6 @@ export class SyncService {
       result.errors.push(error);
       return result;
     }
-    log.info("[Sync] Using workspace:", resolvedWorkspaceId);
 
     // Get all local issues scoped to this workspace
     const localIssues = issueService.getIssues(userId, resolvedWorkspaceId);
@@ -527,9 +493,6 @@ export class SyncService {
       // Upload each issue to Supabase
       for (const issue of localIssues) {
         try {
-          log.info(`[Sync] Processing issue: ${issue.id} - ${issue.title}`);
-          log.info(`[Sync] File path: ${issue.filePath}`);
-          log.info(`[Sync] Thumbnail path: ${issue.thumbnailPath || "none"}`);
 
           // Upload file to storage and get public URL
           let cloudFileUrl: string | null = null;
@@ -539,18 +502,12 @@ export class SyncService {
           try {
             // Upload main file
             if (issue.filePath) {
-              log.info(
-                `[Sync] Starting main file upload for issue ${issue.id}`
-              );
               cloudFileUrl = await this.uploadFileToStorage(
                 issue.filePath,
                 userId,
                 issue.id
               );
               if (cloudFileUrl) {
-                log.info(
-                  `[Sync] Main file uploaded successfully: ${cloudFileUrl}`
-                );
               } else {
                 log.warn(
                   `[Sync] Main file upload returned null for issue ${issue.id}`
@@ -560,18 +517,12 @@ export class SyncService {
 
             // Upload thumbnail if exists
             if (issue.thumbnailPath) {
-              log.info(
-                `[Sync] Starting thumbnail upload for issue ${issue.id}`
-              );
               cloudThumbnailUrl = await this.uploadFileToStorage(
                 issue.thumbnailPath,
                 userId,
                 `${issue.id}_thumbnail`
               );
               if (cloudThumbnailUrl) {
-                log.info(
-                  `[Sync] Thumbnail uploaded successfully: ${cloudThumbnailUrl}`
-                );
               } else {
                 log.warn(
                   `[Sync] Thumbnail upload returned null for issue ${issue.id}`
@@ -586,9 +537,6 @@ export class SyncService {
             } | undefined;
 
             if (sessionData?.screenshotPaths?.length) {
-              log.info(
-                `[Sync] Session snap — uploading ${sessionData.screenshotPaths.length} screenshots`
-              );
               for (let i = 0; i < sessionData.screenshotPaths.length; i++) {
                 const screenshotPath = sessionData.screenshotPaths[i];
                 const url = await this.uploadFileToStorage(
@@ -598,7 +546,6 @@ export class SyncService {
                 );
                 if (url) {
                   cloudScreenshotUrls.push(url);
-                  log.info(`[Sync] Session screenshot ${i + 1} uploaded: ${url}`);
                 } else {
                   log.warn(`[Sync] Session screenshot ${i + 1} upload failed`);
                 }
@@ -657,17 +604,9 @@ export class SyncService {
             session_data: sessionDataForDb,
           };
 
-          log.info(`[Sync] Preparing to save issue ${issue.id} to database`);
-          log.info(
-            `[Sync] Cloud file URL: ${issueData.cloud_file_url || "null"}`
-          );
-          log.info(
-            `[Sync] Cloud thumbnail URL: ${issueData.cloud_thumbnail_url || "null"}`
-          );
 
           if (existingIssue) {
             // Update existing issue
-            log.info(`[Sync] Updating existing issue in database: ${issue.id}`);
             const { error } = await supabase
               .from("snaps")
               .update(issueData)
@@ -681,10 +620,8 @@ export class SyncService {
               );
               throw error;
             }
-            log.info(`[Sync] Issue updated successfully in database`);
           } else {
             // Insert new issue
-            log.info(`[Sync] Inserting new issue into database: ${issue.id}`);
             const { error } = await supabase.from("snaps").insert(issueData);
 
             if (error) {
@@ -694,7 +631,6 @@ export class SyncService {
               );
               throw error;
             }
-            log.info(`[Sync] Issue inserted successfully into database`);
           }
 
           // Update local sync status and cloud URLs
@@ -715,17 +651,9 @@ export class SyncService {
             };
           }
 
-          log.info(
-            `[Sync] Updating local snap ${issue.id} with:`,
-            localUpdateData
-          );
           const updatedSnap = await issueService.updateIssue(
             issue.id,
             localUpdateData
-          );
-          log.info(
-            `[Sync] ✓ Snap updated successfully. New syncStatus:`,
-            updatedSnap.syncStatus
           );
           result.syncedCount++;
         } catch (error) {
@@ -774,10 +702,21 @@ export class SyncService {
   /**
    * Fetch issues from Supabase cloud and merge with local data
    * Downloads files from cloud if they don't exist locally
+   *
+   * `onProgress` is called at start (with total), per-item (with current),
+   * and at completion (with syncedCount/failedCount). Used by the UI to
+   * show a "Syncing X of Y snaps from cloud" indicator.
    */
   async fetchFromCloud(
     userId: string,
-    workspaceId?: string
+    workspaceId?: string,
+    onProgress?: (event: {
+      phase: "start" | "progress" | "complete";
+      current?: number;
+      total?: number;
+      syncedCount?: number;
+      failedCount?: number;
+    }) => void
   ): Promise<SyncResult> {
     const supabase = getSupabase();
     if (!supabase) {
@@ -827,7 +766,11 @@ export class SyncService {
       }
 
       if (!cloudIssues || cloudIssues.length === 0) {
-        log.info("[Sync] No cloud issues found for user");
+        onProgress?.({
+          phase: "complete",
+          syncedCount: 0,
+          failedCount: 0,
+        });
         // Update sync history
         if (syncHistoryId) {
           await this.updateSyncHistory(syncHistoryId, {
@@ -839,7 +782,11 @@ export class SyncService {
         return result;
       }
 
-      log.info(`[Sync] Found ${cloudIssues.length} cloud issues`);
+      onProgress?.({
+        phase: "start",
+        total: cloudIssues.length,
+        current: 0,
+      });
 
       // Update total count in sync history
       if (syncHistoryId) {
@@ -856,18 +803,15 @@ export class SyncService {
       // Merge cloud issues with local data
       for (const cloudIssue of cloudIssues) {
         try {
-          log.info(
-            `[Sync] Processing cloud issue: ${cloudIssue.id} - ${cloudIssue.title}`
-          );
 
           let localFilePath = cloudIssue.file_path;
           let localThumbnailPath = cloudIssue.thumbnail_path;
+          // For session snaps: rebuild the screenshotPaths array against the
+          // new device's filesystem after downloading each screenshot.
+          let resolvedSessionData = cloudIssue.session_data || undefined;
 
           // Check if this is a cloud-only issue (not in local storage)
           if (!localIssueIds.has(cloudIssue.id)) {
-            log.info(
-              `[Sync] Cloud-only issue detected: ${cloudIssue.id}, downloading files...`
-            );
 
             // Download main file from cloud if available
             if (cloudIssue.cloud_file_url) {
@@ -881,7 +825,6 @@ export class SyncService {
               );
               if (downloadedPath) {
                 localFilePath = downloadedPath;
-                log.info(`[Sync] ✓ Main file downloaded: ${downloadedPath}`);
               } else {
                 log.warn(
                   `[Sync] Failed to download main file for issue ${cloudIssue.id}`
@@ -893,7 +836,12 @@ export class SyncService {
                 );
                 continue;
               }
-            } else {
+            } else if (
+              !(cloudIssue.session_data as { cloudScreenshotUrls?: string[] })
+                ?.cloudScreenshotUrls?.length
+            ) {
+              // Allow session snaps with no main file as long as they have
+              // cloud screenshots to fall back on.
               log.warn(
                 `[Sync] No cloud URL for issue ${cloudIssue.id}, skipping`
               );
@@ -912,9 +860,63 @@ export class SyncService {
               );
               if (downloadedThumbnail) {
                 localThumbnailPath = downloadedThumbnail;
-                log.info(
-                  `[Sync] ✓ Thumbnail downloaded: ${downloadedThumbnail}`
+              }
+            }
+
+            // Download session screenshots (if any). Each screenshot is
+            // rewritten to a local path; the cloud URL array is preserved as
+            // the LocalImage cloud-fallback source while downloads complete.
+            const sessionData = cloudIssue.session_data as
+              | {
+                  screenshotPaths?: string[];
+                  cloudScreenshotUrls?: string[];
+                  [key: string]: unknown;
+                }
+              | undefined;
+            if (sessionData?.cloudScreenshotUrls?.length) {
+              const downloadedPaths: string[] = [];
+              for (let i = 0; i < sessionData.cloudScreenshotUrls.length; i++) {
+                const cloudUrl = sessionData.cloudScreenshotUrls[i];
+                const originalName = path.basename(
+                  sessionData.screenshotPaths?.[i] || `screenshot_${i}.png`
                 );
+                const downloaded = await this.downloadFileFromCloud(
+                  cloudUrl,
+                  `${cloudIssue.id}_screenshot_${i}`,
+                  originalName
+                );
+                if (downloaded) {
+                  downloadedPaths.push(downloaded);
+                } else {
+                  // Keep the slot aligned with cloudScreenshotUrls so index
+                  // lookups still work against the cloud fallback array.
+                  downloadedPaths.push("");
+                  log.warn(
+                    `[Sync] Failed to download session screenshot ${i + 1} for ${cloudIssue.id}`
+                  );
+                }
+              }
+              resolvedSessionData = {
+                ...sessionData,
+                screenshotPaths: downloadedPaths,
+              };
+
+              // For session snaps, the snap's filePath/thumbnailPath usually
+              // mirrors the first screenshot. Repoint them so the home grid
+              // thumbnail resolves locally.
+              if (downloadedPaths[0]) {
+                if (
+                  !localFilePath ||
+                  localFilePath === sessionData.screenshotPaths?.[0]
+                ) {
+                  localFilePath = downloadedPaths[0];
+                }
+                if (
+                  !localThumbnailPath ||
+                  localThumbnailPath === sessionData.screenshotPaths?.[0]
+                ) {
+                  localThumbnailPath = downloadedPaths[0];
+                }
               }
             }
           }
@@ -933,16 +935,14 @@ export class SyncService {
             syncedTo: cloudIssue.synced_to || [],
             userId: cloudIssue.created_by,
             tags: cloudIssue.tags || [],
-            sessionData: cloudIssue.session_data || undefined,
+            sessionData: resolvedSessionData,
           };
 
           if (localIssueIds.has(cloudIssue.id)) {
             // Update existing local issue
-            log.info(`[Sync] Updating existing local issue: ${cloudIssue.id}`);
             await issueService.updateIssue(cloudIssue.id, issueData);
           } else {
             // Create new local issue with downloaded files
-            log.info(`[Sync] Creating new local issue: ${cloudIssue.id}`);
             // We need to create the issue directly in the store
             // Import Store to directly manipulate the issues
             const Store = (await import("electron-store")).default;
@@ -964,7 +964,6 @@ export class SyncService {
           }
 
           result.syncedCount++;
-          log.info(`[Sync] ✓ Issue synced: ${cloudIssue.id}`);
         } catch (error) {
           result.failedCount++;
           result.errors.push(
@@ -974,9 +973,19 @@ export class SyncService {
           );
           log.error(`[Sync] Failed to sync issue ${cloudIssue.id}:`, error);
         }
+        onProgress?.({
+          phase: "progress",
+          current: result.syncedCount + result.failedCount,
+          total: cloudIssues.length,
+        });
       }
 
       result.success = result.failedCount === 0;
+      onProgress?.({
+        phase: "complete",
+        syncedCount: result.syncedCount,
+        failedCount: result.failedCount,
+      });
 
       // Update sync history
       if (syncHistoryId) {
@@ -988,9 +997,6 @@ export class SyncService {
         });
       }
 
-      log.info(
-        `[Sync] Fetch from cloud complete: ${result.syncedCount} synced, ${result.failedCount} failed`
-      );
     } catch (error) {
       result.success = false;
       result.errors.push(
@@ -1044,7 +1050,6 @@ export class SyncService {
         updateData.description = updates.description;
       if (updates.tags !== undefined) updateData.tags = updates.tags;
 
-      log.info(`[Sync] Updating snap metadata for ${snapId}:`, updateData);
 
       const { error } = await supabase
         .from("snaps")
@@ -1058,7 +1063,6 @@ export class SyncService {
         return false;
       }
 
-      log.info(`[Sync] ✓ Snap metadata updated in database: ${snapId}`);
       return true;
     } catch (error) {
       log.error("[Sync] Error updating snap metadata:", error);

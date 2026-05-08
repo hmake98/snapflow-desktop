@@ -1,5 +1,3 @@
-import log from "electron-log";
-
 export type RecordingState = "idle" | "selecting" | "recording";
 
 export interface RecordingSource {
@@ -23,7 +21,6 @@ export class RecorderService {
   }
 
   setState(newState: RecordingState): void {
-    log.info(`[Recorder] State transition: ${this.state} → ${newState}`);
     this.state = newState;
   }
 }

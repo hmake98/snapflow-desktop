@@ -98,11 +98,6 @@ export default function AreaCapture() {
             height: Math.round(height * actualScaleFactor),
           };
 
-          console.log("Area Capture:", {
-            cssSelection: bounds,
-            scaleFactor: actualScaleFactor,
-            physicalCapture: captureParams,
-          });
 
           // Capture screenshot with these coordinates
           await window.api.captureScreenshot({

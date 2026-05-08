@@ -21,9 +21,6 @@ export class TenantService {
     name: string,
     description?: string
   ): Promise<Tenant> {
-    log.info("[Tenant Service] === CREATE TENANT START ===");
-    log.info("[Tenant Service] User ID:", userId);
-    log.info("[Tenant Service] Tenant name:", name);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -53,7 +50,6 @@ export class TenantService {
       attempt++;
     }
 
-    log.info("[Tenant Service] Using slug:", slug);
 
     const { data, error } = await supabase
       .from("tenants")
@@ -90,9 +86,6 @@ export class TenantService {
     }
 
     const tenant = this.mapSupabaseTenant(data);
-    log.info("[Tenant Service] ✓ Tenant created successfully");
-    log.info("[Tenant Service] Tenant ID:", tenant.id);
-    log.info("[Tenant Service] === CREATE TENANT END ===");
     return tenant;
   }
 
@@ -100,7 +93,6 @@ export class TenantService {
    * Get tenant by owner (user)
    */
   async getTenantByOwner(userId: string): Promise<Tenant | null> {
-    log.info("[Tenant Service] Getting tenant for user:", userId);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -116,14 +108,10 @@ export class TenantService {
       .single();
 
     if (!ownerError && ownerData) {
-      log.info("[Tenant Service] Found tenant as owner");
       return this.mapSupabaseTenant(ownerData);
     }
 
     // 2. Fall back: look up tenant via workspace membership
-    log.info(
-      "[Tenant Service] Not owner — looking up tenant via workspace membership"
-    );
     const { data: memberData, error: memberError } = await supabase
       .from("workspace_members")
       .select("workspace_id, workspaces:workspace_id(tenant_id)")
@@ -132,7 +120,6 @@ export class TenantService {
       .single();
 
     if (memberError || !memberData) {
-      log.info("[Tenant Service] No workspace membership found for user");
       return null;
     }
 
@@ -152,7 +139,6 @@ export class TenantService {
    * Get tenant by ID
    */
   async getTenantById(tenantId: string): Promise<Tenant | null> {
-    log.info("[Tenant Service] Getting tenant by ID:", tenantId);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -168,7 +154,6 @@ export class TenantService {
 
     if (error) {
       if (error.code === "PGRST116") {
-        log.info("[Tenant Service] Tenant not found");
         return null;
       }
       log.error("[Tenant Service] Error fetching tenant:", error.message);
@@ -187,9 +172,6 @@ export class TenantService {
     userId: string,
     updates: { name?: string; description?: string }
   ): Promise<Tenant> {
-    log.info("[Tenant Service] === UPDATE TENANT START ===");
-    log.info("[Tenant Service] Tenant ID:", tenantId);
-    log.info("[Tenant Service] User ID:", userId);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -267,14 +249,12 @@ export class TenantService {
       }
 
       updateData.slug = newSlug;
-      log.info("[Tenant Service] New slug:", newSlug);
     }
 
     if (updates.description !== undefined) {
       updateData.description = updates.description || null;
     }
 
-    log.info("[Tenant Service] Updates:", updateData);
 
     const { data, error } = await supabase
       .from("tenants")
@@ -294,8 +274,6 @@ export class TenantService {
     }
 
     const updatedTenant = this.mapSupabaseTenant(data);
-    log.info("[Tenant Service] ✓ Tenant updated successfully");
-    log.info("[Tenant Service] === UPDATE TENANT END ===");
     return updatedTenant;
   }
 

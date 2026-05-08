@@ -24,23 +24,18 @@ export default function AreaSelector() {
   const [_selection, _setSelection] = useState<SelectionBounds | null>(null);
 
   const handleCancel = async () => {
-    console.log("[Area Selector] Cancel requested");
     try {
       await window.api.cancelRecording();
-      console.log("[Area Selector] Cancel successful");
     } catch (error) {
       console.error("[Area Selector] Failed to cancel:", error);
     }
   };
 
   useEffect(() => {
-    console.log("[Area Selector] Component mounted");
 
     // Handle escape key to cancel
     const handleKeyDown = (e: KeyboardEvent) => {
-      console.log("[Area Selector] Key pressed:", e.key);
       if (e.key === "Escape") {
-        console.log("[Area Selector] Escape key detected, cancelling...");
         handleCancel();
       }
     };
@@ -48,7 +43,6 @@ export default function AreaSelector() {
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      console.log("[Area Selector] Component unmounting");
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, []);
@@ -77,14 +71,6 @@ export default function AreaSelector() {
   };
 
   const handleMouseUp = async () => {
-    console.log(
-      "[Area Selector] Mouse up - isSelecting:",
-      isSelecting,
-      "startPos:",
-      startPos,
-      "currentPos:",
-      currentPos
-    );
 
     if (isSelecting && startPos && currentPos) {
       // Calculate selection bounds
@@ -93,12 +79,6 @@ export default function AreaSelector() {
       const width = Math.abs(currentPos.x - startPos.x);
       const height = Math.abs(currentPos.y - startPos.y);
 
-      console.log("[Area Selector] Selection dimensions:", {
-        x,
-        y,
-        width,
-        height,
-      });
 
       // Only proceed if there's a meaningful selection (at least 50x50 pixels)
       if (width >= 50 && height >= 50) {
@@ -112,12 +92,7 @@ export default function AreaSelector() {
             height: Math.round(height * scaleFactor),
           };
 
-          console.log(
-            "[Area Selector] Sending area selection with bounds:",
-            scaledBounds
-          );
           await window.api.recordingAreaSelected(scaledBounds);
-          console.log("[Area Selector] Area selection sent successfully");
         } catch (error) {
           console.error(
             "[Area Selector] Failed to process area selection:",
@@ -125,9 +100,6 @@ export default function AreaSelector() {
           );
         }
       } else {
-        console.log(
-          "[Area Selector] Selection too small, minimum 50x50 required"
-        );
       }
 
       // Reset selection

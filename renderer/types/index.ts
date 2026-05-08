@@ -72,6 +72,7 @@ export interface WorkspaceMemberWithUser extends WorkspaceMember {
     id: string;
     name: string;
     email: string;
+    avatarUrl?: string;
   };
 }
 

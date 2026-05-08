@@ -44,6 +44,7 @@ const api = {
     ipcRenderer.invoke("user:remove-avatar", { userId }),
   logout: () => ipcRenderer.invoke("user:logout"),
   googleSignIn: () => ipcRenderer.invoke("user:google-signin"),
+  githubUserSignIn: () => ipcRenderer.invoke("user:github-signin"),
   getSessionExpiry: () => ipcRenderer.invoke("user:get-session-expiry"),
   isSessionExpiringSoon: (minutesBuffer?: number) =>
     ipcRenderer.invoke("user:is-session-expiring-soon", { minutesBuffer }),
@@ -147,6 +148,17 @@ const api = {
     ipcRenderer.invoke("capture:set-default-screen", { displayId }),
   clearDefaultCaptureScreen: () =>
     ipcRenderer.invoke("capture:clear-default-screen"),
+
+  // Home screen preferences
+  getHomePrefs: () => ipcRenderer.invoke("home-prefs:get"),
+  setHomePrefs: (patch: {
+    viewMode?: "grid" | "list";
+    sortBy?: "date" | "name";
+    sortOrder?: "asc" | "desc";
+    typeFilter?: "all" | "screenshot" | "session";
+    statusFilter?: "all" | "github" | "zoho";
+    activeWorkspaceId?: string | null;
+  }) => ipcRenderer.invoke("home-prefs:set", { patch }),
 
   // Legacy capture methods
   captureScreenshot: (options: {
@@ -367,6 +379,13 @@ const api = {
   }) => ipcRenderer.invoke("ai:generate-description", params),
   aiGenerateDescriptionFromSnap: (snapId: string) =>
     ipcRenderer.invoke("ai:generate-description-from-snap", { snapId }),
+  aiGenerateScreenshotDescription: (input: {
+    filePath?: string;
+    dataUrl?: string;
+    /** Tester's rough notes — the AI uses these as the source of truth for
+     *  intent and refines them into a structured bug report. */
+    userNotes?: string;
+  }) => ipcRenderer.invoke("ai:generate-screenshot-description", input),
   aiIsConfigured: () => ipcRenderer.invoke("ai:is-configured"),
   aiGetAllStatus: () => ipcRenderer.invoke("ai:get-all-status"),
   aiGetKey: (provider: string) => ipcRenderer.invoke("ai:get-key", { provider }),
@@ -476,6 +495,22 @@ const api = {
       ipcRenderer.removeListener("auto-sync-completed", subscription);
   },
 
+  onCloudSyncProgress: (
+    callback: (data: {
+      phase: "start" | "progress" | "complete";
+      current?: number;
+      total?: number;
+      syncedCount?: number;
+      failedCount?: number;
+    }) => void
+  ): (() => void) => {
+    const subscription = (_event: IpcRendererEvent, data: any) =>
+      callback(data);
+    ipcRenderer.on("sync:from-cloud:progress", subscription);
+    return () =>
+      ipcRenderer.removeListener("sync:from-cloud:progress", subscription);
+  },
+
   // Display change events — fired automatically when monitors connect/disconnect
   onDisplaysChanged: (
     callback: (data: { displays: Array<{ id: number; label: string; bounds: { x: number; y: number; width: number; height: number }; scaleFactor: number; isPrimary: boolean }> }) => void
@@ -495,8 +530,20 @@ const api = {
   // Utility methods
   openExternalUrl: (url: string) =>
     ipcRenderer.invoke("util:open-external", { url }),
-  showNotification: (title: string, body?: string) =>
-    ipcRenderer.invoke("util:show-notification", { title, body }),
+  // In-app toast — replaces the previous native OS notification.
+  // Native notifications were too disruptive for routine confirmations
+  // (e.g. "Saved", "Switched workspace"), so we dispatch a CustomEvent
+  // that ToastHost (mounted in _app.tsx) renders as a non-modal toast.
+  showNotification: (title: string, body?: string) => {
+    try {
+      window.dispatchEvent(
+        new CustomEvent("snapflow-toast", { detail: { title, body } })
+      );
+    } catch {
+      // ignore — preload runs in renderer context, window should always exist
+    }
+    return Promise.resolve({ success: true });
+  },
 };
 
 contextBridge.exposeInMainWorld("ipc", handler);

@@ -767,11 +767,13 @@ export default function AnnotateSessionPage() {
 
         {/* ── Body: two-column ── */}
         <div className="flex flex-row-reverse flex-1 overflow-hidden min-h-0">
-          {/* Form panel — visually on the right via flex-row-reverse */}
-          <div className="w-[480px] flex-shrink-0 border-l border-gray-800 bg-gray-900/30 flex flex-col overflow-hidden">
+          {/* Form panel — visually on the right via flex-row-reverse.
+              Flex-grows to fill the remaining width so the description editor
+              gets the bulk of the horizontal space. */}
+          <div className="flex-1 min-w-[480px] border-l border-gray-800 bg-gray-900/30 flex flex-col overflow-hidden">
             {/* Session meta — compact rows */}
             <div className="px-4 py-2.5 border-b border-gray-800/60 flex-shrink-0">
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              <p className="text-2xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 Session Info
               </p>
               <div className="flex flex-wrap gap-x-4 gap-y-1.5">
@@ -847,7 +849,7 @@ export default function AnnotateSessionPage() {
 
               {/* Title */}
               <div>
-                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
+                <label className="text-2xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
                   Title *
                 </label>
                 <input
@@ -864,7 +866,7 @@ export default function AnnotateSessionPage() {
 
               {/* Severity selector */}
               <div>
-                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
+                <label className="text-2xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
                   Severity
                 </label>
                 <div className="flex gap-1.5">
@@ -873,7 +875,7 @@ export default function AnnotateSessionPage() {
                       key={s}
                       onClick={() => setSeverity(s)}
                       className={[
-                        "flex-1 py-1 rounded text-[11px] font-semibold capitalize transition-all border",
+                        "flex-1 py-1 rounded text-2xs font-semibold capitalize transition-all border",
                         severity === s
                           ? s === "critical"
                             ? "bg-red-600/30 border-red-500/60 text-red-300"
@@ -890,7 +892,7 @@ export default function AnnotateSessionPage() {
                   ))}
                 </div>
                 {bugReport && (
-                  <p className="text-[10px] text-gray-600 mt-1">
+                  <p className="text-2xs text-gray-600 mt-1">
                     AI suggested · click to change
                   </p>
                 )}
@@ -898,10 +900,10 @@ export default function AnnotateSessionPage() {
 
               {/* AI-generated structured sections (collapsible preview) */}
               {bugReport && (
-                <div className="rounded-lg border border-gray-700/40 bg-gray-900/40 text-[11px] text-gray-400 divide-y divide-gray-800/60 flex-shrink-0">
+                <div className="rounded-lg border border-gray-700/40 bg-gray-900/40 text-2xs text-gray-400 divide-y divide-gray-800/60 flex-shrink-0">
                   {bugReport.steps.length > 0 && (
                     <div className="px-3 py-2">
-                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                      <p className="text-2xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
                         Steps to Reproduce
                       </p>
                       <ol className="space-y-0.5 list-none">
@@ -920,7 +922,7 @@ export default function AnnotateSessionPage() {
                   )}
                   <div className="px-3 py-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
                     <div>
-                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-0.5">
+                      <p className="text-2xs font-semibold text-gray-500 uppercase tracking-wider mb-0.5">
                         Expected
                       </p>
                       <p className="text-gray-400 leading-snug">
@@ -928,7 +930,7 @@ export default function AnnotateSessionPage() {
                       </p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-0.5">
+                      <p className="text-2xs font-semibold text-gray-500 uppercase tracking-wider mb-0.5">
                         Actual
                       </p>
                       <p className="text-gray-400 leading-snug">
@@ -942,13 +944,13 @@ export default function AnnotateSessionPage() {
               {/* Description */}
               <div className="flex flex-col gap-1.5 flex-1 min-h-0">
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                  <label className="text-2xs font-semibold text-gray-500 uppercase tracking-wider">
                     Description
                   </label>
                   <button
                     onClick={() => generateWithAi()}
                     disabled={aiGenerating}
-                    className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                    className="flex items-center gap-1 text-2xs text-blue-400 hover:text-blue-300 disabled:opacity-40 disabled:pointer-events-none transition-colors"
                   >
                     {aiGenerating ? (
                       <>
@@ -993,14 +995,14 @@ export default function AnnotateSessionPage() {
                     )}
                   </button>
                 </div>
-                <div className="relative flex-1 min-h-0">
+                <div className="relative flex-1 min-h-[320px]">
                   <textarea
                     placeholder="Describe what was being tested, any bugs observed, or the purpose of this session…"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     disabled={aiGenerating}
-                    className="input text-sm resize-none leading-relaxed w-full h-full min-h-[140px]"
-                    style={{ minHeight: "140px" }}
+                    className="input text-sm resize-y leading-relaxed w-full h-full min-h-[320px]"
+                    style={{ minHeight: "320px" }}
                   />
                   {aiGenerating && (
                     <div className="absolute inset-0 flex items-center justify-center gap-2 bg-gray-900/80 rounded-lg">
@@ -1012,12 +1014,12 @@ export default function AnnotateSessionPage() {
                   )}
                 </div>
                 {aiError && (
-                  <p className="text-[11px] text-amber-500/70" title={aiError}>
+                  <p className="text-2xs text-amber-500/70" title={aiError}>
                     AI unavailable — edit manually
                   </p>
                 )}
                 {!aiError && !aiGenerating && description && (
-                  <p className="text-[11px] text-gray-600">
+                  <p className="text-2xs text-gray-600">
                     AI-generated · you can edit freely
                   </p>
                 )}
@@ -1025,12 +1027,13 @@ export default function AnnotateSessionPage() {
             </div>
           </div>
 
-          {/* Timeline panel — visually on the left via flex-row-reverse */}
-          <div className="flex-1 flex flex-col overflow-hidden min-w-0 bg-gray-950/40">
+          {/* Timeline panel — visually on the left via flex-row-reverse.
+              Fixed narrower width so the description side gets the room. */}
+          <div className="w-[420px] flex-shrink-0 flex flex-col overflow-hidden min-w-0 bg-gray-950/40">
             {/* Panel header */}
             <div className="px-4 pt-3 pb-2.5 border-b border-gray-800/60 flex-shrink-0 flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                <p className="text-2xs font-semibold text-gray-500 uppercase tracking-wider">
                   Activity Timeline
                 </p>
                 <p className="text-xs text-gray-600 mt-0.5">
@@ -1096,7 +1099,7 @@ export default function AnnotateSessionPage() {
                               <TimelineDescription>
                                 <span className="text-gray-600">{relTime}</span>
                               </TimelineDescription>
-                              <p className="text-[10px] text-gray-500 truncate mt-0.5" title={loc}>{loc}</p>
+                              <p className="text-2xs text-gray-500 truncate mt-0.5" title={loc}>{loc}</p>
                             </TimelineContent>
                           }
                         />
@@ -1187,7 +1190,7 @@ export default function AnnotateSessionPage() {
                           key={`shot-${entry.id}`}
                           iconColor="accent"
                           icon={
-                            <span className="text-[9px] font-bold text-white leading-none">
+                            <span className="text-2xs font-bold text-white leading-none">
                               {shotIndex + 1}
                             </span>
                           }
@@ -1388,8 +1391,8 @@ function MetaRow({
   return (
     <div className="flex items-center gap-2 min-w-0">
       <span className="text-gray-600 flex-shrink-0">{icon}</span>
-      <span className="text-[11px] text-gray-500 flex-shrink-0">{label}</span>
-      <span className="text-[11px] text-gray-300 font-medium truncate">
+      <span className="text-2xs text-gray-500 flex-shrink-0">{label}</span>
+      <span className="text-2xs text-gray-300 font-medium truncate">
         {value}
       </span>
     </div>

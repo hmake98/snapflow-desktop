@@ -24,7 +24,6 @@ export class OverlayService {
     }
 
     try {
-      log.info("[Overlay] Creating overlay window at bounds:", bounds);
 
       this.overlayWindow = new BrowserWindow({
         x: bounds.x,
@@ -79,7 +78,6 @@ export class OverlayService {
         if (process.platform === "darwin") app.dock?.show();
       });
 
-      log.info("[Overlay] Overlay window created successfully");
     } catch (error) {
       log.error("[Overlay] Failed to create overlay window:", error);
       this.overlayWindow = null;
@@ -92,7 +90,6 @@ export class OverlayService {
    */
   hide(): void {
     if (this.overlayWindow) {
-      log.info("[Overlay] Hiding overlay window");
       this.overlayWindow.close();
       this.overlayWindow = null;
     }

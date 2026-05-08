@@ -16,6 +16,36 @@ export default function AnnotatePage() {
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  /** Minimum trimmed length the description must reach before the AI button
+   *  appears. Below this, the notes don't carry enough intent for the AI to
+   *  do anything useful — and a screenshot alone can't fill the gap. */
+  const MIN_AI_NOTES_LENGTH = 20;
+  const canImproveWithAi =
+    !!screenshot && description.trim().length >= MIN_AI_NOTES_LENGTH;
+
+  const handleImproveWithAi = async () => {
+    if (!canImproveWithAi || aiGenerating) return;
+    setAiGenerating(true);
+    setAiError(null);
+    try {
+      const result = await window.api.aiGenerateScreenshotDescription({
+        dataUrl: screenshot ?? undefined,
+        userNotes: description,
+      });
+      if (result?.success && result.data) {
+        setDescription(result.data as string);
+      } else {
+        setAiError(result?.error ?? "AI generation failed.");
+      }
+    } catch {
+      setAiError("Failed to reach AI service.");
+    } finally {
+      setAiGenerating(false);
+    }
+  };
 
   // Konva state
   const [Stage, setStage] = useState<any>(null);
@@ -60,7 +90,6 @@ export default function AnnotatePage() {
 
   // Run once on mount: load user, load Konva, fetch pending screenshot, set up IPC listener
   useEffect(() => {
-    console.log("[Annotate] Component mounted, initializing...");
 
     // Load user first - this is critical for saving screenshots
     loadUser();
@@ -88,18 +117,12 @@ export default function AnnotatePage() {
 
     // Listen for screenshot captured via IPC event (sent by main process after
     // navigating to this page — acts as the primary delivery mechanism)
-    console.log("[Annotate] Setting up screenshot listener...");
     const autoTitle = () => {
       const now = new Date();
       return `Screenshot ${now.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}`;
     };
 
     const cleanup = window.api.onScreenshotCaptured((data: any) => {
-      console.log("[Annotate] Screenshot received via IPC event!", {
-        hasDataUrl: !!data?.dataUrl,
-        dataUrlLength: data?.dataUrl?.length || 0,
-        mode: data?.mode,
-      });
       setScreenshot(data.dataUrl);
       setTitle((prev) => prev || autoTitle());
     });
@@ -107,18 +130,12 @@ export default function AnnotatePage() {
     // Also poll getPendingScreenshot as a fallback in case the IPC event
     // was missed (e.g., page loaded before event was sent)
     const checkPendingScreenshot = async () => {
-      console.log("[Annotate] Checking for pending screenshot...");
       try {
         const result = await window.api.getPendingScreenshot();
         if (result.success && result.data) {
-          console.log("[Annotate] Found pending screenshot!", {
-            dataUrlLength: result.data.dataUrl?.length || 0,
-            mode: result.data.mode,
-          });
           setScreenshot(result.data.dataUrl);
           setTitle((prev) => prev || autoTitle());
         } else {
-          console.log("[Annotate] No pending screenshot found");
         }
       } catch (error) {
         console.error("[Annotate] Error getting pending screenshot:", error);
@@ -128,9 +145,6 @@ export default function AnnotatePage() {
 
     // Set up global function for direct injection (backup method)
     (window as any).__setScreenshot = (data: any) => {
-      console.log("[Annotate] Screenshot set via direct injection!", {
-        hasDataUrl: !!data?.dataUrl,
-      });
       setScreenshot(data.dataUrl);
     };
 
@@ -200,29 +214,11 @@ export default function AnnotatePage() {
       const cssWidth = img.width / devicePixelRatio;
       const cssHeight = img.height / devicePixelRatio;
 
-      console.log("[Annotate] Image loaded:", {
-        imageWidth: img.width,
-        imageHeight: img.height,
-        devicePixelRatio,
-        cssWidth,
-        cssHeight,
-        containerWidth,
-        containerHeight,
-        maxWidth,
-        maxHeight,
-      });
 
       const scaleX = maxWidth / cssWidth;
       const scaleY = maxHeight / cssHeight;
       const scale = Math.min(scaleX, scaleY, 1);
 
-      console.log("[Annotate] Calculated dimensions:", {
-        scaleX,
-        scaleY,
-        scale,
-        finalWidth: cssWidth * scale,
-        finalHeight: cssHeight * scale,
-      });
 
       setDimensions({
         width: Math.floor(cssWidth * scale),
@@ -366,7 +362,8 @@ export default function AnnotatePage() {
         text: "Double click to edit",
         fontSize: 24,
         fill: color,
-        fontFamily: "Inter, sans-serif",
+        fontFamily:
+          '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, sans-serif',
       };
       setShapes([...shapes, newShape]);
       setSelectedId(null); // Don't auto-select the newly created text
@@ -487,7 +484,6 @@ export default function AnnotatePage() {
       return;
     }
 
-    console.log("[Annotate] Saving screenshot with user:", currentUser.id);
 
     if (!stageRef.current) {
       window.api.showNotification("Error", "Editor not ready");
@@ -943,7 +939,7 @@ export default function AnnotatePage() {
                   >
                     {icon}
                   </svg>
-                  <span className="text-[9px] font-medium">{label}</span>
+                  <span className="text-2xs font-medium">{label}</span>
                 </button>
               ))}
             </div>
@@ -1036,9 +1032,9 @@ export default function AnnotatePage() {
           </div>
 
           {/* Right Panel — Issue Details */}
-          <div className="w-64 bg-gray-900/40 border-l border-gray-800/70 flex-shrink-0 flex flex-col overflow-y-auto">
+          <div className="w-96 bg-gray-900/40 border-l border-gray-800/70 flex-shrink-0 flex flex-col overflow-y-auto">
             <div className="flex flex-col gap-5 p-4 h-full">
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest mt-0.5">
+              <p className="text-2xs font-semibold text-gray-500 uppercase tracking-widest mt-0.5">
                 Issue Details
               </p>
 
@@ -1055,33 +1051,91 @@ export default function AnnotatePage() {
                   maxLength={100}
                   className="h-9 text-sm"
                 />
-                <p className="text-[10px] text-gray-500 mt-1 text-right">
+                <p className="text-2xs text-gray-500 mt-1 text-right">
                   {title.length}/100
                 </p>
               </div>
 
               {/* Description */}
-              <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1.5">
-                  Description{" "}
-                  <span className="text-gray-600 font-normal">(optional)</span>
-                </label>
+              <div className="flex-1 min-h-0 flex flex-col">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-medium text-gray-300">
+                    Description{" "}
+                    <span className="text-gray-600 font-normal">
+                      (optional)
+                    </span>
+                  </label>
+                  {canImproveWithAi && (
+                    <button
+                      type="button"
+                      onClick={handleImproveWithAi}
+                      disabled={aiGenerating}
+                      title="Refine your notes into a structured bug report using the screenshot"
+                      className="flex items-center gap-1 text-2xs text-purple-400 hover:text-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {aiGenerating ? (
+                        <>
+                          <svg
+                            className="w-3 h-3 animate-spin"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            />
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                            />
+                          </svg>
+                          Refining…
+                        </>
+                      ) : (
+                        <>
+                          <svg
+                            className="w-3 h-3"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M13 10V3L4 14h7v7l9-11h-7z"
+                            />
+                          </svg>
+                          Improve with AI
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+                {aiError && (
+                  <p className="text-2xs text-red-400 mb-1.5">{aiError}</p>
+                )}
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Add notes or context..."
-                  rows={6}
-                  maxLength={500}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-gray-100 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors hover:border-gray-600 placeholder:text-gray-600"
+                  placeholder="Add notes or context — or click Generate with AI to describe the screenshot for you."
+                  rows={14}
+                  maxLength={2000}
+                  className="flex-1 min-h-[260px] w-full px-3 py-2 bg-gray-800 border border-gray-700 text-gray-100 rounded-lg text-sm resize-y focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors hover:border-gray-600 placeholder:text-gray-600"
                 />
-                <p className="text-[10px] text-gray-500 mt-1 text-right">
-                  {description.length}/500
+                <p className="text-2xs text-gray-500 mt-1 text-right">
+                  {description.length}/2000
                 </p>
               </div>
 
               {/* Keyboard Shortcuts */}
               <div className="mt-auto pt-4 border-t border-gray-800/70">
-                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest mb-3">
+                <p className="text-2xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
                   Shortcuts
                 </p>
                 <div className="space-y-2">
@@ -1096,8 +1150,8 @@ export default function AnnotatePage() {
                       key={label}
                       className="flex items-center justify-between"
                     >
-                      <span className="text-[11px] text-gray-500">{label}</span>
-                      <kbd className="text-[10px] bg-gray-800 border border-gray-700/80 text-gray-400 px-1.5 py-0.5 rounded font-mono leading-none">
+                      <span className="text-2xs text-gray-500">{label}</span>
+                      <kbd className="text-2xs bg-gray-800 border border-gray-700/80 text-gray-400 px-1.5 py-0.5 rounded font-mono leading-none">
                         {key}
                       </kbd>
                     </div>

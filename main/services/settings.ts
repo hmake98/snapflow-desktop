@@ -1,5 +1,4 @@
 import Store from "electron-store";
-import log from "electron-log";
 
 export interface RecordingSource {
   id: string;
@@ -8,11 +7,36 @@ export interface RecordingSource {
   displayBounds?: { x: number; y: number; width: number; height: number };
 }
 
+export type HomeViewMode = "grid" | "list";
+export type HomeSortBy = "date" | "name";
+export type HomeSortOrder = "asc" | "desc";
+export type HomeTypeFilter = "all" | "screenshot" | "session";
+export type HomeStatusFilter = "all" | "github" | "zoho";
+
+export interface HomeScreenPrefs {
+  viewMode: HomeViewMode;
+  sortBy: HomeSortBy;
+  sortOrder: HomeSortOrder;
+  typeFilter: HomeTypeFilter;
+  statusFilter: HomeStatusFilter;
+  activeWorkspaceId: string | null;
+}
+
+const DEFAULT_HOME_PREFS: HomeScreenPrefs = {
+  viewMode: "grid",
+  sortBy: "name",
+  sortOrder: "asc",
+  typeFilter: "all",
+  statusFilter: "all",
+  activeWorkspaceId: null,
+};
+
 const recordingSettingsStore = new Store({
   name: "snapflow-recording-settings",
   defaults: {
     defaultRecordingSource: null,
     defaultCaptureScreenId: null as number | null,
+    homeScreenPrefs: DEFAULT_HOME_PREFS,
   },
 });
 
@@ -24,19 +48,9 @@ export class RecordingSettingsService {
    * Get the default recording source (if set)
    */
   getDefaultSource(): RecordingSource | null {
-    const source = recordingSettingsStore.get(
+    return recordingSettingsStore.get(
       "defaultRecordingSource"
     ) as RecordingSource | null;
-
-    if (source) {
-      log.info(
-        `[RecordingSettings] Retrieved default source: ${source.name} (${source.id})`
-      );
-    } else {
-      log.info("[RecordingSettings] No default source configured");
-    }
-
-    return source;
   }
 
   /**
@@ -44,9 +58,6 @@ export class RecordingSettingsService {
    */
   setDefaultSource(source: RecordingSource): void {
     recordingSettingsStore.set("defaultRecordingSource", source);
-    log.info(
-      `[RecordingSettings] Set default source: ${source.name} (${source.id})`
-    );
   }
 
   /**
@@ -54,7 +65,6 @@ export class RecordingSettingsService {
    */
   clearDefaultSource(): void {
     recordingSettingsStore.set("defaultRecordingSource", null);
-    log.info("[RecordingSettings] Cleared default recording source");
   }
 }
 
@@ -72,11 +82,29 @@ export const captureScreenSettings = {
 
   setDefaultScreenId(displayId: number): void {
     recordingSettingsStore.set("defaultCaptureScreenId", displayId);
-    log.info("[CaptureSettings] Default capture screen set:", displayId);
   },
 
   clearDefaultScreenId(): void {
     recordingSettingsStore.set("defaultCaptureScreenId", null);
-    log.info("[CaptureSettings] Default capture screen cleared");
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Home screen preferences (view mode, sort, filter, last active workspace)
+// ---------------------------------------------------------------------------
+
+export const homeScreenSettings = {
+  get(): HomeScreenPrefs {
+    const stored = recordingSettingsStore.get(
+      "homeScreenPrefs"
+    ) as Partial<HomeScreenPrefs> | undefined;
+    if (!stored) return { ...DEFAULT_HOME_PREFS };
+    return { ...DEFAULT_HOME_PREFS, ...stored };
+  },
+
+  update(patch: Partial<HomeScreenPrefs>): HomeScreenPrefs {
+    const next = { ...this.get(), ...patch };
+    recordingSettingsStore.set("homeScreenPrefs", next);
+    return next;
   },
 };

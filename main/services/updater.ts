@@ -80,15 +80,11 @@ export class UpdaterService {
     // Configure logging
     autoUpdater.logger = log;
     (autoUpdater.logger as typeof log).transports.file.level = "info";
-    log.info("[Updater] Initializing auto-updater service");
 
     // Get publish config from electron-builder.yml
     const publishConfig = this.getPublishConfig();
 
     if (publishConfig) {
-      log.info(
-        `[Updater] Setting feed URL: ${publishConfig.owner}/${publishConfig.repo}`
-      );
 
       // Configure update feed URL for GitHub releases
       autoUpdater.setFeedURL({
@@ -126,7 +122,6 @@ export class UpdaterService {
     this.setupAutoUpdater();
     this.isInitialized = true;
 
-    log.info("[Updater] Auto-updater service initialized successfully");
   }
 
   setMainWindow(window: WindowWithQuitting) {
@@ -144,12 +139,10 @@ export class UpdaterService {
 
     // Check for updates on startup (only in production)
     autoUpdater.on("checking-for-update", () => {
-      log.info("[Updater] Checking for updates...");
       this.sendStatusToWindow("checking-for-update");
     });
 
     autoUpdater.on("update-available", (info) => {
-      log.info("[Updater] Update available:", info);
 
       // Store update info
       this.updateInfo = {
@@ -159,9 +152,6 @@ export class UpdaterService {
 
       // For macOS: show notification with download link instead of auto-downloading
       if (isMac) {
-        log.info(
-          "[Updater] macOS detected - showing download notification instead of auto-downloading"
-        );
         const downloadUrl =
           "https://github.com/harsh-simform/snapflow-desktop/releases/latest";
         this.sendStatusToWindow("update-available", {
@@ -183,7 +173,6 @@ export class UpdaterService {
 
       // Automatically download the update (Linux/Windows only)
       if (autoDownloadEnabled) {
-        log.info("[Updater] Starting automatic download...");
         autoUpdater.downloadUpdate().catch((error) => {
           log.error("[Updater] Download failed:", error);
           this.sendStatusToWindow("update-error", {
@@ -194,7 +183,6 @@ export class UpdaterService {
     });
 
     autoUpdater.on("update-not-available", (info) => {
-      log.info("[Updater] Update not available:", info);
       this.sendStatusToWindow("update-not-available", {
         currentVersion: autoUpdater.currentVersion.version,
       });
@@ -257,9 +245,6 @@ export class UpdaterService {
       const downloaded = this.formatBytes(progressObj.transferred);
       const total = this.formatBytes(progressObj.total);
 
-      log.info(
-        `[Updater] Download progress: ${percent}% (${downloaded}/${total}) @ ${speed}/s`
-      );
 
       this.sendStatusToWindow("download-progress", {
         percent,
@@ -273,7 +258,6 @@ export class UpdaterService {
     });
 
     autoUpdater.on("update-downloaded", (info) => {
-      log.info("[Updater] Update downloaded successfully:", info);
       this.updateDownloaded = true;
 
       this.sendStatusToWindow("update-downloaded", {
@@ -327,25 +311,19 @@ export class UpdaterService {
 
     if (response === 0) {
       // User chose to install now
-      log.info("[Updater] User chose to install update now");
 
       // Disable window close prevention before quitting
       if (this.mainWindow?.setQuitting) {
-        log.info("[Updater] Disabling close prevention");
         this.mainWindow.setQuitting(true);
       }
 
       // Use setTimeout to ensure the dialog is closed before quitting
       setTimeout(() => {
-        log.info("[Updater] Calling quitAndInstall");
         // First parameter: isSilent (false = show installer)
         // Second parameter: isForceRunAfter (true = restart after install)
         autoUpdater.quitAndInstall(false, true);
       }, 100);
     } else {
-      log.info(
-        "[Updater] User chose to install later - will install on next quit"
-      );
     }
   }
 
@@ -376,16 +354,13 @@ export class UpdaterService {
     });
 
     if (response === 0) {
-      log.info("[Updater] Opening download URL:", downloadUrl);
       await shell.openExternal(downloadUrl);
     } else {
-      log.info("[Updater] User chose to skip update");
     }
   }
 
   async checkForUpdates() {
     if (process.env.NODE_ENV === "development") {
-      log.info("[Updater] Skipping update check in development mode");
       return null;
     }
 
@@ -397,12 +372,7 @@ export class UpdaterService {
     }
 
     try {
-      log.info("[Updater] Starting update check...");
       const result = await autoUpdater.checkForUpdates();
-      log.info(
-        "[Updater] Update check completed:",
-        result?.updateInfo?.version || "No update available"
-      );
       return result;
     } catch (error) {
       log.error("[Updater] Failed to check for updates:", error);
@@ -478,9 +448,7 @@ export class UpdaterService {
     }
 
     try {
-      log.info("[Updater] Starting update download...");
       await autoUpdater.downloadUpdate();
-      log.info("[Updater] Download initiated successfully");
     } catch (error) {
       log.error("[Updater] Failed to download update:", error);
 
@@ -543,11 +511,9 @@ export class UpdaterService {
     }
 
     try {
-      log.info("[Updater] quitAndInstall called");
 
       // Disable window close prevention before quitting
       if (this.mainWindow?.setQuitting) {
-        log.info("[Updater] Disabling close prevention");
         this.mainWindow.setQuitting(true);
       }
 
@@ -558,7 +524,6 @@ export class UpdaterService {
 
       // Use setTimeout to ensure current operations complete before quitting
       setTimeout(() => {
-        log.info("[Updater] Calling quitAndInstall");
         try {
           // First parameter: isSilent (false = show installer)
           // Second parameter: isForceRunAfter (true = restart after install)

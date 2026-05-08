@@ -116,7 +116,7 @@ export function DisplaysSection() {
     <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg overflow-hidden">
       {/* Card header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-700/40">
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+        <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
           Multi-Screen Capture
         </span>
         {isMulti && hasDefault && (
@@ -150,7 +150,7 @@ export function DisplaysSection() {
             </svg>
             <div>
               <p className="text-xs font-semibold text-blue-300">Auto mode active</p>
-              <p className="text-[11px] text-blue-400/70 mt-0.5">
+              <p className="text-2xs text-blue-400/70 mt-0.5">
                 Captures whichever display your cursor is on. Pin a display below to always capture a specific screen.
               </p>
             </div>
@@ -172,7 +172,7 @@ export function DisplaysSection() {
                 </p>
               </div>
             </div>
-            <span className="text-[10px] font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/30 px-2 py-0.5 rounded-full">Active</span>
+            <span className="text-2xs font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/30 px-2 py-0.5 rounded-full">Active</span>
           </div>
         ) : (
           <div className="space-y-1.5">
@@ -194,10 +194,10 @@ export function DisplaysSection() {
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-sm font-medium text-gray-100">{display.label}</span>
                         {isPinned && (
-                          <span className="text-[10px] font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/30 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Pinned</span>
+                          <span className="text-2xs font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/30 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Pinned</span>
                         )}
                         {!isPinned && !hasDefault && (
-                          <span className="text-[10px] text-gray-500 bg-gray-700/40 border border-gray-700/50 px-1.5 py-0.5 rounded-full">Auto</span>
+                          <span className="text-2xs text-gray-500 bg-gray-700/40 border border-gray-700/50 px-1.5 py-0.5 rounded-full">Auto</span>
                         )}
                       </div>
                       <p className="text-xs text-gray-400 mt-0.5">

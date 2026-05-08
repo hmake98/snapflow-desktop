@@ -16,6 +16,16 @@ import { User as SupabaseUser } from "@supabase/supabase-js";
 import log from "electron-log";
 import { getSupabase } from "../utils/supabase";
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+/**
+ * Shared public bucket for avatars and snap files. We reuse the snap-sync
+ * bucket so a fresh Supabase project only needs ONE bucket to be created
+ * by hand, instead of two. Avatars live under the "avatars/" prefix to keep
+ * them separate from snap captures (which use "${userId}/${snapId}/...").
+ */
+const AVATAR_BUCKET = "snapflow-public-bucket";
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface AuthUser {
@@ -65,7 +75,6 @@ class AuthService {
     email: string,
     password: string
   ): Promise<AuthUser> {
-    log.info("[Auth] createUser →", email);
     const supabase = requireSupabase();
 
     const { data, error } = await supabase.auth.signUp({
@@ -85,14 +94,12 @@ class AuthService {
     if (!data.user) throw new Error("Sign-up succeeded but no user returned.");
 
     const user = mapUser(data.user);
-    log.info("[Auth] ✓ createUser", user.id);
     return user;
   }
 
   // ── Sign-in ──────────────────────────────────────────────────────────────────
 
   async login(email: string, password: string): Promise<AuthUser> {
-    log.info("[Auth] login →", email);
     const supabase = requireSupabase();
 
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -115,7 +122,6 @@ class AuthService {
     if (!data.user) throw new Error("Sign-in succeeded but no user returned.");
 
     const user = mapUser(data.user);
-    log.info("[Auth] ✓ login", user.id);
     return user;
   }
 
@@ -264,7 +270,6 @@ class AuthService {
     _userId: string,
     updates: Partial<Pick<AuthUser, "name" | "email">>
   ): Promise<AuthUser> {
-    log.info("[Auth] updateUser", updates);
     const supabase = requireSupabase();
 
     const payload: Record<string, unknown> = {};
@@ -284,7 +289,6 @@ class AuthService {
     if (!data.user) throw new Error("Update succeeded but no user returned.");
 
     const user = mapUser(data.user);
-    log.info("[Auth] ✓ updateUser", user.id);
     return user;
   }
 
@@ -309,7 +313,6 @@ class AuthService {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) throw new Error(error.message);
 
-    log.info("[Auth] ✓ changePassword");
   }
 
   /**
@@ -332,7 +335,6 @@ class AuthService {
    * via exchangeCodeForSession.
    */
   async googleSignIn(): Promise<string> {
-    log.info("[Auth] googleSignIn");
     const supabase = requireSupabase();
 
     const { data, error } = await supabase.auth.signInWithOAuth({
@@ -346,20 +348,38 @@ class AuthService {
     if (error) throw new Error(error.message);
     if (!data?.url) throw new Error("Failed to generate Google OAuth URL.");
 
-    log.info("[Auth] ✓ googleSignIn URL generated");
+    return data.url;
+  }
+
+  /**
+   * Begin a GitHub OAuth flow via Supabase. Mirrors googleSignIn — relies on
+   * the same `snapflow://auth/callback` deep link to complete via PKCE.
+   */
+  async githubSignIn(): Promise<string> {
+    const supabase = requireSupabase();
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "github",
+      options: {
+        redirectTo: "snapflow://auth/callback",
+        skipBrowserRedirect: true,
+      },
+    });
+
+    if (error) throw new Error(error.message);
+    if (!data?.url) throw new Error("Failed to generate GitHub OAuth URL.");
+
     return data.url;
   }
 
   /** Exchange the PKCE code from the deep-link callback for a live session. */
   async exchangeCodeForSession(callbackUrl: string) {
-    log.info("[Auth] exchangeCodeForSession");
     const supabase = requireSupabase();
 
     const { data, error } =
       await supabase.auth.exchangeCodeForSession(callbackUrl);
     if (error) throw new Error(error.message);
 
-    log.info("[Auth] ✓ exchangeCodeForSession");
     return data.session;
   }
 
@@ -371,13 +391,15 @@ class AuthService {
     mimeType: string,
     extension: string
   ): Promise<AuthUser> {
-    log.info("[Auth] uploadAvatar →", userId);
     const supabase = requireSupabase();
 
-    const filePath = `${userId}/avatar.${extension}`;
+    // Avatars share the same public bucket as snap captures so no extra
+    // Supabase setup is required. The "avatars/" prefix keeps them isolated
+    // from snap files (which use "${userId}/${issueId}/...").
+    const filePath = `avatars/${userId}/avatar.${extension}`;
 
     const { error: uploadError } = await supabase.storage
-      .from("avatars")
+      .from(AVATAR_BUCKET)
       .upload(filePath, fileData, {
         contentType: mimeType,
         upsert: true,
@@ -389,7 +411,7 @@ class AuthService {
     }
 
     const { data: urlData } = supabase.storage
-      .from("avatars")
+      .from(AVATAR_BUCKET)
       .getPublicUrl(filePath);
 
     const avatarUrl = `${urlData.publicUrl}?t=${Date.now()}`;
@@ -406,22 +428,21 @@ class AuthService {
       .eq("id", userId);
 
     const user = mapUser(data.user);
-    log.info("[Auth] ✓ uploadAvatar", userId);
     return user;
   }
 
   async removeAvatar(userId: string): Promise<AuthUser> {
-    log.info("[Auth] removeAvatar →", userId);
     const supabase = requireSupabase();
 
-    // Remove all files under the user's avatar folder
+    // Remove all files under the user's avatar folder in the shared bucket
+    const folder = `avatars/${userId}`;
     const { data: files } = await supabase.storage
-      .from("avatars")
-      .list(userId);
+      .from(AVATAR_BUCKET)
+      .list(folder);
 
     if (files && files.length > 0) {
-      const paths = files.map((f) => `${userId}/${f.name}`);
-      await supabase.storage.from("avatars").remove(paths);
+      const paths = files.map((f) => `${folder}/${f.name}`);
+      await supabase.storage.from(AVATAR_BUCKET).remove(paths);
     }
 
     const { data, error } = await supabase.auth.updateUser({
@@ -435,14 +456,12 @@ class AuthService {
       .eq("id", userId);
 
     const user = mapUser(data.user);
-    log.info("[Auth] ✓ removeAvatar", userId);
     return user;
   }
 
   // ── Sign-out ─────────────────────────────────────────────────────────────────
 
   async logout(): Promise<void> {
-    log.info("[Auth] logout");
     const supabase = getSupabase();
     if (!supabase) return;
 
@@ -450,7 +469,6 @@ class AuthService {
     if (error) {
       log.error("[Auth] signOut error:", error.message);
     } else {
-      log.info("[Auth] ✓ logout");
     }
   }
 }

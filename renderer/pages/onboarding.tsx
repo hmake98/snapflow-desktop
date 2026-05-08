@@ -141,7 +141,6 @@ export default function OnboardingPage() {
   // Listen for Zoho OAuth success
   useEffect(() => {
     const unsubscribe = window.api.onZohoOAuthSuccess(async () => {
-      console.log("[Onboarding] Zoho OAuth success");
       try {
         const result = await window.api.getZohoPortals();
         if (result.success) {
@@ -164,7 +163,6 @@ export default function OnboardingPage() {
   // Listen for Zoho OAuth error
   useEffect(() => {
     const unsubscribe = window.api.onZohoOAuthError((error: string) => {
-      console.log("[Onboarding] Zoho OAuth error:", error);
       setZohoOAuthError(error);
       setZohoOAuthStage("idle");
     });
@@ -174,7 +172,6 @@ export default function OnboardingPage() {
   // Listen for GitHub OAuth success
   useEffect(() => {
     const unsubscribe = window.api.onGitHubOAuthSuccess(async () => {
-      console.log("[Onboarding] GitHub OAuth success");
       try {
         const userResult = await window.api.getGitHubUser();
         const reposResult = await window.api.getGitHubRepositories();
@@ -202,7 +199,6 @@ export default function OnboardingPage() {
   // Listen for GitHub OAuth error
   useEffect(() => {
     const unsubscribe = window.api.onGitHubOAuthError((error: string) => {
-      console.log("[Onboarding] GitHub OAuth error:", error);
       setGitHubOAuthError(error);
       setGitHubOAuthStage("idle");
     });
@@ -294,7 +290,6 @@ export default function OnboardingPage() {
 
   // Handle GitHub OAuth Sign In
   async function handleGitHubSignIn() {
-    console.log("[Onboarding] Starting GitHub OAuth");
     setGitHubOAuthStage("waiting");
     setGitHubOAuthError("");
 
@@ -318,7 +313,6 @@ export default function OnboardingPage() {
     repoName: string,
     repoFullName: string
   ) {
-    console.log("[Onboarding] Repo selected:", repoId, repoFullName);
     setGitHubSelectedRepoId(repoId);
     setGitHubSelectedRepoName(repoName);
     setGitHubSelectedRepoFullName(repoFullName);
@@ -326,7 +320,6 @@ export default function OnboardingPage() {
 
   // Handle cancel GitHub OAuth
   function handleGitHubCancelOAuth() {
-    console.log("[Onboarding] Canceling GitHub OAuth");
     setGitHubOAuthStage("idle");
     setGitHubUser(null);
     setGitHubRepos([]);
@@ -339,7 +332,6 @@ export default function OnboardingPage() {
 
   // Handle Zoho OAuth Sign In
   async function handleZohoSignIn() {
-    console.log("[Onboarding] Starting Zoho OAuth");
     setZohoOAuthStage("waiting");
     setZohoOAuthError("");
 
@@ -359,7 +351,6 @@ export default function OnboardingPage() {
 
   // Handle Zoho portal selection
   async function handleZohoPortalSelect(portalId: string, portalName: string) {
-    console.log("[Onboarding] Portal selected:", portalId, portalName);
     setZohoSelectedPortalId(portalId);
     setZohoSelectedPortalName(portalName);
     setZohoSelectedProjectId("");
@@ -381,14 +372,12 @@ export default function OnboardingPage() {
 
   // Handle Zoho project selection
   function handleZohoProjectSelect(projectId: string, projectName: string) {
-    console.log("[Onboarding] Project selected:", projectId, projectName);
     setZohoSelectedProjectId(projectId);
     setZohoSelectedProjectName(projectName);
   }
 
   // Handle cancel Zoho OAuth
   function handleZohoCancelOAuth() {
-    console.log("[Onboarding] Canceling Zoho OAuth");
     setZohoOAuthStage("idle");
     setZohoPortals([]);
     setZohoProjects([]);

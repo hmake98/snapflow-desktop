@@ -133,7 +133,6 @@ function tryLoadFromStore(): Record<string, string> | null {
       if (!stored) return null;
       result[key] = decryptValue(stored as string);
     }
-    log.info("[SecureConfig] All secrets loaded from encrypted store");
     return result;
   } catch (err) {
     log.warn("[SecureConfig] Failed to decrypt from store:", err);
@@ -184,7 +183,6 @@ function encryptAndStore(secrets: Record<string, string>): void {
     }
     (secureStore as any).set(key, encryptValue(value));
   }
-  log.info("[SecureConfig] Secrets encrypted and stored");
 }
 
 /**
@@ -195,7 +193,6 @@ function deleteBootstrapFile(): void {
   try {
     if (fs.existsSync(bootstrapPath)) {
       fs.unlinkSync(bootstrapPath);
-      log.info("[SecureConfig] Bootstrap file deleted");
     }
   } catch (err) {
     log.warn("[SecureConfig] Could not delete bootstrap file:", err);
@@ -211,7 +208,6 @@ function applyToEnv(secrets: Record<string, string>): void {
   for (const [key, value] of Object.entries(secrets)) {
     process.env[key] = value;
   }
-  log.info("[SecureConfig] Secrets applied to process.env");
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -226,7 +222,6 @@ class SecureConfig {
    *   3. If store load fails → read bootstrap file → encrypt → store → delete bootstrap → apply to process.env.
    */
   async initialize(): Promise<void> {
-    log.info("[SecureConfig] Initializing...");
 
     // Fast path: all secrets are already encrypted in store.
     const fromStore = tryLoadFromStore();
@@ -234,14 +229,10 @@ class SecureConfig {
       // Delete bootstrap if it somehow still exists (e.g., update shipped a new one).
       deleteBootstrapFile();
       applyToEnv(fromStore);
-      log.info("[SecureConfig] Initialized from encrypted store");
       return;
     }
 
     // Slow path: no valid store data — must bootstrap.
-    log.info(
-      "[SecureConfig] Store empty or decryption failed — attempting bootstrap"
-    );
 
     let bootstrapSecrets: Record<string, string>;
     try {
@@ -264,20 +255,12 @@ class SecureConfig {
           path.join(process.resourcesPath, "../.env"), // parent of resources
         ];
 
-        log.info(`[SecureConfig] Current working directory: ${process.cwd()}`);
-        log.info(`[SecureConfig] __dirname: ${__dirname}`);
-        log.info(`[SecureConfig] app.getAppPath(): ${app.getAppPath()}`);
 
         let loaded = false;
         for (const envPath of possiblePaths) {
-          log.info(`[SecureConfig] Checking for .env at: ${envPath}`);
           if (fs.existsSync(envPath)) {
-            log.info(`[SecureConfig] ✓ Found .env at: ${envPath}`);
             const result = dotenv.config({ path: envPath });
             if (!result.error) {
-              log.info(
-                `[SecureConfig] ✓ Successfully loaded .env from: ${envPath}`
-              );
               loaded = true;
               break;
             } else {
@@ -291,7 +274,6 @@ class SecureConfig {
 
         if (!loaded) {
           log.warn("[SecureConfig] Could not find .env file in any location");
-          log.info("[SecureConfig] Checked paths:", possiblePaths.join(", "));
           return;
         }
 
@@ -308,9 +290,6 @@ class SecureConfig {
           NODE_ENV: process.env.NODE_ENV || "production",
         };
 
-        log.info(
-          `[SecureConfig] Loaded secrets - SUPABASE_URL: ${bootstrapSecrets.SUPABASE_URL ? "✓" : "✗"}, SUPABASE_ANON_KEY: ${bootstrapSecrets.SUPABASE_ANON_KEY ? "✓" : "✗"}`
-        );
 
         // Validate that we actually got the required secrets
         if (
@@ -329,9 +308,6 @@ class SecureConfig {
           return;
         }
 
-        log.info(
-          "[SecureConfig] Loaded secrets from .env fallback (local development)"
-        );
       } catch (fallbackErr) {
         log.error("[SecureConfig] .env fallback also failed:", fallbackErr);
         log.error(
@@ -345,9 +321,6 @@ class SecureConfig {
     deleteBootstrapFile();
     applyToEnv(bootstrapSecrets);
 
-    log.info(
-      "[SecureConfig] Initialized from bootstrap — secrets now encrypted"
-    );
   }
 }
 

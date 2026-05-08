@@ -29,10 +29,6 @@ export class WorkspaceService {
     name: string,
     description?: string
   ): Promise<Workspace> {
-    log.info("[Workspace Service] === CREATE WORKSPACE START ===");
-    log.info("[Workspace Service] User ID:", userId);
-    log.info("[Workspace Service] Tenant ID:", tenantId);
-    log.info("[Workspace Service] Workspace name:", name);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -63,7 +59,6 @@ export class WorkspaceService {
       attempt++;
     }
 
-    log.info("[Workspace Service] Using slug:", slug);
 
     // Insert workspace
     const { data: workspaceData, error: workspaceError } = await supabase
@@ -105,7 +100,6 @@ export class WorkspaceService {
     const workspace = this.mapSupabaseWorkspace(workspaceData);
 
     // Auto-add creator as admin member
-    log.info("[Workspace Service] Adding creator as admin member");
     const { error: memberError } = await supabase
       .from("workspace_members")
       .insert({
@@ -122,12 +116,8 @@ export class WorkspaceService {
       // Don't throw — workspace was created, member add just failed (maybe duplicate)
       // Let the workspace be created anyway
     } else {
-      log.info("[Workspace Service] ✓ Creator added as admin member");
     }
 
-    log.info("[Workspace Service] ✓ Workspace created successfully");
-    log.info("[Workspace Service] Workspace ID:", workspace.id);
-    log.info("[Workspace Service] === CREATE WORKSPACE END ===");
     return workspace;
   }
 
@@ -135,7 +125,6 @@ export class WorkspaceService {
    * List all workspaces in a tenant
    */
   async listWorkspaces(tenantId: string): Promise<Workspace[]> {
-    log.info("[Workspace Service] Listing workspaces for tenant:", tenantId);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -161,7 +150,6 @@ export class WorkspaceService {
    * Get workspace by ID
    */
   async getWorkspaceById(id: string): Promise<Workspace | null> {
-    log.info("[Workspace Service] Getting workspace by ID:", id);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -177,7 +165,6 @@ export class WorkspaceService {
 
     if (error) {
       if (error.code === "PGRST116") {
-        log.info("[Workspace Service] Workspace not found");
         return null;
       }
       log.error("[Workspace Service] Error fetching workspace:", error.message);
@@ -195,10 +182,6 @@ export class WorkspaceService {
     userId: string,
     role: UserRole
   ): Promise<WorkspaceMember> {
-    log.info("[Workspace Service] Adding member to workspace");
-    log.info("[Workspace Service] Workspace ID:", workspaceId);
-    log.info("[Workspace Service] User ID:", userId);
-    log.info("[Workspace Service] Role:", role);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -229,7 +212,6 @@ export class WorkspaceService {
     }
 
     const member = this.mapSupabaseWorkspaceMember(data);
-    log.info("[Workspace Service] ✓ Member added successfully");
     return member;
   }
 
@@ -237,7 +219,6 @@ export class WorkspaceService {
    * List all members in a workspace
    */
   async listMembers(workspaceId: string): Promise<WorkspaceMember[]> {
-    log.info("[Workspace Service] Listing members for workspace:", workspaceId);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -265,10 +246,6 @@ export class WorkspaceService {
   async listMembersWithUsers(
     workspaceId: string
   ): Promise<WorkspaceMemberWithUser[]> {
-    log.info(
-      "[Workspace Service] Listing members with user details for workspace:",
-      workspaceId
-    );
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -295,11 +272,13 @@ export class WorkspaceService {
       (data || []).map(async (row) => {
         let userName = "Unknown";
         let userEmail = "";
+        let userAvatarUrl: string | undefined;
         try {
           const authUser = await authService.getUserById(row.user_id as string);
           if (authUser) {
             userName = authUser.name;
             userEmail = authUser.email;
+            userAvatarUrl = authUser.avatarUrl;
           }
         } catch {
           // silently fall back to defaults
@@ -314,6 +293,7 @@ export class WorkspaceService {
             id: row.user_id as string,
             name: userName,
             email: userEmail,
+            avatarUrl: userAvatarUrl,
           },
         } satisfies WorkspaceMemberWithUser;
       })
@@ -326,9 +306,6 @@ export class WorkspaceService {
    * Remove a member from a workspace
    */
   async removeMember(workspaceId: string, userId: string): Promise<void> {
-    log.info("[Workspace Service] Removing member from workspace");
-    log.info("[Workspace Service] Workspace ID:", workspaceId);
-    log.info("[Workspace Service] User ID:", userId);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -349,7 +326,6 @@ export class WorkspaceService {
       throw new Error(error.message);
     }
 
-    log.info("[Workspace Service] ✓ Member removed successfully");
   }
 
   /**
@@ -360,10 +336,6 @@ export class WorkspaceService {
     userId: string,
     role: UserRole
   ): Promise<WorkspaceMember> {
-    log.info("[Workspace Service] Updating member role");
-    log.info("[Workspace Service] Workspace ID:", workspaceId);
-    log.info("[Workspace Service] User ID:", userId);
-    log.info("[Workspace Service] New role:", role);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -394,7 +366,6 @@ export class WorkspaceService {
     }
 
     const member = this.mapSupabaseWorkspaceMember(data);
-    log.info("[Workspace Service] ✓ Member role updated successfully");
     return member;
   }
 
@@ -408,10 +379,6 @@ export class WorkspaceService {
     email: string,
     role: UserRole
   ): Promise<void> {
-    log.info("[Workspace Service] Inviting user by email to workspace");
-    log.info("[Workspace Service] Workspace ID:", workspaceId);
-    log.info("[Workspace Service] Email:", email);
-    log.info("[Workspace Service] Role:", role);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -446,10 +413,6 @@ export class WorkspaceService {
           );
           // fall through to OTP path below
         } else {
-          log.info(
-            "[Workspace Service] ✓ Invite sent via admin API to:",
-            email
-          );
           // Record in pending_invites so multiple simultaneous invites are tracked
           await this._upsertPendingInvite(
             adminClient,
@@ -489,7 +452,6 @@ export class WorkspaceService {
         throw new Error(`Failed to send invite to ${email}: ${error.message}`);
       }
 
-      log.info("[Workspace Service] ✓ Invite sent via OTP to:", email);
       // Record in pending_invites (use admin client if available, else regular)
       const client = getSupabaseAdmin() ?? supabase;
       await this._upsertPendingInvite(client, email, workspaceId, role);
@@ -519,7 +481,6 @@ export class WorkspaceService {
           error.message
         );
       } else {
-        log.info("[Workspace Service] ✓ pending_invite recorded for:", email);
       }
     } catch (err) {
       log.warn("[Workspace Service] _upsertPendingInvite threw:", err);
@@ -535,9 +496,6 @@ export class WorkspaceService {
     userId: string,
     updates: { name?: string; description?: string }
   ): Promise<Workspace> {
-    log.info("[Workspace Service] === UPDATE WORKSPACE START ===");
-    log.info("[Workspace Service] Workspace ID:", workspaceId);
-    log.info("[Workspace Service] User ID:", userId);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -603,14 +561,12 @@ export class WorkspaceService {
       }
 
       updateData.slug = newSlug;
-      log.info("[Workspace Service] New slug:", newSlug);
     }
 
     if (updates.description !== undefined) {
       updateData.description = updates.description || null;
     }
 
-    log.info("[Workspace Service] Updates:", updateData);
 
     const { data, error } = await supabase
       .from("workspaces")
@@ -630,8 +586,6 @@ export class WorkspaceService {
     }
 
     const updatedWorkspace = this.mapSupabaseWorkspace(data);
-    log.info("[Workspace Service] ✓ Workspace updated successfully");
-    log.info("[Workspace Service] === UPDATE WORKSPACE END ===");
     return updatedWorkspace;
   }
 
@@ -639,9 +593,6 @@ export class WorkspaceService {
    * Delete a workspace (admin only)
    */
   async deleteWorkspace(workspaceId: string, userId: string): Promise<void> {
-    log.info("[Workspace Service] === DELETE WORKSPACE START ===");
-    log.info("[Workspace Service] Workspace ID:", workspaceId);
-    log.info("[Workspace Service] User ID:", userId);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -676,8 +627,6 @@ export class WorkspaceService {
       throw new Error(error.message);
     }
 
-    log.info("[Workspace Service] ✓ Workspace deleted successfully");
-    log.info("[Workspace Service] === DELETE WORKSPACE END ===");
   }
 
   /**
@@ -686,7 +635,6 @@ export class WorkspaceService {
   async getUserWorkspaces(
     userId: string
   ): Promise<(Workspace & { role: UserRole })[]> {
-    log.info("[Workspace Service] Getting all workspaces for user:", userId);
 
     const supabase = getSupabase();
     if (!supabase) {

@@ -17,7 +17,6 @@ export default function WindowCapture() {
     // Listen for available windows from main process
     const unsubscribeWindows = window.api.onAvailableWindows(
       (availableWindows) => {
-        console.log("Received windows:", availableWindows);
         setWindows(availableWindows);
       }
     );
@@ -25,7 +24,6 @@ export default function WindowCapture() {
     // Listen for background screenshot
     const unsubscribeScreenshot = window.api.onBackgroundScreenshot(
       (data: { dataUrl: string }) => {
-        console.log("Received background screenshot for window selection");
         setBackgroundImage(data.dataUrl);
         setIsLoading(false);
       }
@@ -49,7 +47,6 @@ export default function WindowCapture() {
 
   const handleWindowClick = async (windowId: string) => {
     try {
-      console.log("Selecting window:", windowId);
       await window.api.selectWindow(windowId);
     } catch (error) {
       console.error("Failed to capture window:", error);
