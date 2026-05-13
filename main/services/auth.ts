@@ -467,7 +467,6 @@ class AuthService {
     const { error } = await supabase.auth.signOut();
     if (error) {
       log.error("[Auth] signOut error:", error.message);
-    } else {
     }
   }
 }

@@ -214,8 +214,7 @@ export class GitHubService {
       const permissions = response.data.permissions;
       const canPush = permissions?.push === true || permissions?.admin === true;
 
-      if (canPush) {
-      } else {
+      if (!canPush) {
         log.warn("[GitHub] ✗ Token lacks push/admin permissions");
       }
 

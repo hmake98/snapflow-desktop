@@ -460,7 +460,7 @@ function registerGlobalShortcuts() {
       if (!activeSession) return; // only active during a session
       try {
         // force=true: keyboard-triggered snaps are always intentional
-        const shot = await debugCollector.captureScreenshot(true, true);
+        await debugCollector.captureScreenshot(true, true);
         // Pulse the HUD screenshot count (status interval will update within 1s)
       } catch (err) {
         log.error("[Session] In-session screenshot failed:", err);
@@ -480,10 +480,6 @@ function updateTrayMenu() {
     currentRoute === "/auth" ||
     currentRoute === "/onboarding" ||
     currentRoute === "";
-
-  // Get available displays
-  const displays = captureService.getAvailableDisplays();
-  const hasMultipleDisplays = displays.length > 1;
 
   // Determine whether a debug session is active for the session menu label
   const isSessionActive = !!debugCollector.getActiveSession();
@@ -1618,9 +1614,6 @@ const handleOAuthCallback = async (url: string) => {
       );
     }
 
-    if (mainWindow) {
-    }
-
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
       try {
         mainWindow.webContents.send("navigate", navigateTo);
@@ -1646,7 +1639,7 @@ const handleZohoCallback = async (url: string) => {
     const error = parsedUrl.searchParams.get("error");
     const errorDescription = parsedUrl.searchParams.get("error_description");
     const accountsServer = parsedUrl.searchParams.get("accounts-server");
-    const location = parsedUrl.searchParams.get("location");
+    const _location = parsedUrl.searchParams.get("location");
 
     if (error) {
       log.warn(
@@ -1922,7 +1915,7 @@ if (app && app.requestSingleInstanceLock) {
       registerGlobalShortcuts();
 
       // Listen for display changes to update tray menu and self-heal preferences
-      screen.on("display-added", (_event, display) => {
+      screen.on("display-added", (_event, _display) => {
         updateTrayMenu();
         // Notify renderer so DisplaysSection refreshes automatically
         mainWindow?.webContents.send("displays:changed", {

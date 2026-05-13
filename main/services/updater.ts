@@ -179,7 +179,7 @@ export class UpdaterService {
       }
     });
 
-    autoUpdater.on("update-not-available", (info) => {
+    autoUpdater.on("update-not-available", (_info) => {
       this.sendStatusToWindow("update-not-available", {
         currentVersion: autoUpdater.currentVersion.version,
       });
@@ -319,7 +319,6 @@ export class UpdaterService {
         // Second parameter: isForceRunAfter (true = restart after install)
         autoUpdater.quitAndInstall(false, true);
       }, 100);
-    } else {
     }
   }
 
@@ -351,7 +350,6 @@ export class UpdaterService {
 
     if (response === 0) {
       await shell.openExternal(downloadUrl);
-    } else {
     }
   }
 

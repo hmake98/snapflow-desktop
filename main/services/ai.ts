@@ -398,7 +398,7 @@ Severity guide: critical = crash/data loss/security; high = core feature broken;
       }
     }
 
-    const { prompt, contextBlock } = this.buildPrompt(
+    const { prompt, contextBlock: _contextBlock } = this.buildPrompt(
       params,
       imageContent.length
     );
@@ -466,7 +466,7 @@ Severity guide: critical = crash/data loss/security; high = core feature broken;
     params: GenerateDescriptionParams,
     imageCount: number
   ): { prompt: string; contextBlock: string } {
-    const durationSec = Math.round(params.durationMs / 1000);
+    const _durationSec = Math.round(params.durationMs / 1000);
     const contextParts: string[] = [];
 
     if (params.environment) {

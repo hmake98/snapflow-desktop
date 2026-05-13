@@ -319,8 +319,7 @@ export class ConnectorService {
       const permissions = response.data.permissions;
       const canPush = permissions?.push === true || permissions?.admin === true;
 
-      if (canPush) {
-      } else {
+      if (!canPush) {
         log.warn(
           "[Connector Service] ✗ Insufficient permissions on repository"
         );
@@ -399,7 +398,9 @@ export class ConnectorService {
           }
         );
         sha = existingFile.data.sha;
-      } catch {}
+      } catch {
+        // File doesn't exist yet — sha stays undefined, will create new
+      }
 
       const config = connector.config as {
         owner: string;
@@ -447,7 +448,6 @@ export class ConnectorService {
           const base64Content = fileBuffer.toString("base64");
           const dataUri = `data:${mimeType};base64,${base64Content}`;
           return dataUri;
-        } else {
         }
       } catch (fallbackError) {
         log.error("[GitHub] Fallback data URI also failed:", fallbackError);

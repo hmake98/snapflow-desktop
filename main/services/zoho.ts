@@ -47,7 +47,7 @@ export class ZohoService {
    * Set the accounts server based on region (from callback params)
    * This is needed because Zoho uses region-specific OAuth servers
    */
-  setAccountsServer(accountsServerUrl: string, apiDomain?: string): void {
+  setAccountsServer(accountsServerUrl: string, _apiDomain?: string): void {
     this.accountsServer = accountsServerUrl;
     this.authBaseUrl = `${accountsServerUrl}/oauth/v2`;
 
@@ -64,10 +64,6 @@ export class ZohoService {
     // Use the accounts-derived domain for Projects API
     // This is more reliable than the api_domain from OAuth response
     domain = accountsDomain;
-
-    // Log the apiDomain for reference if provided
-    if (apiDomain) {
-    }
 
     // Construct the Projects API base URL using V3 API (new version)
     // Projects API uses: https://projectsapi.{region}/api/v3/
@@ -218,9 +214,6 @@ export class ZohoService {
         ? response.data
         : response.data.portals || response.data.data || [];
 
-      if (portals.length > 0) {
-      }
-
       return portals;
     } catch (error) {
       log.error("[Zoho] ✗ Failed to fetch portals");
@@ -251,9 +244,6 @@ export class ZohoService {
       const projects = Array.isArray(response.data)
         ? response.data
         : response.data.projects || response.data.data || [];
-
-      if (projects.length > 0) {
-      }
 
       return projects;
     } catch (error) {
@@ -355,7 +345,7 @@ export class ZohoService {
 
       const bodyString = bugData.toString();
 
-      const response = await axios.post(endpoint, bodyString, {
+      await axios.post(endpoint, bodyString, {
         headers: {
           Authorization: `Zoho-oauthtoken ${accessToken}`,
           "Content-Type": "application/x-www-form-urlencoded",
@@ -406,7 +396,7 @@ export class ZohoService {
       const restApiBase = `https://projectsapi.${domain}/restapi`;
       const endpoint = `${restApiBase}/portal/${portalId}/projects/${projectId}/bugs/${bugId}/`;
 
-      const response = await axios.delete(endpoint, {
+      await axios.delete(endpoint, {
         headers: {
           Authorization: `Zoho-oauthtoken ${accessToken}`,
         },

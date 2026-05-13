@@ -96,7 +96,6 @@ function ensureFFmpegReady() {
     if (fs.existsSync(ffmpegPath)) {
       ffmpeg.setFfmpegPath(ffmpegPath);
       return true;
-    } else {
     }
   }
 
@@ -186,6 +185,7 @@ export class CaptureService extends EventEmitter {
    * On single-display systems this always returns the primary, so behaviour
    * is completely unchanged from the old code.
    */
+  // eslint-disable-next-line no-undef
   getFullscreenTargetDisplay(explicitId?: number | null): Electron.Display {
     const allDisplays = screen.getAllDisplays();
 
@@ -259,9 +259,6 @@ export class CaptureService extends EventEmitter {
           },
           fetchWindowIcons: false,
         });
-
-        if (sources.length > 0) {
-        }
 
         if (sources.length === 0) {
           log.error(
@@ -760,10 +757,10 @@ export class CaptureService extends EventEmitter {
       const scaleFactor = primaryDisplay.scaleFactor || 1;
 
       // Adjust bounds for display scale factor and position
-      const adjustedX = Math.floor((bounds.x - displayBounds.x) * scaleFactor);
-      const adjustedY = Math.floor((bounds.y - displayBounds.y) * scaleFactor);
-      const adjustedWidth = Math.floor(bounds.width * scaleFactor);
-      const adjustedHeight = Math.floor(bounds.height * scaleFactor);
+      const _adjustedX = Math.floor((bounds.x - displayBounds.x) * scaleFactor);
+      const _adjustedY = Math.floor((bounds.y - displayBounds.y) * scaleFactor);
+      const _adjustedWidth = Math.floor(bounds.width * scaleFactor);
+      const _adjustedHeight = Math.floor(bounds.height * scaleFactor);
 
       // Configure FFmpeg command based on platform
       let ffmpegCmd = ffmpeg();
@@ -836,12 +833,11 @@ export class CaptureService extends EventEmitter {
       ffmpegCmd.on("error", (err) => {
         const msg = err?.message ?? "";
         // SIGINT/SIGKILL are expected during graceful stop — log at info level
-        if (
+        const isGracefulStop =
           msg.includes("SIGINT") ||
           msg.includes("SIGKILL") ||
-          msg.includes("killed with signal")
-        ) {
-        } else {
+          msg.includes("killed with signal");
+        if (!isGracefulStop) {
           log.error("[Recording] FFmpeg error:", err);
         }
         this.ffmpegProcess = null;

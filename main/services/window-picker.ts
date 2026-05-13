@@ -50,9 +50,6 @@ export class WindowPickerService {
         fetchWindowIcons: false,
       });
 
-      if (sources.length > 0) {
-      }
-
       // Get Snapflow window IDs to filter them out
       const snapflowWindowIds = BrowserWindow.getAllWindows().map(
         (win) => `window:${win.id}:0`
@@ -222,8 +219,6 @@ export class WindowPickerService {
           sources.find(
             (s) => s.type === "window" && s.name === savedDefault.name
           ) ?? null;
-        if (validatedDefault) {
-        }
       }
     }
 

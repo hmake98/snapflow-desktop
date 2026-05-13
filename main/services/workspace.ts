@@ -113,7 +113,6 @@ export class WorkspaceService {
       );
       // Don't throw — workspace was created, member add just failed (maybe duplicate)
       // Let the workspace be created anyway
-    } else {
     }
 
     return workspace;
@@ -469,7 +468,6 @@ export class WorkspaceService {
           "[Workspace Service] Could not upsert pending_invite:",
           error.message
         );
-      } else {
       }
     } catch (err) {
       log.warn("[Workspace Service] _upsertPendingInvite threw:", err);

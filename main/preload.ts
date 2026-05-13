@@ -552,6 +552,7 @@ const api = {
   showNotification: (title: string, body?: string) => {
     try {
       window.dispatchEvent(
+        // eslint-disable-next-line no-undef
         new CustomEvent("snapflow-toast", { detail: { title, body } })
       );
     } catch {

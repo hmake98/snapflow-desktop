@@ -165,7 +165,6 @@ export class SyncService {
 
       if (error) {
         log.error("[Sync] Failed to update sync history:", error);
-      } else {
       }
     } catch (error) {
       log.error("[Sync] Error updating sync history:", error);
@@ -238,7 +237,7 @@ export class SyncService {
       const storagePath = `${userId}/${issueId}/${fileName}`;
 
       // Upload to Supabase storage
-      const { data, error } = await supabase.storage
+      const { data: _data, error } = await supabase.storage
         .from(BUCKET_NAME)
         .upload(storagePath, fileBuffer, {
           contentType: this.getContentType(fileExt),
@@ -376,7 +375,6 @@ export class SyncService {
 
       if (dbError) {
         log.error("[Sync] Failed to delete from database:", dbError);
-      } else {
       }
 
       // Delete from Supabase storage
@@ -402,7 +400,6 @@ export class SyncService {
 
           if (deleteError) {
             log.warn("[Sync] Failed to delete from storage:", deleteError);
-          } else {
           }
         }
       }
@@ -501,8 +498,7 @@ export class SyncService {
                 userId,
                 issue.id
               );
-              if (cloudFileUrl) {
-              } else {
+              if (!cloudFileUrl) {
                 log.warn(
                   `[Sync] Main file upload returned null for issue ${issue.id}`
                 );
@@ -516,8 +512,7 @@ export class SyncService {
                 userId,
                 `${issue.id}_thumbnail`
               );
-              if (cloudThumbnailUrl) {
-              } else {
+              if (!cloudThumbnailUrl) {
                 log.warn(
                   `[Sync] Thumbnail upload returned null for issue ${issue.id}`
                 );
@@ -648,10 +643,7 @@ export class SyncService {
             };
           }
 
-          const updatedSnap = await issueService.updateIssue(
-            issue.id,
-            localUpdateData
-          );
+          await issueService.updateIssue(issue.id, localUpdateData);
           result.syncedCount++;
         } catch (error) {
           result.failedCount++;
