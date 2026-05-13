@@ -39,7 +39,15 @@ const PROVIDERS: Record<Provider, ProviderMeta> = {
     keyPlaceholder: "AIza••••••••••••••••••••••••••••••••",
     docsHint: "aistudio.google.com/apikey",
     icon: (
-      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        className="w-3.5 h-3.5"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
       </svg>
     ),
@@ -72,13 +80,22 @@ interface ProviderCardProps {
   onSetActive: (provider: Provider) => Promise<void>;
 }
 
-function ProviderCard({ provider, status, onSave, onClear, onSetActive }: ProviderCardProps) {
+function ProviderCard({
+  provider,
+  status,
+  onSave,
+  onClear,
+  onSetActive,
+}: ProviderCardProps) {
   const meta = PROVIDERS[provider];
   const [input, setInput] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(false);
-  const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [toast, setToast] = useState<{
+    type: "success" | "error";
+    msg: string;
+  } | null>(null);
 
   const showToast = (type: "success" | "error", msg: string) => {
     setToast({ type, msg });
@@ -134,7 +151,7 @@ function ProviderCard({ provider, status, onSave, onClear, onSetActive }: Provid
         type="button"
         onClick={handleHeaderClick}
         disabled={!canActivate}
-        className={`w-full flex items-center gap-3 px-4 py-2.5 border-b border-gray-700/40 text-left transition-colors ${
+        className={`w-full flex items-center gap-3 px-4 py-2.5 border-b border-gray-800 text-left transition-colors ${
           canActivate ? "hover:bg-gray-800/70 cursor-pointer" : "cursor-default"
         }`}
         title={
@@ -164,8 +181,12 @@ function ProviderCard({ provider, status, onSave, onClear, onSetActive }: Provid
           {meta.icon}
         </div>
         <div className="flex-1 min-w-0">
-          <span className="text-sm font-semibold text-gray-300">{meta.label}</span>
-          <span className="text-xs text-gray-600 ml-2 font-normal">{meta.description}</span>
+          <span className="text-sm font-semibold text-gray-300">
+            {meta.label}
+          </span>
+          <span className="text-xs text-gray-600 ml-2 font-normal">
+            {meta.description}
+          </span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {status.isActive ? (
@@ -173,11 +194,13 @@ function ProviderCard({ provider, status, onSave, onClear, onSetActive }: Provid
               Active
             </span>
           ) : (
-            <span className={`text-2xs font-medium px-2 py-0.5 rounded-full border ${
-              isConfigured
-                ? "bg-gray-700/50 text-gray-400 border-gray-600/40"
-                : "bg-gray-800/60 text-gray-600 border-gray-700/30"
-            }`}>
+            <span
+              className={`text-2xs font-medium px-2 py-0.5 rounded-full border ${
+                isConfigured
+                  ? "bg-gray-700/50 text-gray-400 border-gray-600/40"
+                  : "bg-gray-800/60 text-gray-600 border-gray-700/30"
+              }`}
+            >
               {isConfigured ? "Configured" : "Not set"}
             </span>
           )}
@@ -189,10 +212,22 @@ function ProviderCard({ provider, status, onSave, onClear, onSetActive }: Provid
         {/* Existing key row */}
         {isConfigured && (
           <div className="flex items-center gap-2.5 px-3 py-2 bg-gray-900/50 border border-gray-700/30 rounded-lg">
-            <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            <svg
+              className="w-3.5 h-3.5 text-gray-600 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+              />
             </svg>
-            <span className="text-2xs text-gray-500 font-mono flex-1 min-w-0 truncate">{status.maskedKey}</span>
+            <span className="text-2xs text-gray-500 font-mono flex-1 min-w-0 truncate">
+              {status.maskedKey}
+            </span>
             <button
               onClick={handleClear}
               disabled={clearing}
@@ -210,9 +245,13 @@ function ProviderCard({ provider, status, onSave, onClear, onSetActive }: Provid
               type={showKey ? "text" : "password"}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
-              placeholder={isConfigured ? "Replace with new key…" : meta.keyPlaceholder}
-              className="w-full h-8 px-3 pr-9 bg-gray-900/60 border border-gray-600/40 rounded-lg text-xs text-gray-100 placeholder-gray-600 font-mono focus:outline-none focus:border-gray-500/60 transition-all"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSave();
+              }}
+              placeholder={
+                isConfigured ? "Replace with new key…" : meta.keyPlaceholder
+              }
+              className="w-full h-8 px-3 pr-9 bg-gray-900 border border-gray-800 rounded-lg text-xs text-gray-100 placeholder-gray-600 font-mono focus:outline-none focus:border-gray-500/60 transition-all"
             />
             <button
               type="button"
@@ -220,13 +259,38 @@ function ProviderCard({ provider, status, onSave, onClear, onSetActive }: Provid
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400 transition-colors"
             >
               {showKey ? (
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                  />
                 </svg>
               ) : (
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                  />
                 </svg>
               )}
             </button>
@@ -238,16 +302,35 @@ function ProviderCard({ provider, status, onSave, onClear, onSetActive }: Provid
           >
             {saving ? (
               <>
-                <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
+                <svg
+                  className="w-3 h-3 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"
+                  />
                 </svg>
                 Saving…
               </>
-            ) : "Save"}
+            ) : (
+              "Save"
+            )}
           </button>
           {toast && (
-            <span className={`text-xs flex-shrink-0 ${toast.type === "success" ? "text-green-400" : "text-red-400"}`}>
+            <span
+              className={`text-xs flex-shrink-0 ${toast.type === "success" ? "text-green-400" : "text-red-400"}`}
+            >
               {toast.msg}
             </span>
           )}
@@ -299,18 +382,29 @@ export function AiSection() {
     await loadStatuses();
   };
 
-  const configuredCount = Object.values(statuses).filter((s) => s.maskedKey).length;
+  const configuredCount = Object.values(statuses).filter(
+    (s) => s.maskedKey
+  ).length;
 
   return (
     <div className="space-y-3">
       {/* Section header */}
-      <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg px-4 py-3">
+      <div className="bg-gray-900 border border-gray-800 rounded-md px-4 py-3">
         <div className="flex items-center justify-between mb-1">
-          <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">AI Providers</span>
-          <span className="text-xs text-gray-600">{configuredCount} of 4 configured</span>
+          <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
+            AI Providers
+          </span>
+          <span className="text-xs text-gray-600">
+            {configuredCount} of 4 configured
+          </span>
         </div>
         <p className="text-sm text-gray-500 leading-relaxed">
-          Configure any provider by adding its API key, then select <span className="text-gray-300">one</span> as the active provider. Only one can be active at a time — it's used to auto-generate bug report descriptions in session review. Keys are stored locally and never sent to SnapFlow servers.
+          Add an API key for any provider, then mark{" "}
+          <span className="text-gray-300">one</span> as active. The active
+          provider powers the <span className="text-gray-300">Improve with AI</span>{" "}
+          action on screenshot annotations and the auto-generated bug reports for
+          recording sessions. API keys are stored locally on this device and
+          never sent to SnapFlow servers.
         </p>
       </div>
 

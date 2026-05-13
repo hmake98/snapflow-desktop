@@ -357,8 +357,7 @@ async function createMainWindow() {
   }
 
   // Handle window focus event
-  mainWindow.on("focus", async () => {
-  });
+  mainWindow.on("focus", async () => {});
 
   return mainWindow;
 }
@@ -471,7 +470,6 @@ function registerGlobalShortcuts() {
   if (!sessionSnapRegistered) {
     log.error(`[Shortcuts] Failed to register ${sessionSnapShortcut}`);
   }
-
 }
 
 function updateTrayMenu() {
@@ -566,7 +564,6 @@ function updateTrayMenu() {
       enabled: !isRestrictedRoute,
       click: async () => {
         try {
-
           // Show the main window first
           await showMainWindow();
 
@@ -838,7 +835,11 @@ async function createSessionHudWindow() {
 
   // Fallback: if ready-to-show already fired during loadURL (race condition
   // edge case), force-show the window now if it's still hidden.
-  if (sessionHudWindow && !sessionHudWindow.isDestroyed() && !sessionHudWindow.isVisible()) {
+  if (
+    sessionHudWindow &&
+    !sessionHudWindow.isDestroyed() &&
+    !sessionHudWindow.isVisible()
+  ) {
     sessionHudWindow.show();
   }
 
@@ -973,7 +974,6 @@ async function handleScreenshotCapture(
     if (mode === "fullscreen" && screen.getAllDisplays().length > 1) {
       resolvedMode = "all-screens";
     }
-
 
     hideMainWindowForCapture();
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -1204,7 +1204,6 @@ async function handleStartRecordingFlow() {
   }
   isStartingRecordingFlow = true;
   try {
-
     const savedDefault = recordingSettingsService.getDefaultSource();
 
     if (savedDefault) {
@@ -1372,7 +1371,6 @@ async function handleStartRecordingWithSource(
   bounds: { x: number; y: number; width: number; height: number } | null
 ) {
   try {
-
     recorderService.setState("recording");
     recordingState = "recording";
     recordingBounds = bounds;
@@ -1396,7 +1394,6 @@ async function handleStartRecordingWithSource(
     if (process.platform === "darwin") {
       app.dock?.show();
     }
-
   } catch (error) {
     log.error("[Recording] Failed to start recording with source:", error);
 
@@ -1449,7 +1446,6 @@ async function handleRecordingAreaSelected(bounds: {
     if (process.platform === "darwin") {
       app.dock?.show();
     }
-
   } catch (error) {
     log.error("[Recording] Failed to start recording:", error);
     overlayService.hide();
@@ -1471,7 +1467,6 @@ async function handleRecordingAreaSelected(bounds: {
 
 async function handleStopRecording() {
   try {
-
     // Hide overlay
     overlayService.hide();
 
@@ -1507,7 +1502,6 @@ async function handleStopRecording() {
       const port = process.argv[2];
       await mainWindow?.loadURL(`http://localhost:${port}/annotate-recording`);
     }
-
   } catch (error) {
     log.error("[Recording] Failed to stop recording:", error);
 
@@ -1529,7 +1523,6 @@ async function handleStopRecording() {
 }
 
 async function handleCancelRecording() {
-
   // Reset state
   recordingState = "idle";
   recordingBounds = null;
@@ -1559,7 +1552,6 @@ async function handleCancelRecording() {
  * We just need to ensure navigation happens after the user is set.
  */
 const handleOAuthCallback = async (url: string) => {
-
   try {
     // Supabase v2 uses PKCE by default: callback has ?code=... in query params.
     // Older implicit flow puts tokens in the hash (#access_token=...).
@@ -1638,7 +1630,6 @@ const handleOAuthCallback = async (url: string) => {
     } else {
       log.warn("[OAuth] Cannot send navigate event - mainWindow not available");
     }
-
   } catch (error) {
     log.error("[OAuth] Unexpected error handling OAuth callback:", error);
   }
@@ -1648,7 +1639,6 @@ const handleOAuthCallback = async (url: string) => {
  * Handle Zoho OAuth callback
  */
 const handleZohoCallback = async (url: string) => {
-
   try {
     const parsedUrl = new URL(url);
 
@@ -1657,7 +1647,6 @@ const handleZohoCallback = async (url: string) => {
     const errorDescription = parsedUrl.searchParams.get("error_description");
     const accountsServer = parsedUrl.searchParams.get("accounts-server");
     const location = parsedUrl.searchParams.get("location");
-
 
     if (error) {
       log.warn(
@@ -1690,9 +1679,7 @@ const handleZohoCallback = async (url: string) => {
       zohoService.setAccountsServer(accountsServer);
     }
 
-
     const tokens = await zohoService.exchangeCodeForTokens(code);
-
 
     // Update API domain if provided in token response
     if (tokens.apiDomain) {
@@ -1735,12 +1722,10 @@ const handleZohoCallback = async (url: string) => {
         (accountsServer ? accountsServer.replace("accounts.", "") : undefined),
     };
 
-
     // Notify renderer that OAuth is complete
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
       mainWindow.webContents.send("zoho-oauth-success");
     }
-
   } catch (error) {
     log.error("[Zoho OAuth] ✗ Error handling callback");
     log.error(
@@ -1765,7 +1750,6 @@ const handleZohoCallback = async (url: string) => {
  * Handle GitHub OAuth callback
  */
 const handleGitHubCallback = async (url: string) => {
-
   try {
     const parsedUrl = new URL(url);
     const code = parsedUrl.searchParams.get("code");
@@ -1801,12 +1785,10 @@ const handleGitHubCallback = async (url: string) => {
       expiresAt: Date.now() + (tokens.expiresIn || 28800) * 1000,
     };
 
-
     // Notify renderer that OAuth is complete
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
       mainWindow.webContents.send("github-oauth-success");
     }
-
   } catch (error) {
     log.error("[GitHub OAuth] Error handling callback:", error.message);
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
@@ -2034,7 +2016,6 @@ function startSessionExpiryMonitor() {
       mainWindow.webContents.send("session-expired");
     }
   }, 60 * 1000); // Check every minute
-
 }
 
 function _stopSessionExpiryMonitor() {
@@ -2057,14 +2038,11 @@ function startOAuthCallbackServer() {
     const url = new URL(req.url || "/", "http://localhost:3000");
     const pathname = url.pathname;
 
-
     // Handle Zoho OAuth callback
     if (pathname === "/auth/zoho/callback") {
-
       const code = url.searchParams.get("code");
       const error = url.searchParams.get("error");
       const errorDescription = url.searchParams.get("error_description");
-
 
       if (error) {
         log.warn(
@@ -2144,8 +2122,7 @@ function startOAuthCallbackServer() {
     res.end(`<html><body><h1>Not Found</h1></body></html>`);
   });
 
-  oauthCallbackServer.listen(3000, "localhost", () => {
-  });
+  oauthCallbackServer.listen(3000, "localhost", () => {});
 
   oauthCallbackServer.on("error", (err) => {
     log.error("[OAuth Server] Error:", err);
@@ -2187,7 +2164,6 @@ function setupIPCHandlers() {
 
   ipcMain.handle("user:login", async (_event, { email, password }) => {
     try {
-
       const user = await authService.login(email, password);
 
       // Store user in session
@@ -2274,25 +2250,32 @@ function setupIPCHandlers() {
         return { success: true, data: user };
       } catch (error) {
         const errorMessage =
-          error instanceof Error ? error.message : "An unexpected error occurred";
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred";
         log.error("[IPC] upload-avatar error:", error);
         return { success: false, error: errorMessage };
       }
     }
   );
 
-  ipcMain.handle("user:remove-avatar", async (_event, { userId }: { userId: string }) => {
-    try {
-      const user = await authService.removeAvatar(userId);
-      await sessionManager.setUser(user);
-      return { success: true, data: user };
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "An unexpected error occurred";
-      log.error("[IPC] remove-avatar error:", error);
-      return { success: false, error: errorMessage };
+  ipcMain.handle(
+    "user:remove-avatar",
+    async (_event, { userId }: { userId: string }) => {
+      try {
+        const user = await authService.removeAvatar(userId);
+        await sessionManager.setUser(user);
+        return { success: true, data: user };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred";
+        log.error("[IPC] remove-avatar error:", error);
+        return { success: false, error: errorMessage };
+      }
     }
-  });
+  );
 
   ipcMain.handle("user:logout", async () => {
     try {
@@ -3437,7 +3420,6 @@ function setupIPCHandlers() {
   // Handle window selection from overlay
   ipcMain.handle("capture:select-window", async (_event, { windowId }) => {
     try {
-
       // Close the overlay
       if (windowCaptureOverlay) {
         windowCaptureOverlay.close();
@@ -3453,7 +3435,6 @@ function setupIPCHandlers() {
         mode: "window",
         windowId,
       });
-
 
       // Store screenshot data globally
       pendingScreenshot = { dataUrl: result.dataUrl, mode: "window" };
@@ -3823,7 +3804,6 @@ function setupIPCHandlers() {
 
         // If this is a GitHub connector and we have pending tokens, update the connector
         if (connector.type === "github") {
-
           if (pendingGitHubTokens) {
             newConnector = await connectorService.updateConnector(
               newConnector.id,
@@ -3846,7 +3826,6 @@ function setupIPCHandlers() {
 
         // If this is a Zoho connector and we have pending tokens, update the connector
         if (connector.type === "zoho") {
-
           if (pendingZohoTokens) {
             newConnector = await connectorService.updateConnector(
               newConnector.id,
@@ -4315,7 +4294,6 @@ function setupIPCHandlers() {
   // Get GitHub Access Token
   ipcMain.handle("connector:get-github-token", async () => {
     try {
-
       if (!pendingGitHubTokens) {
         log.warn("[GitHub Token] No pending GitHub tokens available");
         return {
@@ -4336,7 +4314,6 @@ function setupIPCHandlers() {
   // Get Zoho Access Token
   ipcMain.handle("connector:get-zoho-token", async () => {
     try {
-
       if (!pendingZohoTokens) {
         log.warn("[Zoho Token] No pending Zoho tokens available");
         return {
@@ -4364,7 +4341,6 @@ function setupIPCHandlers() {
   // File access handler
   ipcMain.handle("file:read-image", async (_event, { filePath }) => {
     try {
-
       // Validate file path
       if (!filePath || typeof filePath !== "string") {
         log.error("[File] Invalid file path provided:", filePath);
@@ -4878,14 +4854,17 @@ function setupIPCHandlers() {
     return { success: true, data: aiService.getMaskedKey(p) };
   });
 
-  ipcMain.handle("ai:set-key", (_, { provider, key }: { provider: string; key: string }) => {
-    try {
-      aiService.setApiKey(provider as import("./services/ai").Provider, key);
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: (error as Error).message };
+  ipcMain.handle(
+    "ai:set-key",
+    (_, { provider, key }: { provider: string; key: string }) => {
+      try {
+        aiService.setApiKey(provider as import("./services/ai").Provider, key);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: (error as Error).message };
+      }
     }
-  });
+  );
 
   ipcMain.handle("ai:clear-key", (_, { provider }: { provider: string }) => {
     try {
@@ -4900,14 +4879,19 @@ function setupIPCHandlers() {
     return { success: true, data: aiService.getActiveProvider() };
   });
 
-  ipcMain.handle("ai:set-active-provider", (_, { provider }: { provider: string }) => {
-    try {
-      aiService.setActiveProvider(provider as import("./services/ai").Provider);
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: (error as Error).message };
+  ipcMain.handle(
+    "ai:set-active-provider",
+    (_, { provider }: { provider: string }) => {
+      try {
+        aiService.setActiveProvider(
+          provider as import("./services/ai").Provider
+        );
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: (error as Error).message };
+      }
     }
-  });
+  );
 
   ipcMain.handle("debug:test-capture", async () => {
     try {

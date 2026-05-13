@@ -105,7 +105,7 @@ export const Pagination: React.FC<PaginationProps> = ({
               <SelectTrigger className="w-20 h-8 bg-gray-900/50 border-gray-800/50 text-gray-300 focus:ring-blue-500/50">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-gray-900/95 backdrop-blur-xl border-gray-800/50 text-gray-300">
+              <SelectContent className="bg-gray-900 border-gray-800/50 text-gray-300">
                 {itemsPerPageOptions.map((option) => (
                   <SelectItem
                     key={option}

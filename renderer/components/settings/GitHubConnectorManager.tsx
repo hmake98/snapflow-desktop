@@ -279,7 +279,7 @@ export function GitHubConnectorManager() {
       {connectors.map((connector) => (
         <div
           key={connector.id}
-          className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-5 hover:border-gray-600/60 transition-all"
+          className="bg-gray-900 border border-gray-800 rounded-md p-5 hover:border-gray-700 transition-all"
         >
           <div className="flex items-center gap-4">
             {/* GitHub icon */}
@@ -383,7 +383,7 @@ export function GitHubConnectorManager() {
 
       {/* Connect CTA — shown when no connectors */}
       {!pendingAuth && connectors.length === 0 && (
-        <div className="border border-dashed border-gray-700/60 rounded-xl p-5 flex items-center justify-between gap-4 hover:border-gray-600/60 transition-all">
+        <div className="border border-dashed border-gray-700/60 rounded-xl p-5 flex items-center justify-between gap-4 hover:border-gray-700 transition-all">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-gray-800 border border-gray-700/50 rounded-lg flex items-center justify-center flex-shrink-0">
               <svg
@@ -433,7 +433,7 @@ export function GitHubConnectorManager() {
       {pendingAuth &&
         (pendingAuth.stage === "selecting" ||
           pendingAuth.stage === "saving") && (
-          <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5 space-y-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-md p-5 space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-gray-100">
                 Select a repository
@@ -468,7 +468,7 @@ export function GitHubConnectorManager() {
                     if (repo)
                       handleRepoSelect(repo.id, repo.name, repo.full_name);
                   }}
-                  className="w-full h-10 px-3 bg-gray-900/60 border border-gray-600/50 text-gray-100 text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+                  className="w-full h-10 px-3 bg-gray-900 border border-gray-800 text-gray-100 text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
                 >
                   <option value="">Choose a repository…</option>
                   {pendingAuth.repos.map((repo) => (
@@ -500,7 +500,7 @@ export function GitHubConnectorManager() {
                       ? `GitHub (${pendingAuth.selectedRepoFullName})`
                       : "My GitHub Repo"
                   }
-                  className="w-full h-10 px-3 bg-gray-900/60 border border-gray-600/50 text-gray-100 text-sm rounded-lg placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+                  className="w-full h-10 px-3 bg-gray-900 border border-gray-800 text-gray-100 text-sm rounded-lg placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
                 />
               </div>
             </div>

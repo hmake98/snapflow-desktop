@@ -128,10 +128,10 @@ function WorkspaceMembersPanel({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/80">
       <div className="bg-gray-900 border border-gray-700/50 rounded-xl w-full max-w-xl mx-4 shadow-2xl flex flex-col max-h-[80vh] overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-700/40 flex-shrink-0">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800 flex-shrink-0">
           <div className="min-w-0">
             <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
               Members — {workspace.name}
@@ -183,7 +183,7 @@ function WorkspaceMembersPanel({
               return (
                 <div
                   key={member.id}
-                  className="flex items-center gap-3 px-2.5 py-2 rounded-lg hover:bg-gray-800/40 transition-colors"
+                  className="flex items-center gap-3 px-2.5 py-2 rounded-lg hover:bg-gray-800 transition-colors"
                 >
                   <Avatar
                     src={member.user.avatarUrl}
@@ -464,8 +464,8 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
   return (
     <div className="max-w-3xl space-y-3">
       {/* ── Organization card ─────────────────────────────────────────────── */}
-      <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-700/40">
+      <div className="bg-gray-900 border border-gray-800 rounded-md overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800">
           <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
             Organization
           </span>
@@ -494,7 +494,7 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
                   type="text"
                   value={tenantName}
                   onChange={(e) => setTenantName(e.target.value)}
-                  className="w-full h-9 px-3 bg-gray-900/60 border border-gray-600/50 rounded-lg text-sm text-gray-100 focus:outline-none focus:border-blue-500/60 transition-all"
+                  className="w-full h-9 px-3 bg-gray-900 border border-gray-800 rounded-lg text-sm text-gray-100 focus:outline-none focus:border-blue-500/70 transition-all"
                   placeholder="Organization name"
                 />
               </div>
@@ -548,8 +548,8 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
       </div>
 
       {/* ── Workspaces card ────────────────────────────────────────────────── */}
-      <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-700/40">
+      <div className="bg-gray-900 border border-gray-800 rounded-md overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
               Workspaces
@@ -619,11 +619,11 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-700/30">
+          <div className="divide-y divide-gray-800">
             {workspaces.map((ws) => (
               <div
                 key={ws.id}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-gray-900/30 transition-colors"
+                className="flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition-colors"
               >
                 <div className="w-8 h-8 bg-indigo-600/15 border border-indigo-500/25 rounded-lg flex items-center justify-center flex-shrink-0">
                   <svg
@@ -725,9 +725,9 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
 
       {/* ── Add / Edit Workspace Modal ────────────────────────────────────── */}
       {modalMode && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/80">
           <div className="bg-gray-900 border border-gray-700/50 rounded-xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-700/40">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800">
               <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
                 {modalMode === "add" ? "Create Workspace" : "Edit Workspace"}
               </span>
@@ -764,7 +764,7 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
                   onChange={(e) =>
                     setForm((f) => ({ ...f, name: e.target.value }))
                   }
-                  className="w-full h-9 px-3 bg-gray-900/60 border border-gray-600/50 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500/60 transition-all"
+                  className="w-full h-9 px-3 bg-gray-900 border border-gray-800 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500/70 transition-all"
                   placeholder="e.g. Mobile Team"
                 />
               </div>
@@ -778,7 +778,7 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
                   onChange={(e) =>
                     setForm((f) => ({ ...f, description: e.target.value }))
                   }
-                  className="w-full px-3 py-2 bg-gray-900/60 border border-gray-600/50 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500/60 transition-all resize-none"
+                  className="w-full px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500/70 transition-all resize-none"
                   placeholder="Optional description"
                 />
               </div>
@@ -812,9 +812,9 @@ export const WorkspacesSection: React.FC<WorkspacesSectionProps> = ({
 
       {/* ── Delete Confirmation Modal ──────────────────────────────────────── */}
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/80">
           <div className="bg-gray-900 border border-gray-700/50 rounded-xl w-full max-w-sm mx-4 shadow-2xl overflow-hidden">
-            <div className="flex items-center px-4 py-2.5 border-b border-gray-700/40">
+            <div className="flex items-center px-4 py-2.5 border-b border-gray-800">
               <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
                 Delete Workspace
               </span>

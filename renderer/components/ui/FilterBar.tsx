@@ -202,7 +202,7 @@ export const SortControl: React.FC<SortControlProps> = ({
       </span>
 
       {/* Sort By Buttons */}
-      <div className="flex rounded-lg border border-gray-800/50 bg-gray-900/50 backdrop-blur-sm overflow-hidden shadow-sm">
+      <div className="flex rounded-lg border border-gray-800/50 bg-gray-900 overflow-hidden shadow-sm">
         {options.map((option, index) => (
           <motion.button
             key={option.value}
@@ -237,7 +237,7 @@ export const SortControl: React.FC<SortControlProps> = ({
         whileTap={{ scale: 0.95 }}
         onClick={() => onSortOrderChange(sortOrder === "asc" ? "desc" : "asc")}
         className={clsx(
-          "flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-800/50 bg-gray-900/50 backdrop-blur-sm transition-all duration-200 shadow-sm",
+          "flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-800/50 bg-gray-900 transition-all duration-200 shadow-sm",
           "text-gray-300 hover:text-gray-100 hover:bg-gray-800/50 hover:border-gray-700/50"
         )}
         title={`Currently sorting ${sortOrder === "asc" ? "ascending" : "descending"}. Click to sort ${sortOrder === "asc" ? "descending" : "ascending"}.`}

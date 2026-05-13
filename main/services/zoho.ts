@@ -72,7 +72,6 @@ export class ZohoService {
     // Construct the Projects API base URL using V3 API (new version)
     // Projects API uses: https://projectsapi.{region}/api/v3/
     this.apiBaseUrl = `https://projectsapi.${domain}/api/v3`;
-
   }
 
   private get clientId(): string {
@@ -123,14 +122,12 @@ export class ZohoService {
    * Exchange authorization code for access and refresh tokens
    */
   async exchangeCodeForTokens(code: string): Promise<ZohoTokens> {
-
     if (!this.clientId || !this.clientSecret) {
       log.error(
         "[Zoho] Missing credentials - ZOHO_CLIENT_ID or ZOHO_CLIENT_SECRET not configured"
       );
       throw new Error("ZOHO_CLIENT_ID or ZOHO_CLIENT_SECRET not configured");
     }
-
 
     try {
       const params = new URLSearchParams({
@@ -143,7 +140,6 @@ export class ZohoService {
 
       const paramsString = params.toString();
 
-
       const response = await axios.post(
         `${this.authBaseUrl}/token`,
         paramsString,
@@ -154,16 +150,13 @@ export class ZohoService {
         }
       );
 
-
       const { access_token, refresh_token, expires_in, api_domain } =
         response.data;
-
 
       if (!access_token) {
         log.error("[Zoho] No access_token in response data:", response.data);
         throw new Error("No access token in response");
       }
-
 
       return {
         accessToken: access_token,
@@ -201,7 +194,6 @@ export class ZohoService {
         log.error("[Zoho] Stack trace:", error.stack);
       }
 
-
       throw new Error(
         `Failed to exchange Zoho authorization code: ${error.response?.data?.error_description || error.message}`,
         { cause: error }
@@ -213,7 +205,6 @@ export class ZohoService {
    * Fetch list of portals for the authenticated user
    */
   async getPortals(accessToken: string): Promise<ZohoPortal[]> {
-
     try {
       const endpoint = `${this.apiBaseUrl}/portals`;
       const response = await axios.get(endpoint, {
@@ -248,7 +239,6 @@ export class ZohoService {
     accessToken: string,
     portalId: string
   ): Promise<ZohoProject[]> {
-
     try {
       const endpoint = `${this.apiBaseUrl}/portal/${portalId}/projects`;
       const response = await axios.get(endpoint, {
@@ -293,12 +283,10 @@ export class ZohoService {
    * Refresh access token using refresh token
    */
   async refreshAccessToken(refreshToken: string): Promise<string> {
-
     if (!this.clientId || !this.clientSecret) {
       log.error("[Zoho] Missing credentials for token refresh");
       throw new Error("ZOHO_CLIENT_ID or ZOHO_CLIENT_SECRET not configured");
     }
-
 
     try {
       const params = new URLSearchParams({
@@ -307,7 +295,6 @@ export class ZohoService {
         client_id: this.clientId,
         client_secret: this.clientSecret,
       });
-
 
       const response = await axios.post(
         `${this.authBaseUrl}/token`,
@@ -318,7 +305,6 @@ export class ZohoService {
           },
         }
       );
-
 
       const { access_token } = response.data;
 
@@ -349,7 +335,6 @@ export class ZohoService {
     bugId: string,
     updates: { title?: string; description?: string }
   ): Promise<void> {
-
     try {
       // Use REST API endpoint (not V3) as per Zoho official documentation
       const domain = new URL(this.accountsServer).hostname.replace(
@@ -376,7 +361,6 @@ export class ZohoService {
           "Content-Type": "application/x-www-form-urlencoded",
         },
       });
-
     } catch (error) {
       log.error("[Zoho] ✗ Failed to update bug");
       log.error("[Zoho] Error status:", error.response?.status);
@@ -385,7 +369,6 @@ export class ZohoService {
         JSON.stringify(error.response?.data, null, 2)
       );
       log.error("[Zoho] Error message:", error.message);
-
 
       let errorMsg = error.message;
       if (error.response?.data?.error?.details?.[0]) {
@@ -414,7 +397,6 @@ export class ZohoService {
     projectId: string,
     bugId: string
   ): Promise<void> {
-
     try {
       // Use REST API endpoint (not V3) as per Zoho official documentation
       const domain = new URL(this.accountsServer).hostname.replace(
@@ -429,7 +411,6 @@ export class ZohoService {
           Authorization: `Zoho-oauthtoken ${accessToken}`,
         },
       });
-
     } catch (error) {
       log.error("[Zoho] ✗ Failed to delete bug");
       log.error("[Zoho] Error status:", error.response?.status);
@@ -458,7 +439,6 @@ export class ZohoService {
     projectId: string,
     bug: { title: string; description?: string; imageUrl?: string }
   ): Promise<{ bugId: string; url: string }> {
-
     try {
       // Use REST API endpoint (not V3) as per Zoho official documentation
       const domain = new URL(this.accountsServer).hostname.replace(
@@ -481,14 +461,12 @@ export class ZohoService {
         description,
       });
 
-
       const response = await axios.post(endpoint, bugData.toString(), {
         headers: {
           Authorization: `Zoho-oauthtoken ${accessToken}`,
           "Content-Type": "application/x-www-form-urlencoded",
         },
       });
-
 
       // Extract bug ID from response
       // REST API returns bugs in an array: { bugs: [{ id_string, id, key, ... }] }
@@ -518,7 +496,6 @@ export class ZohoService {
         url = `https://projects.${domain}/portal/${portalId}#zp/issues/custom-view/${projectId}/list/issue-detail/${bugId}`;
         log.warn("[Zoho] URL not in response, using constructed URL:", url);
       }
-
 
       return { bugId, url };
     } catch (error) {

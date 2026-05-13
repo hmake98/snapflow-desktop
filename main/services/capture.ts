@@ -19,7 +19,6 @@ function ensureFFmpegReady() {
   // Try multiple approaches to find FFmpeg
   const pathsToTry: string[] = [];
 
-
   // Approach 1: Direct path from ffmpeg-static (works in development)
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -91,7 +90,6 @@ function ensureFFmpegReady() {
   } catch (_e) {
     log.warn("[Recording] Could not construct home path");
   }
-
 
   // Try each path
   for (const ffmpegPath of pathsToTry) {
@@ -221,15 +219,11 @@ export class CaptureService extends EventEmitter {
     options: CaptureOptions
   ): Promise<{ dataUrl: string; buffer: Buffer }> {
     try {
-
       // ── Multi-display fullscreen: auto-route to cursor display ────────────
       // On multi-monitor setups the legacy code always picked the primary
       // display. Instead we delegate to captureSpecificScreen() which already
       // handles correct source matching + thumbnail sizing per display.
-      if (
-        options.mode === "fullscreen" &&
-        screen.getAllDisplays().length > 1
-      ) {
+      if (options.mode === "fullscreen" && screen.getAllDisplays().length > 1) {
         const targetDisplay = this.getFullscreenTargetDisplay();
         return this.captureSpecificScreen(targetDisplay.id);
       }
@@ -237,7 +231,6 @@ export class CaptureService extends EventEmitter {
       const primaryDisplay = screen.getPrimaryDisplay();
       const scaleFactor = primaryDisplay.scaleFactor || 1;
       const { width, height } = primaryDisplay.size;
-
 
       // Handle special multi-screen modes before fetching sources
       if (options.mode === "all-screens") {
@@ -271,7 +264,9 @@ export class CaptureService extends EventEmitter {
         }
 
         if (sources.length === 0) {
-          log.error("[Capture] No sources available - permission likely not granted");
+          log.error(
+            "[Capture] No sources available - permission likely not granted"
+          );
           throw new Error(
             "Screen Recording permission denied. Please grant permission in System Preferences > Security & Privacy > Privacy > Screen Recording, then completely quit and restart SnapFlow."
           );
@@ -284,7 +279,10 @@ export class CaptureService extends EventEmitter {
         }
 
         if (!source) {
-          log.error("[Capture] No matching source found for mode:", options.mode);
+          log.error(
+            "[Capture] No matching source found for mode:",
+            options.mode
+          );
           throw new Error("No capture source found");
         }
 
@@ -293,7 +291,9 @@ export class CaptureService extends EventEmitter {
         if (buffer.length >= 1000) break;
 
         if (attempt < MAX_RETRIES) {
-          await new Promise<void>((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+          await new Promise<void>((resolve) =>
+            setTimeout(resolve, RETRY_DELAY_MS)
+          );
         }
       }
 
@@ -305,7 +305,6 @@ export class CaptureService extends EventEmitter {
 
       // Handle region capture
       if (options.mode === "region" && options.bounds) {
-
         // The bounds are in physical pixels relative to the overlay window origin.
         // Convert back to logical screen coordinates so we can find the display.
         const originX = options.originOffset?.x ?? 0;
@@ -367,7 +366,6 @@ export class CaptureService extends EventEmitter {
           width: Math.floor(options.bounds.width),
           height: Math.floor(options.bounds.height),
         };
-
 
         const croppedImage = regionSource.thumbnail.crop(cropRect);
         const regionBuffer = croppedImage.toPNG();
@@ -473,7 +471,6 @@ export class CaptureService extends EventEmitter {
    */
   async captureAllScreens(): Promise<{ dataUrl: string; buffer: Buffer }> {
     try {
-
       const displays = screen.getAllDisplays();
 
       if (displays.length === 1) {
@@ -559,7 +556,6 @@ export class CaptureService extends EventEmitter {
       const totalHeight = Math.max(...captured.map((c) => c.physicalHeight));
       const CHANNELS = 4; // RGBA
 
-
       const output = Buffer.alloc(totalWidth * totalHeight * CHANNELS, 0);
 
       let xOffset = 0;
@@ -605,7 +601,6 @@ export class CaptureService extends EventEmitter {
     cropDock = false
   ): Promise<{ dataUrl: string; buffer: Buffer }> {
     try {
-
       const displays = screen.getAllDisplays();
       const targetDisplay = displays.find((d) => d.id === displayId);
 
@@ -736,7 +731,6 @@ export class CaptureService extends EventEmitter {
       throw new Error("Recording already in progress");
     }
 
-
     this.recordingBounds = bounds;
     this.recordingStartTime = Date.now();
 
@@ -770,7 +764,6 @@ export class CaptureService extends EventEmitter {
       const adjustedY = Math.floor((bounds.y - displayBounds.y) * scaleFactor);
       const adjustedWidth = Math.floor(bounds.width * scaleFactor);
       const adjustedHeight = Math.floor(bounds.height * scaleFactor);
-
 
       // Configure FFmpeg command based on platform
       let ffmpegCmd = ffmpeg();
@@ -854,13 +847,11 @@ export class CaptureService extends EventEmitter {
         this.ffmpegProcess = null;
       });
 
-      ffmpegCmd.on("end", () => {
-      });
+      ffmpegCmd.on("end", () => {});
 
       // Start recording
       this.ffmpegProcess = ffmpegCmd;
       ffmpegCmd.run();
-
     } catch (error) {
       this.ffmpegProcess = null;
       this.recordingOutputPath = null;
@@ -887,7 +878,6 @@ export class CaptureService extends EventEmitter {
     ) {
       throw new Error("No recording in progress");
     }
-
 
     const duration = this.recordingStartTime
       ? Date.now() - this.recordingStartTime
@@ -949,7 +939,6 @@ export class CaptureService extends EventEmitter {
         }
       });
 
-
       // Verify output file exists and has data
       const fs = await import("fs");
       if (!fs.existsSync(outputPath)) {
@@ -969,7 +958,6 @@ export class CaptureService extends EventEmitter {
         outputPath,
         issueId
       );
-
 
       // Clean up
       this.ffmpegProcess = null;
@@ -1014,7 +1002,6 @@ export class CaptureService extends EventEmitter {
     videoPath: string,
     issueId: string
   ): Promise<string> {
-
     // Ensure the thumbnail directory exists
     const thumbnailPath = storageManager.getThumbnailPath(issueId);
     const dirPath = path.dirname(thumbnailPath);

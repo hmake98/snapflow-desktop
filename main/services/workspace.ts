@@ -29,7 +29,6 @@ export class WorkspaceService {
     name: string,
     description?: string
   ): Promise<Workspace> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Workspace Service] ✗ Supabase not configured");
@@ -58,7 +57,6 @@ export class WorkspaceService {
       slug = `${originalSlug}-${attempt}`;
       attempt++;
     }
-
 
     // Insert workspace
     const { data: workspaceData, error: workspaceError } = await supabase
@@ -125,7 +123,6 @@ export class WorkspaceService {
    * List all workspaces in a tenant
    */
   async listWorkspaces(tenantId: string): Promise<Workspace[]> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.warn("[Workspace Service] Supabase not configured");
@@ -150,7 +147,6 @@ export class WorkspaceService {
    * Get workspace by ID
    */
   async getWorkspaceById(id: string): Promise<Workspace | null> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.warn("[Workspace Service] Supabase not configured");
@@ -182,7 +178,6 @@ export class WorkspaceService {
     userId: string,
     role: UserRole
   ): Promise<WorkspaceMember> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Workspace Service] ✗ Supabase not configured");
@@ -219,7 +214,6 @@ export class WorkspaceService {
    * List all members in a workspace
    */
   async listMembers(workspaceId: string): Promise<WorkspaceMember[]> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.warn("[Workspace Service] Supabase not configured");
@@ -246,7 +240,6 @@ export class WorkspaceService {
   async listMembersWithUsers(
     workspaceId: string
   ): Promise<WorkspaceMemberWithUser[]> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.warn("[Workspace Service] Supabase not configured");
@@ -306,7 +299,6 @@ export class WorkspaceService {
    * Remove a member from a workspace
    */
   async removeMember(workspaceId: string, userId: string): Promise<void> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Workspace Service] ✗ Supabase not configured");
@@ -325,7 +317,6 @@ export class WorkspaceService {
       log.error("[Workspace Service] ✗ Error removing member:", error.message);
       throw new Error(error.message);
     }
-
   }
 
   /**
@@ -336,7 +327,6 @@ export class WorkspaceService {
     userId: string,
     role: UserRole
   ): Promise<WorkspaceMember> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Workspace Service] ✗ Supabase not configured");
@@ -379,7 +369,6 @@ export class WorkspaceService {
     email: string,
     role: UserRole
   ): Promise<void> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Workspace Service] ✗ Supabase not configured");
@@ -496,7 +485,6 @@ export class WorkspaceService {
     userId: string,
     updates: { name?: string; description?: string }
   ): Promise<Workspace> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Workspace Service] ✗ Supabase not configured");
@@ -567,7 +555,6 @@ export class WorkspaceService {
       updateData.description = updates.description || null;
     }
 
-
     const { data, error } = await supabase
       .from("workspaces")
       .update(updateData)
@@ -593,7 +580,6 @@ export class WorkspaceService {
    * Delete a workspace (admin only)
    */
   async deleteWorkspace(workspaceId: string, userId: string): Promise<void> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Workspace Service] ✗ Supabase not configured");
@@ -626,7 +612,6 @@ export class WorkspaceService {
       log.error("[Workspace Service] ✗ Delete error:", error.message);
       throw new Error(error.message);
     }
-
   }
 
   /**
@@ -635,7 +620,6 @@ export class WorkspaceService {
   async getUserWorkspaces(
     userId: string
   ): Promise<(Workspace & { role: UserRole })[]> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.warn("[Workspace Service] Supabase not configured");

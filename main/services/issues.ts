@@ -95,7 +95,6 @@ export class SnapService {
     thumbnailPath?: string,
     workspaceId?: string
   ): Promise<Snap> {
-
     const snap: Snap = {
       id: generateIssueId(),
       title,
@@ -110,7 +109,6 @@ export class SnapService {
       workspaceId,
     };
 
-
     const snaps = (store as any).get("snaps");
     snaps.push(snap);
 
@@ -123,7 +121,6 @@ export class SnapService {
   }
 
   getSnaps(userId?: string, workspaceId?: string): Snap[] {
-
     const snaps = (store as any).get("snaps");
     let filtered = userId
       ? snaps.filter((snap) => snap.userId === userId)
@@ -144,7 +141,6 @@ export class SnapService {
   }
 
   async updateSnap(snapId: string, updates: Partial<Snap>): Promise<Snap> {
-
     const snaps = (store as any).get("snaps");
     const index = snaps.findIndex((snap) => snap.id === snapId);
 
@@ -170,7 +166,6 @@ export class SnapService {
   }
 
   async deleteSnap(snapId: string): Promise<void> {
-
     const snaps = (store as any).get("snaps");
     const filteredSnaps = snaps.filter((snap) => snap.id !== snapId);
 
@@ -178,7 +173,6 @@ export class SnapService {
 
     // Delete from file system
     await storageManager.deleteIssue(snapId);
-
   }
 
   async updateSyncStatus(

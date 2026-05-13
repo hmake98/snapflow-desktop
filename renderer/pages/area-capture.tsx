@@ -98,7 +98,6 @@ export default function AreaCapture() {
             height: Math.round(height * actualScaleFactor),
           };
 
-
           // Capture screenshot with these coordinates
           await window.api.captureScreenshot({
             mode: "region",
@@ -169,7 +168,7 @@ export default function AreaCapture() {
       >
         {/* Instructions */}
         <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-          <div className="bg-gray-900/90 backdrop-blur-md border border-gray-700/50 rounded-lg px-5 py-2.5 shadow-2xl">
+          <div className="bg-gray-900/90 backdrop-blur-md border border-gray-800 rounded-lg px-5 py-2.5 shadow-2xl">
             <p className="text-white text-sm font-medium text-center">
               Click and drag to select an area
             </p>

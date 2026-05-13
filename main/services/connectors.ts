@@ -18,7 +18,6 @@ export class ConnectorService {
    * Get all connectors for a workspace (excludes soft-deleted)
    */
   async getConnectors(workspaceId: string): Promise<Connector[]> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Connector Service] ✗ Supabase not configured");
@@ -45,7 +44,6 @@ export class ConnectorService {
    * Get connector by ID (excludes soft-deleted)
    */
   async getConnectorById(id: string): Promise<Connector | null> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.warn("[Connector Service] Supabase not configured");
@@ -77,7 +75,6 @@ export class ConnectorService {
     workspaceId: string,
     type: "github" | "zoho"
   ): Promise<Connector[]> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Connector Service] ✗ Supabase not configured");
@@ -110,7 +107,6 @@ export class ConnectorService {
     owner: string,
     repo: string
   ): Promise<Connector | null> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Connector Service] ✗ Supabase not configured");
@@ -164,7 +160,6 @@ export class ConnectorService {
       "id" | "workspaceId" | "createdBy" | "createdAt" | "updatedAt"
     >
   ): Promise<Connector> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Connector Service] ✗ Supabase not configured");
@@ -254,7 +249,6 @@ export class ConnectorService {
     id: string,
     updates: Partial<Pick<Connector, "enabled" | "name" | "config">>
   ): Promise<Connector> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Connector Service] ✗ Supabase not configured");
@@ -285,7 +279,6 @@ export class ConnectorService {
    * Delete a connector (soft delete - sets deleted_at timestamp)
    */
   async deleteConnector(id: string): Promise<void> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Connector Service] ✗ Supabase not configured");
@@ -301,7 +294,6 @@ export class ConnectorService {
       log.error("[Connector Service] ✗ Failed to delete connector:", error);
       throw new Error("Failed to delete connector");
     }
-
   }
 
   /**
@@ -312,7 +304,6 @@ export class ConnectorService {
     owner: string,
     repo: string
   ): Promise<boolean> {
-
     try {
       const response = await axios.get(
         `https://api.github.com/repos/${owner}/${repo}`,
@@ -349,7 +340,6 @@ export class ConnectorService {
     accessToken: string,
     portalId: string
   ): Promise<boolean> {
-
     try {
       // Stub: In a real implementation, this would call Zoho API
       // For now, just check that the token and portal ID are non-empty
@@ -391,7 +381,6 @@ export class ConnectorService {
 
       const screenshotPath = `.snapflow-screenshots/issue-${issueNumber}-${fileName}`;
 
-
       // Check if file already exists
       let sha: string | undefined;
       try {
@@ -410,8 +399,7 @@ export class ConnectorService {
           }
         );
         sha = existingFile.data.sha;
-      } catch {
-      }
+      } catch {}
 
       const config = connector.config as {
         owner: string;
@@ -526,7 +514,6 @@ export class ConnectorService {
       }
 
       if (issueNumber) {
-
         try {
           const isRecording = issue.type === "recording";
 
@@ -587,7 +574,6 @@ export class ConnectorService {
 
       // Create new issue
       {
-
         const response = await axios.post(
           `https://api.github.com/repos/${config.owner}/${config.repo}/issues`,
           {
@@ -765,7 +751,8 @@ export class ConnectorService {
       }
 
       // Build description with session metadata and screenshots (Zoho uses HTML)
-      let description = issue.description || "Screenshot captured from SnapFlow";
+      let description =
+        issue.description || "Screenshot captured from SnapFlow";
       if (issue.sessionData) {
         const sd = issue.sessionData;
         const durationSec = Math.round(sd.duration / 1000);
@@ -809,7 +796,6 @@ export class ConnectorService {
       } catch (error) {
         // If we get a 401, try to refresh the token
         if (error.response?.status === 401 && config.refreshToken) {
-
           try {
             const newAccessToken = await zohoService.refreshAccessToken(
               config.refreshToken
@@ -895,7 +881,6 @@ export class ConnectorService {
     }
 
     try {
-
       await axios.patch(
         `https://api.github.com/repos/${config.owner}/${config.repo}/issues/${issueNumber}`,
         { state: "closed" },
@@ -907,7 +892,6 @@ export class ConnectorService {
           },
         }
       );
-
     } catch (error) {
       log.error(
         "[GitHub] ✗ Failed to close issue:",
@@ -976,11 +960,9 @@ export class ConnectorService {
           bugId,
           updateData
         );
-
       } catch (error) {
         // If we get a 401, try to refresh the token
         if (error.response?.status === 401 && config.refreshToken) {
-
           try {
             const newAccessToken = await zohoService.refreshAccessToken(
               config.refreshToken
@@ -1009,7 +991,6 @@ export class ConnectorService {
               bugId,
               updateData
             );
-
           } catch (refreshError) {
             log.error("[Zoho] Failed to refresh access token:", refreshError);
             throw new Error(
@@ -1082,11 +1063,9 @@ export class ConnectorService {
           config.projectId,
           bugId
         );
-
       } catch (error) {
         // If we get a 401, try to refresh the token
         if (error.response?.status === 401 && config.refreshToken) {
-
           try {
             const newAccessToken = await zohoService.refreshAccessToken(
               config.refreshToken
@@ -1109,7 +1088,6 @@ export class ConnectorService {
               config.projectId,
               bugId
             );
-
           } catch (refreshError) {
             log.error("[Zoho] Failed to refresh access token:", refreshError);
             throw new Error(

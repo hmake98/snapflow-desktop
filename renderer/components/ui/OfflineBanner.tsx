@@ -9,10 +9,10 @@ export function OfflineBanner() {
 
   return (
     <div
-      className={`w-full px-4 py-2 flex items-center justify-center gap-2 text-xs font-medium transition-all ${
+      className={`flex-shrink-0 w-full px-4 py-1.5 flex items-center justify-center gap-2 text-xs font-medium ${
         isOnline
-          ? "bg-green-900/40 border-b border-green-700/40 text-green-300"
-          : "bg-amber-900/40 border-b border-amber-700/40 text-amber-300"
+          ? "bg-green-900/30 border-b border-green-800/40 text-green-300"
+          : "bg-amber-900/30 border-b border-amber-800/40 text-amber-300"
       }`}
     >
       {isOnline ? (

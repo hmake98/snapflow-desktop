@@ -76,7 +76,6 @@ export class GitHubService {
       );
     }
 
-
     try {
       const response = await axios.post(
         `${this.authBaseUrl}/access_token`,
@@ -103,7 +102,6 @@ export class GitHubService {
         throw new Error("No access token in response");
       }
 
-
       return {
         accessToken: access_token,
         expiresIn: 28800, // GitHub tokens don't expire, but we set a default
@@ -124,7 +122,6 @@ export class GitHubService {
    * Fetch authenticated user's profile
    */
   async getCurrentUser(accessToken: string): Promise<GitHubUser> {
-
     try {
       const response = await axios.get(`${this.apiBaseUrl}/user`, {
         headers: {
@@ -156,7 +153,6 @@ export class GitHubService {
    * Fetch user's accessible repositories
    */
   async getRepositories(accessToken: string): Promise<GitHubRepository[]> {
-
     try {
       const repos: GitHubRepository[] = [];
       let page = 1;
@@ -204,7 +200,6 @@ export class GitHubService {
     repo: string
   ): Promise<boolean> {
     try {
-
       const response = await axios.get(
         `${this.apiBaseUrl}/repos/${owner}/${repo}`,
         {

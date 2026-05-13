@@ -2,7 +2,10 @@ import React, { useState, useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import type { Tenant, Workspace, OnboardingStatus } from "../types";
+import { CenteredLayout, Section, FormRow } from "../components/layout";
 import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
+import { Badge } from "../components/ui/Badge";
 import { Skeleton } from "../components/ui/Skeleton";
 
 function slugify(text: string): string {
@@ -551,568 +554,523 @@ export default function OnboardingPage() {
     return (
       <>
         <Head>
-          <title>SnapFlow - Onboarding</title>
+          <title>SnapFlow – Onboarding</title>
         </Head>
-        <div
-          className="bg-gray-950 flex flex-col overflow-hidden pt-8"
-          style={{ height: "100vh" }}
-        >
-          <div className="flex-1 overflow-y-auto">
-            <div className="max-w-2xl mx-auto py-12 px-4">
-              <div className="text-center mb-12 space-y-3">
-                <Skeleton className="h-10 w-72 mx-auto" />
-                <Skeleton className="h-5 w-56 mx-auto" />
-              </div>
-              <div className="flex justify-between mb-8">
-                {[...Array(5)].map((_, i) => (
-                  <div key={i} className="flex flex-col items-center flex-1">
-                    <Skeleton className="w-10 h-10 rounded-full" />
-                    <Skeleton className="h-3 w-12 mt-2" />
-                  </div>
-                ))}
-              </div>
-              <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6 space-y-4">
-                <Skeleton className="h-7 w-48" />
-                <Skeleton className="h-4 w-80" />
-                <Skeleton className="h-10 w-full rounded-lg" />
-                <Skeleton className="h-10 w-full rounded-lg" />
-                <div className="flex justify-end pt-2">
-                  <Skeleton className="h-10 w-28 rounded-lg" />
-                </div>
-              </div>
-            </div>
+        <CenteredLayout maxWidth="2xl" card={false}>
+          <div className="text-center mb-6 space-y-2">
+            <Skeleton className="h-7 w-72 mx-auto" />
+            <Skeleton className="h-4 w-56 mx-auto" />
           </div>
-        </div>
+          <div className="flex justify-between mb-6">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="flex flex-col items-center flex-1">
+                <Skeleton className="w-8 h-8 rounded-full" />
+                <Skeleton className="h-3 w-12 mt-1.5" />
+              </div>
+            ))}
+          </div>
+          <div className="card p-5 space-y-3">
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-4 w-80" />
+            <Skeleton className="h-9 w-full rounded-md" />
+            <Skeleton className="h-9 w-full rounded-md" />
+          </div>
+        </CenteredLayout>
       </>
     );
   }
 
+  const stepList = isMemberMode ? [4, 5] : [1, 3, 4, 5];
+
   return (
     <>
       <Head>
-        <title>SnapFlow - Onboarding</title>
+        <title>SnapFlow – Onboarding</title>
       </Head>
-      <div
-        className="bg-gray-950 flex flex-col overflow-hidden pt-8"
-        style={{ height: "100vh" }}
-      >
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl mx-auto py-12 px-4">
-            {/* Header */}
-            <div className="text-center mb-12">
-              <h1 className="text-4xl font-bold text-gray-100 mb-2">
-                {isMemberMode ? "Almost Ready" : "Welcome to SnapFlow"}
-              </h1>
-              <p className="text-gray-400">
-                {isMemberMode
-                  ? "Let's connect your tools"
-                  : "Let's set up your workspace in a few steps"}
-              </p>
-            </div>
-
-            {/* Step Indicator */}
-            <div className="flex justify-between mb-8">
-              {(isMemberMode ? [4, 5] : [1, 3, 4, 5]).map((s, idx) => {
-                // Map visible index (1-based) to display number
-                const displayNum = idx + 1;
-                // A visible step is "done" if the actual step has passed it
-                const isDone = step > s;
-                const isActive = step === s;
-                const label = isMemberMode
-                  ? s === 4
-                    ? "Connectors"
-                    : "Done"
-                  : s === 1
-                    ? "Org"
-                    : s === 3
-                      ? "Workspace"
-                      : s === 4
-                        ? "Connectors"
-                        : "Done";
-                return (
-                  <div key={s} className="flex flex-col items-center flex-1">
-                    <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-all ${
-                        isDone || isActive
-                          ? "bg-blue-600 text-white"
-                          : "bg-gray-800 text-gray-500"
-                      }`}
-                    >
-                      {isDone ? "✓" : displayNum}
-                    </div>
-                    <div
-                      className={`text-xs mt-2 ${
-                        isDone || isActive ? "text-gray-300" : "text-gray-600"
-                      }`}
-                    >
-                      {label}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Navigation Header */}
-            {step !== 5 && (
-              <div className="flex justify-between items-center mb-8">
-                {!isMemberMode && (
-                  <Button
-                    onClick={() => {
-                      // Step 2 (invite) removed — step 3 goes back to step 1
-                      const prev = step === 3 ? 1 : Math.max(1, step - 1);
-                      updateStep(prev);
-                    }}
-                    variant="outline"
-                    size="sm"
-                    disabled={step === 1}
-                  >
-                    ← Back
-                  </Button>
-                )}
-                <span className="text-sm text-gray-400 flex-1 text-center">
-                  {isMemberMode
-                    ? `Step ${step === 4 ? 1 : 2} of 2`
-                    : `Step ${step === 1 ? 1 : step === 3 ? 2 : 3} of 3`}
-                </span>
-                <Button
-                  onClick={() => {
-                    // Skip step 2 when advancing manually
-                    const next = step === 1 ? 3 : Math.min(5, step + 1);
-                    updateStep(next);
-                  }}
-                  variant="outline"
-                  size="sm"
-                  disabled={
-                    isMemberMode
-                      ? step === 5
-                      : step === 4 ||
-                        (step === 1 && !tenant) ||
-                        (step === 3 && !workspace)
-                  }
-                >
-                  Next →
-                </Button>
-              </div>
-            )}
-
-            {/* Error Message */}
-            {error && (
-              <div className="mb-6 p-4 bg-red-500/20 border border-red-500/30 text-red-400 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
-
-            {/* Step 1: Create Organization (owner mode only) */}
-            {step === 1 && !isMemberMode && (
-              <div className="bg-gray-900 rounded-xl p-8 border border-gray-800">
-                <h2 className="text-2xl font-bold text-gray-100 mb-6">
-                  Create Your Organization
-                </h2>
-                <div className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Organization Name
-                    </label>
-                    <input
-                      type="text"
-                      value={tenantName}
-                      onChange={(e) => {
-                        setTenantName(e.target.value);
-                        setTenantSlug(slugify(e.target.value));
-                      }}
-                      placeholder="Acme Corp"
-                      className="w-full px-4 py-3 bg-gray-800 border border-gray-700 text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    />
-                  </div>
-                  {tenantSlug && (
-                    <div className="text-sm text-gray-400">
-                      Slug:{" "}
-                      <code className="bg-gray-800 px-2 py-1 rounded">
-                        {tenantSlug}
-                      </code>
-                    </div>
-                  )}
-                  <Button
-                    onClick={handleCreateTenant}
-                    disabled={saving || !tenantName.trim()}
-                    className="w-full"
-                  >
-                    {saving ? "Creating..." : "Next"}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Create Workspace (owner mode only) */}
-            {step === 3 && !isMemberMode && (
-              <div className="bg-gray-900 rounded-xl p-8 border border-gray-800">
-                <h2 className="text-2xl font-bold text-gray-100 mb-2">
-                  Create a Workspace
-                </h2>
-                <p className="text-gray-400 mb-6">
-                  A workspace is a project within your organization
-                </p>
-                <div className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Workspace Name
-                    </label>
-                    <input
-                      type="text"
-                      value={workspaceName}
-                      onChange={(e) => {
-                        setWorkspaceName(e.target.value);
-                        setWorkspaceSlug(slugify(e.target.value));
-                      }}
-                      placeholder="Web Application Project"
-                      className="w-full px-4 py-3 bg-gray-800 border border-gray-700 text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    />
-                  </div>
-                  {workspaceSlug && (
-                    <div className="text-sm text-gray-400">
-                      Slug:{" "}
-                      <code className="bg-gray-800 px-2 py-1 rounded">
-                        {workspaceSlug}
-                      </code>
-                    </div>
-                  )}
-                  <Button
-                    onClick={handleCreateWorkspace}
-                    disabled={saving || !workspaceName.trim()}
-                    className="w-full"
-                  >
-                    {saving ? "Creating..." : "Create Workspace"}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 4: Add Connectors */}
-            {step === 4 && (
-              <div className="bg-gray-900 rounded-xl p-8 border border-gray-800">
-                <div className="flex justify-between items-center mb-2">
-                  <h2 className="text-2xl font-bold text-gray-100">
-                    Connect Your Tools
-                  </h2>
-                </div>
-                <p className="text-gray-400 text-sm mb-6">
-                  Optional – add connectors to sync screenshots, or set them up
-                  later in Settings
-                </p>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  {/* GitHub Card */}
-                  <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-gray-100">GitHub</h3>
-                        {!connectedTypes.has("github") && (
-                          <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded">
-                            Optional
-                          </span>
-                        )}
-                      </div>
-                      {connectedTypes.has("github") && (
-                        <span className="text-green-400 text-lg">✓</span>
-                      )}
-                    </div>
-
-                    {connectedTypes.has("github") ? (
-                      <div className="text-green-400 text-sm">
-                        Connected: {githubSelectedRepoFullName}
-                      </div>
-                    ) : githubOAuthStage === "idle" ? (
-                      <div className="space-y-3">
-                        <p className="text-sm text-gray-400 mb-4">
-                          Sign in with your GitHub account to connect a
-                          repository.
-                        </p>
-                        <Button
-                          onClick={handleGitHubSignIn}
-                          className="w-full py-2 text-sm"
-                          variant="primary"
-                        >
-                          Sign In with GitHub
-                        </Button>
-                      </div>
-                    ) : githubOAuthStage === "waiting" ? (
-                      <div className="flex flex-col items-center space-y-4">
-                        <div className="relative">
-                          <div className="w-6 h-6 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-sm text-gray-100 font-medium">
-                            Authorizing with GitHub...
-                          </p>
-                          <p className="text-xs text-gray-400 mt-1">
-                            Complete the authorization in your browser
-                          </p>
-                        </div>
-                        <Button
-                          onClick={handleGitHubCancelOAuth}
-                          variant="outline"
-                          size="sm"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    ) : githubOAuthStage === "selecting" ||
-                      githubOAuthStage === "saving" ? (
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-200 mb-1">
-                            Repository <span className="text-red-400">*</span>
-                          </label>
-                          <select
-                            value={githubSelectedRepoId}
-                            onChange={(e) => {
-                              const repo = githubRepos.find(
-                                (r) => r.id === parseInt(e.target.value)
-                              );
-                              if (repo) {
-                                handleGitHubRepoSelect(
-                                  repo.id,
-                                  repo.name,
-                                  repo.full_name
-                                );
-                              }
-                            }}
-                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-gray-100 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                          >
-                            <option value="">Choose a repository...</option>
-                            {githubRepos.map((repo) => (
-                              <option key={repo.id} value={repo.id}>
-                                {repo.full_name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {githubOAuthError && (
-                          <div className="text-xs text-red-300 bg-red-900/20 border border-red-800/20 p-2 rounded">
-                            {githubOAuthError}
-                          </div>
-                        )}
-
-                        <div className="flex gap-2">
-                          <Button
-                            onClick={handleGitHubCancelOAuth}
-                            variant="outline"
-                            className="flex-1 py-2 text-sm"
-                            disabled={githubOAuthStage === "saving"}
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            onClick={handleAddGitHubConnector}
-                            disabled={
-                              !githubSelectedRepoId ||
-                              githubOAuthStage === "saving"
-                            }
-                            className="flex-1 py-2 text-sm"
-                          >
-                            {githubOAuthStage === "saving"
-                              ? "Saving..."
-                              : "Connect"}
-                          </Button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  {/* Zoho Card */}
-                  <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-gray-100">
-                          Zoho Projects
-                        </h3>
-                        {!connectedTypes.has("zoho") && (
-                          <span className="text-xs bg-orange-500/20 text-orange-300 px-2 py-1 rounded">
-                            Optional
-                          </span>
-                        )}
-                      </div>
-                      {connectedTypes.has("zoho") && (
-                        <span className="text-green-400 text-lg">✓</span>
-                      )}
-                    </div>
-
-                    {connectedTypes.has("zoho") ? (
-                      <div className="text-green-400 text-sm">
-                        Connected: {zohoSelectedPortalName} /{" "}
-                        {zohoSelectedProjectName}
-                      </div>
-                    ) : zohoOAuthStage === "idle" ? (
-                      <div className="space-y-3">
-                        <p className="text-sm text-gray-400 mb-4">
-                          Sign in with your Zoho account to connect your
-                          projects.
-                        </p>
-                        <Button
-                          onClick={handleZohoSignIn}
-                          className="w-full py-2 text-sm"
-                          variant="primary"
-                        >
-                          Sign In with Zoho
-                        </Button>
-                      </div>
-                    ) : zohoOAuthStage === "waiting" ? (
-                      <div className="flex flex-col items-center space-y-4">
-                        <div className="relative">
-                          <div className="w-8 h-8 border-2 border-orange-500/20 border-t-orange-500 rounded-full animate-spin"></div>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-sm text-gray-100 font-medium">
-                            Authorizing with Zoho...
-                          </p>
-                          <p className="text-xs text-gray-400 mt-1">
-                            Complete the authorization in your browser
-                          </p>
-                        </div>
-                        <Button
-                          onClick={handleZohoCancelOAuth}
-                          variant="outline"
-                          size="sm"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    ) : zohoOAuthStage === "selecting" ||
-                      zohoOAuthStage === "saving" ? (
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-200 mb-1">
-                            Portal <span className="text-red-400">*</span>
-                          </label>
-                          <select
-                            value={zohoSelectedPortalId}
-                            onChange={(e) => {
-                              const portal = zohoPortals.find(
-                                (p) => p.id === e.target.value
-                              );
-                              if (portal) {
-                                handleZohoPortalSelect(portal.id, portal.name);
-                              }
-                            }}
-                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-gray-100 rounded text-sm focus:ring-2 focus:ring-orange-500 outline-none"
-                          >
-                            <option value="">Choose a portal...</option>
-                            {zohoPortals.map((portal) => (
-                              <option key={portal.id} value={portal.id}>
-                                {portal.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {zohoSelectedPortalId && (
-                          <div>
-                            <label className="block text-xs font-medium text-gray-200 mb-1">
-                              Project <span className="text-red-400">*</span>
-                            </label>
-                            <select
-                              value={zohoSelectedProjectId}
-                              onChange={(e) => {
-                                const project = zohoProjects.find(
-                                  (p) => p.id_string === e.target.value
-                                );
-                                if (project) {
-                                  handleZohoProjectSelect(
-                                    project.id_string,
-                                    project.name
-                                  );
-                                }
-                              }}
-                              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-gray-100 rounded text-sm focus:ring-2 focus:ring-orange-500 outline-none"
-                            >
-                              <option value="">Choose a project...</option>
-                              {zohoProjects.map((project) => (
-                                <option
-                                  key={project.id_string}
-                                  value={project.id_string}
-                                >
-                                  {project.name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-
-                        {zohoOAuthError && (
-                          <div className="text-xs text-red-300 bg-red-900/20 border border-red-800/20 p-2 rounded">
-                            {zohoOAuthError}
-                          </div>
-                        )}
-
-                        <div className="flex gap-2">
-                          <Button
-                            onClick={handleZohoCancelOAuth}
-                            variant="outline"
-                            className="flex-1 py-2 text-sm"
-                            disabled={zohoOAuthStage === "saving"}
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            onClick={handleAddZohoConnector}
-                            disabled={
-                              !zohoSelectedPortalId ||
-                              !zohoSelectedProjectId ||
-                              zohoOAuthStage === "saving"
-                            }
-                            className="flex-1 py-2 text-sm"
-                          >
-                            {zohoOAuthStage === "saving"
-                              ? "Saving..."
-                              : "Connect"}
-                          </Button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  <Button onClick={handleComplete} className="w-full">
-                    {saving
-                      ? "Finishing..."
-                      : connectors.length > 0
-                        ? "Continue to SnapFlow"
-                        : "Continue Without Connectors"}
-                  </Button>
-                  {connectors.length > 0 && (
-                    <button
-                      onClick={() => updateStep(4)}
-                      className="text-sm text-gray-400 hover:text-gray-300 text-center"
-                    >
-                      Add another connector
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Step 5: Completion */}
-            {step === 5 && (
-              <div className="bg-gray-900 rounded-xl p-8 border border-gray-800 text-center">
-                <div className="text-6xl mb-6">✓</div>
-                <h2 className="text-3xl font-bold text-gray-100 mb-2">
-                  All Set!
-                </h2>
-                <p className="text-gray-400 mb-8">
-                  Your workspace is ready. Let's start capturing!
-                </p>
-
-                <Button onClick={() => router.push("/home")} className="w-full">
-                  Go to SnapFlow
-                </Button>
-              </div>
-            )}
-          </div>
+      <CenteredLayout maxWidth="2xl" card={false}>
+        <div className="text-center mb-6">
+          <h1 className="text-display">
+            {isMemberMode ? "Almost ready" : "Welcome to SnapFlow"}
+          </h1>
+          <p className="text-muted mt-1">
+            {isMemberMode
+              ? "Let's connect your tools"
+              : "Let's set up your workspace in a few steps"}
+          </p>
         </div>
-      </div>
+
+        {/* Stepper */}
+        <div className="flex items-center justify-between mb-6">
+          {stepList.map((s, idx) => {
+            const displayNum = idx + 1;
+            const isDone = step > s;
+            const isActive = step === s;
+            const label = isMemberMode
+              ? s === 4
+                ? "Connectors"
+                : "Done"
+              : s === 1
+                ? "Organization"
+                : s === 3
+                  ? "Workspace"
+                  : s === 4
+                    ? "Connectors"
+                    : "Done";
+            return (
+              <React.Fragment key={s}>
+                <div className="flex flex-col items-center flex-shrink-0">
+                  <div
+                    className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-colors ${
+                      isDone
+                        ? "bg-blue-600 text-white"
+                        : isActive
+                          ? "bg-blue-600 text-white ring-2 ring-blue-500/30"
+                          : "bg-gray-800 text-gray-500 border border-gray-700"
+                    }`}
+                  >
+                    {isDone ? "✓" : displayNum}
+                  </div>
+                  <div
+                    className={`text-2xs mt-1.5 font-medium ${
+                      isDone || isActive ? "text-gray-300" : "text-gray-600"
+                    }`}
+                  >
+                    {label}
+                  </div>
+                </div>
+                {idx < stepList.length - 1 && (
+                  <div
+                    className={`flex-1 h-px mx-2 ${
+                      step > stepList[idx] ? "bg-blue-600" : "bg-gray-800"
+                    }`}
+                  />
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+
+        {/* Top nav (back / next) */}
+        {step !== 5 && (
+          <div className="flex justify-between items-center mb-4">
+            {!isMemberMode ? (
+              <Button
+                onClick={() => {
+                  const prev = step === 3 ? 1 : Math.max(1, step - 1);
+                  updateStep(prev);
+                }}
+                variant="ghost"
+                size="sm"
+                disabled={step === 1}
+              >
+                ← Back
+              </Button>
+            ) : (
+              <span />
+            )}
+            <span className="text-caption">
+              {isMemberMode
+                ? `Step ${step === 4 ? 1 : 2} of 2`
+                : `Step ${step === 1 ? 1 : step === 3 ? 2 : 3} of 3`}
+            </span>
+            <Button
+              onClick={() => {
+                const next = step === 1 ? 3 : Math.min(5, step + 1);
+                updateStep(next);
+              }}
+              variant="ghost"
+              size="sm"
+              disabled={
+                isMemberMode
+                  ? step === 5
+                  : step === 4 ||
+                    (step === 1 && !tenant) ||
+                    (step === 3 && !workspace)
+              }
+            >
+              Next →
+            </Button>
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className="mb-4 px-3 py-2 bg-red-500/10 border border-red-500/25 text-red-300 rounded-md text-xs">
+            {error}
+          </div>
+        )}
+
+        {/* Step 1: Create Organization */}
+        {step === 1 && !isMemberMode && (
+          <Section
+            title="Create your organization"
+            description="An organization groups your team and workspaces."
+          >
+            <div className="space-y-3">
+              <FormRow label="Organization name" htmlFor="tenantName" required>
+                <Input
+                  id="tenantName"
+                  value={tenantName}
+                  onChange={(e) => {
+                    setTenantName(e.target.value);
+                    setTenantSlug(slugify(e.target.value));
+                  }}
+                  placeholder="Acme Corp"
+                />
+              </FormRow>
+              {tenantSlug && (
+                <p className="text-caption">
+                  Slug:{" "}
+                  <code className="bg-gray-800 px-1.5 py-0.5 rounded text-gray-300">
+                    {tenantSlug}
+                  </code>
+                </p>
+              )}
+              <Button
+                onClick={handleCreateTenant}
+                disabled={!tenantName.trim()}
+                isLoading={saving}
+                fullWidth
+              >
+                Continue
+              </Button>
+            </div>
+          </Section>
+        )}
+
+        {/* Step 3: Create Workspace */}
+        {step === 3 && !isMemberMode && (
+          <Section
+            title="Create a workspace"
+            description="A workspace is a project within your organization."
+          >
+            <div className="space-y-3">
+              <FormRow label="Workspace name" htmlFor="workspaceName" required>
+                <Input
+                  id="workspaceName"
+                  value={workspaceName}
+                  onChange={(e) => {
+                    setWorkspaceName(e.target.value);
+                    setWorkspaceSlug(slugify(e.target.value));
+                  }}
+                  placeholder="Web Application Project"
+                />
+              </FormRow>
+              {workspaceSlug && (
+                <p className="text-caption">
+                  Slug:{" "}
+                  <code className="bg-gray-800 px-1.5 py-0.5 rounded text-gray-300">
+                    {workspaceSlug}
+                  </code>
+                </p>
+              )}
+              <Button
+                onClick={handleCreateWorkspace}
+                disabled={!workspaceName.trim()}
+                isLoading={saving}
+                fullWidth
+              >
+                Create workspace
+              </Button>
+            </div>
+          </Section>
+        )}
+
+        {/* Step 4: Add Connectors */}
+        {step === 4 && (
+          <Section
+            title="Connect your tools"
+            description="Optional — add connectors to sync snaps, or set them up later in Settings."
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+              {/* GitHub */}
+              <div className="card-flat p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-h3">GitHub</h3>
+                    {!connectedTypes.has("github") && (
+                      <Badge variant="gray">Optional</Badge>
+                    )}
+                  </div>
+                  {connectedTypes.has("github") && (
+                    <Badge variant="success">Connected</Badge>
+                  )}
+                </div>
+
+                {connectedTypes.has("github") ? (
+                  <p className="text-caption">{githubSelectedRepoFullName}</p>
+                ) : githubOAuthStage === "idle" ? (
+                  <div className="space-y-3">
+                    <p className="text-caption">
+                      Sign in with GitHub to connect a repository.
+                    </p>
+                    <Button
+                      onClick={handleGitHubSignIn}
+                      variant="primary"
+                      size="sm"
+                      fullWidth
+                    >
+                      Sign in with GitHub
+                    </Button>
+                  </div>
+                ) : githubOAuthStage === "waiting" ? (
+                  <div className="flex flex-col items-center gap-3 py-2">
+                    <div className="w-5 h-5 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
+                    <div className="text-center">
+                      <p className="text-sm text-gray-100 font-medium">
+                        Authorizing…
+                      </p>
+                      <p className="text-caption mt-0.5">
+                        Complete authorization in your browser
+                      </p>
+                    </div>
+                    <Button
+                      onClick={handleGitHubCancelOAuth}
+                      variant="ghost"
+                      size="xs"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : githubOAuthStage === "selecting" ||
+                  githubOAuthStage === "saving" ? (
+                  <div className="space-y-3">
+                    <FormRow label="Repository" required>
+                      <select
+                        value={githubSelectedRepoId}
+                        onChange={(e) => {
+                          const repo = githubRepos.find(
+                            (r) => r.id === parseInt(e.target.value)
+                          );
+                          if (repo) {
+                            handleGitHubRepoSelect(
+                              repo.id,
+                              repo.name,
+                              repo.full_name
+                            );
+                          }
+                        }}
+                        className="input"
+                      >
+                        <option value="">Choose a repository…</option>
+                        {githubRepos.map((repo) => (
+                          <option key={repo.id} value={repo.id}>
+                            {repo.full_name}
+                          </option>
+                        ))}
+                      </select>
+                    </FormRow>
+                    {githubOAuthError && (
+                      <p className="text-xs text-red-300 bg-red-500/10 border border-red-500/25 rounded-md px-2 py-1.5">
+                        {githubOAuthError}
+                      </p>
+                    )}
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handleGitHubCancelOAuth}
+                        variant="ghost"
+                        size="sm"
+                        fullWidth
+                        disabled={githubOAuthStage === "saving"}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleAddGitHubConnector}
+                        disabled={!githubSelectedRepoId}
+                        isLoading={githubOAuthStage === "saving"}
+                        size="sm"
+                        fullWidth
+                      >
+                        Connect
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Zoho */}
+              <div className="card-flat p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-h3">Zoho Projects</h3>
+                    {!connectedTypes.has("zoho") && (
+                      <Badge variant="gray">Optional</Badge>
+                    )}
+                  </div>
+                  {connectedTypes.has("zoho") && (
+                    <Badge variant="success">Connected</Badge>
+                  )}
+                </div>
+
+                {connectedTypes.has("zoho") ? (
+                  <p className="text-caption">
+                    {zohoSelectedPortalName} / {zohoSelectedProjectName}
+                  </p>
+                ) : zohoOAuthStage === "idle" ? (
+                  <div className="space-y-3">
+                    <p className="text-caption">
+                      Sign in with Zoho to connect a project.
+                    </p>
+                    <Button
+                      onClick={handleZohoSignIn}
+                      variant="primary"
+                      size="sm"
+                      fullWidth
+                    >
+                      Sign in with Zoho
+                    </Button>
+                  </div>
+                ) : zohoOAuthStage === "waiting" ? (
+                  <div className="flex flex-col items-center gap-3 py-2">
+                    <div className="w-5 h-5 border-2 border-orange-500/20 border-t-orange-500 rounded-full animate-spin" />
+                    <div className="text-center">
+                      <p className="text-sm text-gray-100 font-medium">
+                        Authorizing…
+                      </p>
+                      <p className="text-caption mt-0.5">
+                        Complete authorization in your browser
+                      </p>
+                    </div>
+                    <Button
+                      onClick={handleZohoCancelOAuth}
+                      variant="ghost"
+                      size="xs"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : zohoOAuthStage === "selecting" ||
+                  zohoOAuthStage === "saving" ? (
+                  <div className="space-y-3">
+                    <FormRow label="Portal" required>
+                      <select
+                        value={zohoSelectedPortalId}
+                        onChange={(e) => {
+                          const portal = zohoPortals.find(
+                            (p) => p.id === e.target.value
+                          );
+                          if (portal) {
+                            handleZohoPortalSelect(portal.id, portal.name);
+                          }
+                        }}
+                        className="input"
+                      >
+                        <option value="">Choose a portal…</option>
+                        {zohoPortals.map((portal) => (
+                          <option key={portal.id} value={portal.id}>
+                            {portal.name}
+                          </option>
+                        ))}
+                      </select>
+                    </FormRow>
+
+                    {zohoSelectedPortalId && (
+                      <FormRow label="Project" required>
+                        <select
+                          value={zohoSelectedProjectId}
+                          onChange={(e) => {
+                            const project = zohoProjects.find(
+                              (p) => p.id_string === e.target.value
+                            );
+                            if (project) {
+                              handleZohoProjectSelect(
+                                project.id_string,
+                                project.name
+                              );
+                            }
+                          }}
+                          className="input"
+                        >
+                          <option value="">Choose a project…</option>
+                          {zohoProjects.map((project) => (
+                            <option
+                              key={project.id_string}
+                              value={project.id_string}
+                            >
+                              {project.name}
+                            </option>
+                          ))}
+                        </select>
+                      </FormRow>
+                    )}
+
+                    {zohoOAuthError && (
+                      <p className="text-xs text-red-300 bg-red-500/10 border border-red-500/25 rounded-md px-2 py-1.5">
+                        {zohoOAuthError}
+                      </p>
+                    )}
+
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handleZohoCancelOAuth}
+                        variant="ghost"
+                        size="sm"
+                        fullWidth
+                        disabled={zohoOAuthStage === "saving"}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleAddZohoConnector}
+                        disabled={
+                          !zohoSelectedPortalId || !zohoSelectedProjectId
+                        }
+                        isLoading={zohoOAuthStage === "saving"}
+                        size="sm"
+                        fullWidth
+                      >
+                        Connect
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <Button
+              onClick={handleComplete}
+              isLoading={saving}
+              fullWidth
+              size="md"
+            >
+              {connectors.length > 0
+                ? "Continue to SnapFlow"
+                : "Continue without connectors"}
+            </Button>
+          </Section>
+        )}
+
+        {/* Step 5: Completion */}
+        {step === 5 && (
+          <Section>
+            <div className="text-center py-4">
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-green-500/15 border border-green-500/30 mb-3">
+                <svg
+                  className="w-6 h-6 text-green-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              </div>
+              <h2 className="text-h1">All set!</h2>
+              <p className="text-muted mt-1.5 mb-5">
+                Your workspace is ready. Let's start capturing.
+              </p>
+              <Button onClick={() => router.push("/home")} fullWidth size="md">
+                Go to SnapFlow
+              </Button>
+            </div>
+          </Section>
+        )}
+      </CenteredLayout>
     </>
   );
 }

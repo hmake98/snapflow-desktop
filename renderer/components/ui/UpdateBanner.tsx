@@ -264,7 +264,7 @@ export function UpdateBanner() {
               {status.type === "downloading" &&
                 status.percent !== undefined && (
                   <div className="mt-3 space-y-2">
-                    <div className="w-full bg-black/30 rounded-full h-2 overflow-hidden backdrop-blur-sm">
+                    <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden backdrop-blur-sm">
                       <div
                         className={`h-2 rounded-full transition-all duration-500 ${
                           status.percent === 100

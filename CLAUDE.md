@@ -2,6 +2,10 @@
 
 This document contains guidelines for Claude Code when working on this Electron + Next.js desktop application.
 
+## Before reading source files
+
+Load `.ai-context/README.md` first. It maps tasks → minimal files to load (e.g. `.ai-context/ipc-map.md` replaces reading `main/background.ts`, which is 4,959 lines). Skip this only when the task is purely conceptual.
+
 ## Project Overview
 
 **SnapFlow Desktop** is a screenshot capture and screen recording tool with team collaboration, multi-tenant workspaces, and sync to GitHub and Zoho Projects.

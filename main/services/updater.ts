@@ -85,7 +85,6 @@ export class UpdaterService {
     const publishConfig = this.getPublishConfig();
 
     if (publishConfig) {
-
       // Configure update feed URL for GitHub releases
       autoUpdater.setFeedURL({
         provider: "github" as const,
@@ -121,7 +120,6 @@ export class UpdaterService {
 
     this.setupAutoUpdater();
     this.isInitialized = true;
-
   }
 
   setMainWindow(window: WindowWithQuitting) {
@@ -143,7 +141,6 @@ export class UpdaterService {
     });
 
     autoUpdater.on("update-available", (info) => {
-
       // Store update info
       this.updateInfo = {
         version: info.version,
@@ -244,7 +241,6 @@ export class UpdaterService {
       const speed = this.formatBytes(progressObj.bytesPerSecond);
       const downloaded = this.formatBytes(progressObj.transferred);
       const total = this.formatBytes(progressObj.total);
-
 
       this.sendStatusToWindow("download-progress", {
         percent,
@@ -511,7 +507,6 @@ export class UpdaterService {
     }
 
     try {
-
       // Disable window close prevention before quitting
       if (this.mainWindow?.setQuitting) {
         this.mainWindow.setQuitting(true);

@@ -133,7 +133,6 @@ function MyApp({ Component, pageProps }: AppProps) {
         const userResult = await window.api.getUser();
         const isAuthenticated = userResult.success && userResult.data;
 
-
         // If user IS authenticated but on auth page, redirect to home/onboarding
         if (isAuthenticated && router.pathname === "/auth") {
           const onboardingResult = await window.api.getOnboardingStatus();
@@ -199,13 +198,15 @@ function MyApp({ Component, pageProps }: AppProps) {
             const activeResult = await window.api.getActiveWorkspaceId?.();
             const savedId = activeResult?.success ? activeResult.data : null;
             const list = workspacesResult.data;
-            const toActivate =
-              list.find((w) => w.id === savedId) ?? list[0];
+            const toActivate = list.find((w) => w.id === savedId) ?? list[0];
             setActiveWorkspace(toActivate);
             setCurrentUserRole((toActivate.role ?? "member") as UserRole);
           }
         } catch (ctxErr) {
-          console.error("[App] Failed to load user context into store:", ctxErr);
+          console.error(
+            "[App] Failed to load user context into store:",
+            ctxErr
+          );
         }
 
         setAuthChecked(true);

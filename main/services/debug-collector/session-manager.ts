@@ -198,7 +198,10 @@ export class SessionManager {
    * @param linkToLatestEvent - Link screenshot to the most recent event (default true)
    * @param force - Bypass debounce and fingerprint dedup (use for manual/user-triggered captures)
    */
-  async captureScreenshot(linkToLatestEvent = true, force = false): Promise<DebugScreenshot> {
+  async captureScreenshot(
+    linkToLatestEvent = true,
+    force = false
+  ): Promise<DebugScreenshot> {
     if (!this.activeSession) {
       throw new Error("No active debug session");
     }

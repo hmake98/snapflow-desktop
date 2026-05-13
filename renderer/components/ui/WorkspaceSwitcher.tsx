@@ -107,7 +107,7 @@ export function WorkspaceSwitcher() {
       {/* Trigger button */}
       <button
         onClick={handleToggle}
-        className="flex items-center gap-1.5 h-7 pl-2.5 pr-2 rounded-md hover:bg-gray-800/70 transition-all text-sm text-gray-400 hover:text-gray-200 max-w-[200px]"
+        className="flex items-center gap-1.5 h-7 pl-2 pr-1.5 rounded-md hover:bg-gray-800 transition-colors text-sm text-gray-300 hover:text-gray-100 max-w-[220px]"
       >
         <svg
           className="w-3.5 h-3.5 text-gray-500 flex-shrink-0"
@@ -142,7 +142,7 @@ export function WorkspaceSwitcher() {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute left-0 top-full mt-2 w-72 bg-gray-900 border border-gray-700/50 rounded-xl shadow-2xl z-50 overflow-hidden">
+        <div className="absolute left-0 top-full mt-1.5 w-72 bg-gray-900 border border-gray-800 rounded-md shadow-lg shadow-black/40 z-50 overflow-hidden animate-fade-in">
           <div className="p-2">
             {loading ? (
               <div className="space-y-1 mt-1">
@@ -199,17 +199,17 @@ export function WorkspaceSwitcher() {
                                 <button
                                   key={ws.id}
                                   onClick={() => handleSelect(ws)}
-                                  className={`w-full flex items-center gap-2.5 px-2 py-2.5 rounded-lg text-left transition-all ${
+                                  className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors ${
                                     isActive
-                                      ? "bg-blue-600/20 border border-blue-500/30"
-                                      : "hover:bg-gray-800/60 border border-transparent"
+                                      ? "bg-blue-600/15 border border-blue-500/30"
+                                      : "hover:bg-gray-800 border border-transparent"
                                   }`}
                                 >
                                   <div
                                     className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 ${
                                       isActive
                                         ? "bg-blue-600 text-white"
-                                        : "bg-gray-700/50 text-gray-400"
+                                        : "bg-gray-800 text-gray-400"
                                     }`}
                                   >
                                     <svg

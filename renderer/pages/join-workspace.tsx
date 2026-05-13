@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import type { Workspace } from "../types";
+import { CenteredLayout } from "../components/layout";
 import { Button } from "../components/ui/Button";
 import { Skeleton } from "../components/ui/Skeleton";
 
@@ -37,7 +38,6 @@ export default function JoinWorkspacePage() {
           setRole(queryRole);
         }
 
-        // Load workspace info
         const result = await window.api.getWorkspaceInfo(workspaceId);
         if (!result.success || !result.data) {
           setError("Failed to load workspace information");
@@ -82,11 +82,8 @@ export default function JoinWorkspacePage() {
         `You've joined ${workspace.name}!`
       );
 
-      // Set this workspace as active so onboarding/home loads the right context.
-      // Must be awaited — subsequent IPC calls on the next page rely on activeWorkspaceId.
       await window.api.setActiveWorkspace(workspace.id);
 
-      // If there are more unaccepted invites, go to the next one immediately
       const next = result.data?.nextPendingInvite;
       if (next) {
         await router.push(
@@ -95,8 +92,6 @@ export default function JoinWorkspacePage() {
         return;
       }
 
-      // Existing users (tenant owners or previously onboarded) go straight to home.
-      // New users go through the member onboarding flow to set up connectors.
       if (result.data?.alreadyOnboarded) {
         await router.push("/home");
       } else {
@@ -112,8 +107,6 @@ export default function JoinWorkspacePage() {
 
   const handleCancel = async () => {
     try {
-      // Check if user already has their own tenant — if so, go home instead of logging out.
-      // A new user who was only invited and cancels should be logged out.
       const tenantResult = await window.api.getUserTenant();
       if (tenantResult.success && tenantResult.data) {
         await router.push("/home");
@@ -130,108 +123,102 @@ export default function JoinWorkspacePage() {
   return (
     <>
       <Head>
-        <title>Join Workspace - SnapFlow</title>
+        <title>Join Workspace – SnapFlow</title>
       </Head>
 
-      <div
-        className="w-screen bg-gradient-to-b from-gray-900 via-gray-950 to-black flex flex-col overflow-hidden pt-8"
-        style={{ height: "100vh" }}
-      >
-        <div className="flex-1 flex items-center justify-center p-4">
-          <div className="w-full max-w-md">
-            {loading ? (
-              <div className="space-y-6">
-                <div className="flex flex-col items-center space-y-4">
-                  <Skeleton className="w-16 h-16 rounded-xl" />
-                  <div className="space-y-2 text-center w-full">
-                    <Skeleton className="h-7 w-56 mx-auto" />
-                    <Skeleton className="h-7 w-48 mx-auto" />
-                  </div>
-                </div>
-                <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6 space-y-3">
-                  <div className="flex justify-between">
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-4 w-32" />
-                  </div>
-                  <div className="flex justify-between">
-                    <Skeleton className="h-4 w-20" />
-                    <Skeleton className="h-4 w-24" />
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <Skeleton className="h-10 flex-1 rounded-lg" />
-                  <Skeleton className="h-10 flex-1 rounded-lg" />
-                </div>
-              </div>
-            ) : error ? (
-              <div className="text-center space-y-4">
-                <div className="inline-block">
-                  <div className="w-12 h-12 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center justify-center">
-                    <span className="text-red-500 text-xl">!</span>
-                  </div>
-                </div>
-                <h2 className="text-xl font-semibold text-gray-100">Error</h2>
-                <p className="text-gray-400">{error}</p>
-                <Button
-                  onClick={handleCancel}
-                  className="w-full bg-gray-800 hover:bg-gray-700 text-gray-100"
-                >
-                  Go Back
-                </Button>
-              </div>
-            ) : workspace ? (
-              <div className="text-center space-y-6">
-                <div className="inline-block">
-                  <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
-                    <span className="text-2xl text-white">🎯</span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <h1 className="text-2xl font-bold text-gray-100">
-                    You've been invited to join
-                  </h1>
-                  <p className="text-2xl font-semibold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
-                    {workspace.name}
-                  </p>
-                </div>
-
-                <div className="space-y-1 text-gray-400">
-                  <p>
-                    <span className="text-gray-300 font-medium">
-                      {tenantName}
-                    </span>
-                  </p>
-                  <p className="text-sm">
-                    Role:{" "}
-                    <span className="text-gray-300 font-medium capitalize">
-                      {role}
-                    </span>
-                  </p>
-                </div>
-
-                <div className="pt-4 space-y-3">
-                  <Button
-                    onClick={handleJoinWorkspace}
-                    disabled={joining}
-                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-medium py-2.5"
-                  >
-                    {joining ? "Joining..." : "Join Workspace"}
-                  </Button>
-
-                  <Button
-                    onClick={handleCancel}
-                    disabled={joining}
-                    className="w-full bg-gray-800 hover:bg-gray-700 text-gray-100 font-medium py-2.5"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            ) : null}
+      <CenteredLayout maxWidth="md">
+        {loading && (
+          <div className="space-y-4">
+            <Skeleton className="h-6 w-2/3" />
+            <Skeleton className="h-4 w-1/2" />
+            <div className="border-t border-gray-800 my-3" />
+            <Skeleton className="h-9 w-full rounded-md" />
+            <Skeleton className="h-9 w-full rounded-md" />
           </div>
-        </div>
-      </div>
+        )}
+
+        {!loading && error && (
+          <div className="text-center">
+            <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-red-500/10 border border-red-500/25 mb-3">
+              <svg
+                className="w-5 h-5 text-red-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </div>
+            <h1 className="text-h1">Unable to load invite</h1>
+            <p className="text-muted mt-1">{error}</p>
+            <Button
+              variant="outline"
+              size="md"
+              fullWidth
+              onClick={handleCancel}
+              className="mt-5"
+            >
+              Go back
+            </Button>
+          </div>
+        )}
+
+        {!loading && !error && workspace && (
+          <>
+            <div className="text-center mb-5">
+              <h1 className="text-h1">You've been invited</h1>
+              <p className="text-muted mt-1">to join a SnapFlow workspace</p>
+            </div>
+
+            <div className="card-flat p-4 space-y-2.5 mb-5">
+              <div className="flex items-center justify-between">
+                <span className="text-caption">Workspace</span>
+                <span className="text-sm font-medium text-gray-100 truncate ml-3">
+                  {workspace.name}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-caption">Organization</span>
+                <span className="text-sm font-medium text-gray-100 truncate ml-3">
+                  {tenantName}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-caption">Role</span>
+                <span className="text-sm font-medium text-gray-100 capitalize">
+                  {role}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Button
+                variant="primary"
+                size="md"
+                fullWidth
+                onClick={handleJoinWorkspace}
+                isLoading={joining}
+              >
+                Join workspace
+              </Button>
+              <Button
+                variant="ghost"
+                size="md"
+                fullWidth
+                onClick={handleCancel}
+                disabled={joining}
+              >
+                Cancel
+              </Button>
+            </div>
+          </>
+        )}
+      </CenteredLayout>
     </>
   );
 }

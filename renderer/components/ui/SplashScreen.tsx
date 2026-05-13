@@ -25,7 +25,7 @@ export function SplashScreen() {
         </h1>
 
         {/* Tagline */}
-        <p className="text-sm text-slate-400 mb-12 tracking-wide uppercase">
+        <p className="text-sm text-gray-400 mb-12 tracking-wide uppercase">
           Screenshot Annotating Tool
         </p>
 
@@ -46,7 +46,7 @@ export function SplashScreen() {
         </div>
 
         {/* Status text */}
-        <p className="text-xs text-slate-500 tracking-wide">
+        <p className="text-xs text-gray-500 tracking-wide">
           Initializing application...
         </p>
       </div>

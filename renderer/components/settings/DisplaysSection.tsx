@@ -113,9 +113,9 @@ export function DisplaysSection() {
   const hasDefault = defaultScreenId !== null;
 
   return (
-    <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg overflow-hidden">
+    <div className="bg-gray-900 border border-gray-800 rounded-md overflow-hidden">
       {/* Card header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-700/40">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800">
         <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
           Multi-Screen Capture
         </span>
@@ -134,9 +134,18 @@ export function DisplaysSection() {
         {/* Toast */}
         {toast && (
           <div className="flex items-start gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/25 rounded-lg">
-            <svg className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg
+              className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
             <span className="text-xs text-amber-300">{toast}</span>
           </div>
@@ -145,13 +154,26 @@ export function DisplaysSection() {
         {/* Auto-mode callout */}
         {isMulti && !hasDefault && (
           <div className="flex items-start gap-2 px-3 py-2 bg-blue-500/8 border border-blue-500/20 rounded-lg">
-            <svg className="w-3.5 h-3.5 text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" />
+            <svg
+              className="w-3.5 h-3.5 text-blue-400 flex-shrink-0 mt-0.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"
+              />
             </svg>
             <div>
-              <p className="text-xs font-semibold text-blue-300">Auto mode active</p>
+              <p className="text-xs font-semibold text-blue-300">
+                Auto mode active
+              </p>
               <p className="text-2xs text-blue-400/70 mt-0.5">
-                Captures whichever display your cursor is on. Pin a display below to always capture a specific screen.
+                Captures whichever display your cursor is on. Pin a display
+                below to always capture a specific screen.
               </p>
             </div>
           </div>
@@ -159,20 +181,27 @@ export function DisplaysSection() {
 
         {/* Display list */}
         {displays.length === 0 ? (
-          <p className="text-xs text-gray-500 py-2 text-center">No displays detected.</p>
+          <p className="text-xs text-gray-500 py-2 text-center">
+            No displays detected.
+          </p>
         ) : displays.length === 1 ? (
           <div className="flex items-center justify-between px-3 py-2.5 bg-gray-900/50 rounded-lg border border-blue-500/30">
             <div className="flex items-center gap-2.5">
               <div className="w-2.5 h-2.5 rounded-full bg-blue-500 flex-shrink-0" />
               <div>
-                <p className="text-sm font-medium text-gray-100">{displays[0].label}</p>
+                <p className="text-sm font-medium text-gray-100">
+                  {displays[0].label}
+                </p>
                 <p className="text-xs text-gray-400">
                   {displays[0].bounds.width} × {displays[0].bounds.height}
-                  {displays[0].scaleFactor !== 1 && ` · ${displays[0].scaleFactor}× scale`}
+                  {displays[0].scaleFactor !== 1 &&
+                    ` · ${displays[0].scaleFactor}× scale`}
                 </p>
               </div>
             </div>
-            <span className="text-2xs font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/30 px-2 py-0.5 rounded-full">Active</span>
+            <span className="text-2xs font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/30 px-2 py-0.5 rounded-full">
+              Active
+            </span>
           </div>
         ) : (
           <div className="space-y-1.5">
@@ -183,29 +212,48 @@ export function DisplaysSection() {
                 <div
                   key={display.id}
                   className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all ${
-                    isPinned ? "bg-blue-500/5 border-blue-500/30" : "bg-gray-900/50 border-gray-700/30"
+                    isPinned
+                      ? "bg-blue-500/5 border-blue-500/30"
+                      : "bg-gray-900/50 border-gray-700/30"
                   }`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                      isPinned ? "bg-blue-500" : display.isPrimary ? "bg-gray-400" : "bg-gray-600"
-                    }`} />
+                    <div
+                      className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                        isPinned
+                          ? "bg-blue-500"
+                          : display.isPrimary
+                            ? "bg-gray-400"
+                            : "bg-gray-600"
+                      }`}
+                    />
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm font-medium text-gray-100">{display.label}</span>
+                        <span className="text-sm font-medium text-gray-100">
+                          {display.label}
+                        </span>
                         {isPinned && (
-                          <span className="text-2xs font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/30 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Pinned</span>
+                          <span className="text-2xs font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/30 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                            Pinned
+                          </span>
                         )}
                         {!isPinned && !hasDefault && (
-                          <span className="text-2xs text-gray-500 bg-gray-700/40 border border-gray-700/50 px-1.5 py-0.5 rounded-full">Auto</span>
+                          <span className="text-2xs text-gray-500 bg-gray-700/40 border border-gray-700/50 px-1.5 py-0.5 rounded-full">
+                            Auto
+                          </span>
                         )}
                       </div>
                       <p className="text-xs text-gray-400 mt-0.5">
                         {display.bounds.width} × {display.bounds.height}
-                        {display.scaleFactor !== 1 && ` · ${display.scaleFactor}× scale`}
+                        {display.scaleFactor !== 1 &&
+                          ` · ${display.scaleFactor}× scale`}
                         {(display.bounds.x !== 0 || display.bounds.y !== 0) && (
                           <span className="text-gray-600">
-                            {" · offset "}{display.bounds.x >= 0 ? "+" : ""}{display.bounds.x}, {display.bounds.y >= 0 ? "+" : ""}{display.bounds.y}
+                            {" · offset "}
+                            {display.bounds.x >= 0 ? "+" : ""}
+                            {display.bounds.x},{" "}
+                            {display.bounds.y >= 0 ? "+" : ""}
+                            {display.bounds.y}
                           </span>
                         )}
                       </p>
@@ -230,11 +278,21 @@ export function DisplaysSection() {
         <div className="text-xs text-gray-500 space-y-0.5 pt-1">
           {isMulti ? (
             <>
-              <p>• <span className="text-gray-400 font-medium">Auto mode</span> captures whichever display your cursor is on.</p>
-              <p>• <span className="text-gray-400 font-medium">Pin a display</span> to always capture it regardless of cursor position.</p>
+              <p>
+                • <span className="text-gray-400 font-medium">Auto mode</span>{" "}
+                captures whichever display your cursor is on.
+              </p>
+              <p>
+                •{" "}
+                <span className="text-gray-400 font-medium">Pin a display</span>{" "}
+                to always capture it regardless of cursor position.
+              </p>
             </>
           ) : (
-            <p>• Multi-screen options appear automatically when you connect an external display.</p>
+            <p>
+              • Multi-screen options appear automatically when you connect an
+              external display.
+            </p>
           )}
         </div>
       </div>

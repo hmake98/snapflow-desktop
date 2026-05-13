@@ -75,7 +75,10 @@ Timeline.displayName = "Timeline";
 
 // ── TimelineItem ──────────────────────────────────────────────────────────
 
-interface TimelineItemProps extends Omit<HTMLMotionProps<"li">, "ref" | "title"> {
+interface TimelineItemProps extends Omit<
+  HTMLMotionProps<"li">,
+  "ref" | "title"
+> {
   title?: React.ReactNode;
   description?: React.ReactNode;
   icon?: React.ReactNode;

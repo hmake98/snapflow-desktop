@@ -32,7 +32,6 @@ export default function AreaSelector() {
   };
 
   useEffect(() => {
-
     // Handle escape key to cancel
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -71,14 +70,12 @@ export default function AreaSelector() {
   };
 
   const handleMouseUp = async () => {
-
     if (isSelecting && startPos && currentPos) {
       // Calculate selection bounds
       const x = Math.min(startPos.x, currentPos.x);
       const y = Math.min(startPos.y, currentPos.y);
       const width = Math.abs(currentPos.x - startPos.x);
       const height = Math.abs(currentPos.y - startPos.y);
-
 
       // Only proceed if there's a meaningful selection (at least 50x50 pixels)
       if (width >= 50 && height >= 50) {
@@ -99,7 +96,6 @@ export default function AreaSelector() {
             error
           );
         }
-      } else {
       }
 
       // Reset selection

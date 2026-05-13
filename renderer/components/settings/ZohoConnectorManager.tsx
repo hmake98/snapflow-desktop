@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Connector } from "../../types";
 import { Button } from "../ui/Button";
+import { ZohoIcon } from "../ui/BrandIcons";
 
 interface ZohoPortal {
   id: string;
@@ -24,15 +25,6 @@ interface PendingZohoAuth {
   connectorName: string;
   stage: OAuthStage;
   error: string;
-}
-
-// Zoho "Z" icon as inline SVG
-function ZohoIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14H8l5-8H8V8h5l-5 8h5v2z" />
-    </svg>
-  );
 }
 
 export function ZohoConnectorManager() {
@@ -313,7 +305,7 @@ export function ZohoConnectorManager() {
       {connectors.map((connector) => (
         <div
           key={connector.id}
-          className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-5 hover:border-gray-600/60 transition-all"
+          className="bg-gray-900 border border-gray-800 rounded-md p-5 hover:border-gray-700 transition-all"
         >
           <div className="flex items-center gap-4">
             {/* Zoho icon */}
@@ -444,7 +436,7 @@ export function ZohoConnectorManager() {
 
       {/* Connect CTA — shown when no connectors */}
       {!pendingAuth && connectors.length === 0 && (
-        <div className="border border-dashed border-gray-700/60 rounded-xl p-5 flex items-center justify-between gap-4 hover:border-gray-600/60 transition-all">
+        <div className="border border-dashed border-gray-700/60 rounded-xl p-5 flex items-center justify-between gap-4 hover:border-gray-700 transition-all">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-orange-600/10 border border-orange-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
               <ZohoIcon className="w-4 h-4 text-orange-400" />
@@ -488,7 +480,7 @@ export function ZohoConnectorManager() {
       {pendingAuth &&
         (pendingAuth.stage === "selecting" ||
           pendingAuth.stage === "saving") && (
-          <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5 space-y-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-md p-5 space-y-4">
             <p className="text-sm font-semibold text-gray-100">
               Select portal &amp; project
             </p>
@@ -507,7 +499,7 @@ export function ZohoConnectorManager() {
                     );
                     if (portal) handlePortalSelect(portal.id, portal.name);
                   }}
-                  className="w-full h-10 px-3 bg-gray-900/60 border border-gray-600/50 text-gray-100 text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all"
+                  className="w-full h-10 px-3 bg-gray-900 border border-gray-800 text-gray-100 text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all"
                 >
                   <option value="">Choose a portal…</option>
                   {pendingAuth.portals.map((portal) => (
@@ -538,7 +530,7 @@ export function ZohoConnectorManager() {
                         handleProjectSelect(project.id_string, project.name);
                     }}
                     disabled={pendingAuth.projects.length === 0}
-                    className="w-full h-10 px-3 bg-gray-900/60 border border-gray-600/50 text-gray-100 text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all disabled:opacity-50"
+                    className="w-full h-10 px-3 bg-gray-900 border border-gray-800 text-gray-100 text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all disabled:opacity-50"
                   >
                     <option value="">
                       {pendingAuth.projects.length === 0
@@ -576,7 +568,7 @@ export function ZohoConnectorManager() {
                       ? `Zoho (${pendingAuth.selectedPortalName} / ${pendingAuth.selectedProjectName})`
                       : "My Zoho Connector"
                   }
-                  className="w-full h-10 px-3 bg-gray-900/60 border border-gray-600/50 text-gray-100 text-sm rounded-lg placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all"
+                  className="w-full h-10 px-3 bg-gray-900 border border-gray-800 text-gray-100 text-sm rounded-lg placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all"
                 />
               </div>
             </div>

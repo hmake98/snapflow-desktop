@@ -103,17 +103,23 @@ export const ToastHost: React.FC = () => {
 
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{
-        title: string;
-        body?: string;
-        variant?: ToastVariant;
-      }>).detail;
+      const detail = (
+        e as // eslint-disable-next-line no-undef
+        CustomEvent<{
+          title: string;
+          body?: string;
+          variant?: ToastVariant;
+        }>
+      ).detail;
       if (!detail || !detail.title) return;
       const id = ++nextId;
       const variant: ToastVariant =
         detail.variant ?? inferVariant(detail.title, detail.body);
       setToasts((prev) => {
-        const next = [...prev, { id, title: detail.title, body: detail.body, variant }];
+        const next = [
+          ...prev,
+          { id, title: detail.title, body: detail.body, variant },
+        ];
         // keep only the most recent MAX_VISIBLE
         return next.slice(-MAX_VISIBLE);
       });
@@ -138,9 +144,14 @@ export const ToastHost: React.FC = () => {
               key={t.id}
               initial={{ opacity: 0, y: 12, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 4, scale: 0.96, transition: { duration: 0.15 } }}
+              exit={{
+                opacity: 0,
+                y: 4,
+                scale: 0.96,
+                transition: { duration: 0.15 },
+              }}
               transition={{ type: "spring", stiffness: 360, damping: 28 }}
-              className={`pointer-events-auto min-w-[260px] max-w-sm bg-gray-900/95 backdrop-blur border ${style.ring} rounded-lg shadow-lg shadow-black/40 px-3.5 py-2.5 flex items-start gap-2.5`}
+              className={`pointer-events-auto min-w-[260px] max-w-sm bg-gray-900 border ${style.ring} rounded-lg shadow-lg shadow-black/40 px-3.5 py-2.5 flex items-start gap-2.5`}
             >
               <div className="flex-shrink-0 mt-0.5">{style.icon}</div>
               <div className="flex-1 min-w-0">
@@ -191,6 +202,7 @@ export function showToast(
   variant?: ToastVariant
 ): void {
   window.dispatchEvent(
+    // eslint-disable-next-line no-undef
     new CustomEvent("snapflow-toast", { detail: { title, body, variant } })
   );
 }

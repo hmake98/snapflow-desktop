@@ -21,7 +21,6 @@ export class TenantService {
     name: string,
     description?: string
   ): Promise<Tenant> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Tenant Service] ✗ Supabase not configured");
@@ -49,7 +48,6 @@ export class TenantService {
       slug = `${originalSlug}-${attempt}`;
       attempt++;
     }
-
 
     const { data, error } = await supabase
       .from("tenants")
@@ -93,7 +91,6 @@ export class TenantService {
    * Get tenant by owner (user)
    */
   async getTenantByOwner(userId: string): Promise<Tenant | null> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.warn("[Tenant Service] Supabase not configured");
@@ -139,7 +136,6 @@ export class TenantService {
    * Get tenant by ID
    */
   async getTenantById(tenantId: string): Promise<Tenant | null> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.warn("[Tenant Service] Supabase not configured");
@@ -172,7 +168,6 @@ export class TenantService {
     userId: string,
     updates: { name?: string; description?: string }
   ): Promise<Tenant> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Tenant Service] ✗ Supabase not configured");
@@ -254,7 +249,6 @@ export class TenantService {
     if (updates.description !== undefined) {
       updateData.description = updates.description || null;
     }
-
 
     const { data, error } = await supabase
       .from("tenants")

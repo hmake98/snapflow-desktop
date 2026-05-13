@@ -31,16 +31,16 @@ function ProfileDropdown({
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2.5 h-9 pl-2 pr-3 rounded-lg hover:bg-gray-800/60 transition-all group"
+        className="flex items-center gap-2 h-8 pl-1 pr-2 rounded-md hover:bg-gray-800 transition-colors"
       >
-        <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-lg flex-shrink-0">
+        <div className="w-6 h-6 bg-blue-600 rounded-md flex items-center justify-center text-white font-semibold text-xs flex-shrink-0">
           {user?.name?.charAt(0).toUpperCase() ?? "?"}
         </div>
-        <span className="text-sm font-medium text-gray-300 max-w-[120px] truncate">
+        <span className="text-sm font-medium text-gray-200 max-w-[120px] truncate">
           {user?.name ?? ""}
         </span>
         <svg
-          className={`w-3.5 h-3.5 text-gray-500 transition-transform flex-shrink-0 ${open ? "rotate-180" : ""}`}
+          className={`w-3 h-3 text-gray-500 transition-transform flex-shrink-0 ${open ? "rotate-180" : ""}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -55,25 +55,22 @@ function ProfileDropdown({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-56 bg-gray-900 border border-gray-700/50 rounded-xl shadow-2xl z-50 overflow-hidden">
-          {/* User info */}
-          <div className="px-4 py-3 border-b border-gray-800">
-            <p className="text-sm font-medium text-gray-200 truncate">
+        <div className="absolute right-0 top-full mt-1.5 w-56 bg-gray-900 border border-gray-800 rounded-md shadow-lg shadow-black/40 z-50 overflow-hidden animate-fade-in">
+          <div className="px-3 py-2.5 border-b border-gray-800">
+            <p className="text-sm font-medium text-gray-100 truncate">
               {user?.name}
             </p>
             <p className="text-xs text-gray-500 truncate mt-0.5">
               {user?.email}
             </p>
           </div>
-
-          {/* Menu items */}
-          <div className="p-1.5 space-y-0.5">
+          <div className="p-1">
             <button
               onClick={() => {
                 setOpen(false);
                 onSettings();
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-800/60 transition-colors text-sm text-gray-300 hover:text-gray-100"
+              className="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-gray-800 transition-colors text-sm text-gray-300 hover:text-gray-100"
             >
               Settings
             </button>
@@ -82,7 +79,7 @@ function ProfileDropdown({
                 setOpen(false);
                 onLogout();
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-800/60 transition-colors text-sm text-gray-300 hover:text-gray-100"
+              className="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-gray-800 transition-colors text-sm text-gray-300 hover:text-gray-100"
             >
               Logout
             </button>
@@ -125,14 +122,14 @@ export function GlobalHeader({ user }: GlobalHeaderProps) {
   }
 
   return (
-    <header className="glass-strong border-b border-white/10 h-12 sticky top-9 z-10 backdrop-blur-xl flex items-center px-4">
-      <div className="max-w-full mx-auto w-full flex items-center justify-between">
+    <header className="flex-shrink-0 h-11 bg-gray-950 border-b border-gray-800 flex items-center px-4">
+      <div className="w-full flex items-center justify-between gap-3">
         {/* Left: Logo + Workspace Selector */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="flex items-center gap-2 flex-shrink-0">
-            <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+            <div className="w-6 h-6 bg-blue-600 rounded-md flex items-center justify-center">
               <svg
-                className="w-4 h-4 text-white"
+                className="w-3.5 h-3.5 text-white"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -145,20 +142,16 @@ export function GlobalHeader({ user }: GlobalHeaderProps) {
                 />
               </svg>
             </div>
-            <span className="text-sm font-bold text-gray-100 hidden sm:inline">
+            <span className="text-sm font-semibold text-gray-100">
               SnapFlow
             </span>
           </div>
-          <div className="hidden sm:block">
-            <WorkspaceSwitcher />
-          </div>
+          <div className="h-5 w-px bg-gray-800" />
+          <WorkspaceSwitcher />
         </div>
 
-        {/* Right: Mobile Workspace + Profile */}
-        <div className="flex items-center gap-2">
-          <div className="sm:hidden">
-            <WorkspaceSwitcher />
-          </div>
+        {/* Right: Profile */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           <ProfileDropdown
             user={user}
             onSettings={handleSettings}

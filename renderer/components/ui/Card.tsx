@@ -1,11 +1,11 @@
 import React from "react";
 import clsx from "clsx";
-import { motion } from "framer-motion";
 
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   hover?: boolean;
   interactive?: boolean;
-  variant?: "default" | "glass" | "elevated";
+  variant?: "default" | "elevated" | "flat";
+  /** Backwards-compat — animations now handled by CSS class .animate-fade-in if needed. */
   animate?: boolean;
 }
 
@@ -13,78 +13,40 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
   (
     {
       className,
-      hover = true,
+      hover = false,
       interactive = false,
       variant = "default",
-      animate = true,
+      animate: _animate,
       children,
       ...props
     },
     ref
   ) => {
-    const baseClasses = "rounded-xl transition-all duration-300";
-
     const variantClasses = {
-      default:
-        "border border-gray-800/50 bg-gray-900/90 shadow-xl backdrop-blur-sm",
-      glass: "border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl",
+      default: "rounded-lg border border-gray-800 bg-gray-900",
       elevated:
-        "border border-gray-700/50 bg-gray-900 shadow-2xl shadow-black/20",
+        "rounded-lg border border-gray-800 bg-gray-900 shadow-lg shadow-black/40",
+      flat: "rounded-lg border border-gray-800/70 bg-gray-900/60",
     };
 
-    const hoverClasses = hover
-      ? {
-          default:
-            "hover:shadow-2xl hover:border-gray-700/50 hover:bg-gray-900",
-          glass: "hover:bg-white/10 hover:border-white/20 hover:shadow-glow",
-          elevated: "hover:shadow-glow hover:border-gray-600/50",
-        }[variant]
-      : "";
+    const hoverClasses =
+      hover || interactive
+        ? "transition-colors duration-150 hover:border-gray-700 hover:bg-gray-900/80"
+        : "";
 
-    const interactiveClasses = interactive
-      ? "hover:scale-[1.02] hover:-translate-y-1 cursor-pointer"
-      : "";
-
-    const cardClassName = clsx(
-      baseClasses,
-      variantClasses[variant],
-      hoverClasses,
-      interactiveClasses,
-      className
-    );
-
-    // Filter out props that conflict with framer-motion
-    const {
-      onDrag: _onDrag,
-      onDragEnd: _onDragEnd,
-      onDragStart: _onDragStart,
-      onDragCapture: _onDragCapture,
-      onDragEndCapture: _onDragEndCapture,
-      onDragStartCapture: _onDragStartCapture,
-      onAnimationStart: _onAnimationStart,
-      onAnimationEnd: _onAnimationEnd,
-      onAnimationStartCapture: _onAnimationStartCapture,
-      onAnimationEndCapture: _onAnimationEndCapture,
-      ...safeProps
-    } = props;
-
-    if (animate) {
-      return (
-        <motion.div
-          ref={ref}
-          className={cardClassName}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
-          {...safeProps}
-        >
-          {children}
-        </motion.div>
-      );
-    }
+    const interactiveClasses = interactive ? "cursor-pointer" : "";
 
     return (
-      <div ref={ref} className={cardClassName} {...props}>
+      <div
+        ref={ref}
+        className={clsx(
+          variantClasses[variant],
+          hoverClasses,
+          interactiveClasses,
+          className
+        )}
+        {...props}
+      >
         {children}
       </div>
     );
@@ -99,7 +61,10 @@ export const CardHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={clsx("flex flex-col space-y-1.5 p-6", className)}
+    className={clsx(
+      "flex flex-col gap-1 px-5 py-4 border-b border-gray-800",
+      className
+    )}
     {...props}
   />
 ));
@@ -112,10 +77,7 @@ export const CardTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <h3
     ref={ref}
-    className={clsx(
-      "text-lg font-semibold leading-none tracking-tight text-gray-100",
-      className
-    )}
+    className={clsx("text-base font-semibold text-gray-100", className)}
     {...props}
   />
 ));
@@ -128,7 +90,7 @@ export const CardDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <p
     ref={ref}
-    className={clsx("text-sm text-gray-400", className)}
+    className={clsx("text-xs text-gray-500", className)}
     {...props}
   />
 ));
@@ -139,7 +101,7 @@ export const CardContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={clsx("p-6 pt-0", className)} {...props} />
+  <div ref={ref} className={clsx("px-5 py-4", className)} {...props} />
 ));
 
 CardContent.displayName = "CardContent";
@@ -150,7 +112,10 @@ export const CardFooter = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={clsx("flex items-center p-6 pt-0", className)}
+    className={clsx(
+      "flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-800",
+      className
+    )}
     {...props}
   />
 ));

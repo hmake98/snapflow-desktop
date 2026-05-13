@@ -222,7 +222,6 @@ class SecureConfig {
    *   3. If store load fails → read bootstrap file → encrypt → store → delete bootstrap → apply to process.env.
    */
   async initialize(): Promise<void> {
-
     // Fast path: all secrets are already encrypted in store.
     const fromStore = tryLoadFromStore();
     if (fromStore) {
@@ -254,7 +253,6 @@ class SecureConfig {
           path.join(process.resourcesPath, ".env"), // electron extraResources
           path.join(process.resourcesPath, "../.env"), // parent of resources
         ];
-
 
         let loaded = false;
         for (const envPath of possiblePaths) {
@@ -290,7 +288,6 @@ class SecureConfig {
           NODE_ENV: process.env.NODE_ENV || "production",
         };
 
-
         // Validate that we actually got the required secrets
         if (
           !bootstrapSecrets.SUPABASE_URL ||
@@ -307,7 +304,6 @@ class SecureConfig {
           );
           return;
         }
-
       } catch (fallbackErr) {
         log.error("[SecureConfig] .env fallback also failed:", fallbackErr);
         log.error(
@@ -320,7 +316,6 @@ class SecureConfig {
     encryptAndStore(bootstrapSecrets);
     deleteBootstrapFile();
     applyToEnv(bootstrapSecrets);
-
   }
 }
 

@@ -129,7 +129,10 @@ export class AiService {
       gemini: process.env.GEMINI_API_KEY,
       anthropic: process.env.ANTHROPIC_API_KEY,
     };
-    return envKey[provider] || (aiStore.get(this.storeKey(provider)) as string | null);
+    return (
+      envKey[provider] ||
+      (aiStore.get(this.storeKey(provider)) as string | null)
+    );
   }
 
   getMaskedKey(provider: Provider): string | null {
@@ -159,7 +162,10 @@ export class AiService {
     aiStore.set("activeProvider", provider);
   }
 
-  getAllStatus(): Record<Provider, { maskedKey: string | null; isActive: boolean }> {
+  getAllStatus(): Record<
+    Provider,
+    { maskedKey: string | null; isActive: boolean }
+  > {
     const active = this.getActiveProvider();
     return (["groq", "openai", "gemini", "anthropic"] as Provider[]).reduce(
       (acc, p) => {
@@ -172,7 +178,10 @@ export class AiService {
 
   private firstConfiguredProvider(exclude: Provider[] = []): Provider | null {
     const order: Provider[] = ["groq", "openai", "gemini", "anthropic"];
-    return order.find((p) => !exclude.includes(p) && !!this.getStoredApiKey(p)) ?? null;
+    return (
+      order.find((p) => !exclude.includes(p) && !!this.getStoredApiKey(p)) ??
+      null
+    );
   }
 
   // ── Generation ──────────────────────────────────────────────────────────
@@ -250,9 +259,12 @@ export class AiService {
         else if (lower.endsWith(".webp")) mediaType = "image/webp";
         dataUrl = `data:${mediaType};base64,${base64}`;
       } catch (err) {
-        throw new Error(`Could not read screenshot: ${(err as Error).message}`, {
-          cause: err,
-        });
+        throw new Error(
+          `Could not read screenshot: ${(err as Error).message}`,
+          {
+            cause: err,
+          }
+        );
       }
     }
 
@@ -307,7 +319,6 @@ Reply with markdown only — no preamble, no code fences. Use this exact structu
 
 Severity guide: critical = crash/data loss/security; high = core feature broken; medium = partial/has workaround; low = cosmetic.`;
 
-
     if (provider === "anthropic") {
       const client = new Anthropic({ apiKey });
       const response = await client.messages.create({
@@ -319,7 +330,11 @@ Severity guide: critical = crash/data loss/security; high = core feature broken;
             content: [
               {
                 type: "image",
-                source: { type: "base64", media_type: mediaType, data: base64! },
+                source: {
+                  type: "base64",
+                  media_type: mediaType,
+                  data: base64!,
+                },
               },
               { type: "text", text: prompt },
             ],
@@ -383,7 +398,10 @@ Severity guide: critical = crash/data loss/security; high = core feature broken;
       }
     }
 
-    const { prompt, contextBlock } = this.buildPrompt(params, imageContent.length);
+    const { prompt, contextBlock } = this.buildPrompt(
+      params,
+      imageContent.length
+    );
     const hasImages = imageContent.length > 0;
 
     const content: OpenAI.Chat.ChatCompletionContentPart[] = [
@@ -462,22 +480,30 @@ Severity guide: critical = crash/data loss/security; high = core feature broken;
     } else {
       const contexts = params.windowContexts ?? [];
       if (contexts.length > 0) {
-        const unique = Array.from(new Map(contexts.map((c) => [c.appName, c])).values());
+        const unique = Array.from(
+          new Map(contexts.map((c) => [c.appName, c])).values()
+        );
         contextParts.push(
           `Applications: ${unique.map((c) => (c.url ? `${c.appName} (${c.url})` : c.appName)).join(", ")}`
         );
       }
       const meaningful = params.typedTexts.filter(
-        (t) => t.replace(/\s/g, "").length >= 2 && new Set(t.replace(/\s/g, "").split("")).size > 1
+        (t) =>
+          t.replace(/\s/g, "").length >= 2 &&
+          new Set(t.replace(/\s/g, "").split("")).size > 1
       );
       if (meaningful.length > 0) {
-        contextParts.push(`Text typed: ${meaningful.map((t) => `"${t}"`).join(", ")}`);
+        contextParts.push(
+          `Text typed: ${meaningful.map((t) => `"${t}"`).join(", ")}`
+        );
       }
       const shortcuts = params.shortcuts.filter(
         (s) => s !== "Tab" && s !== "Escape" && s !== "Enter"
       );
       if (shortcuts.length > 0) {
-        contextParts.push(`Shortcuts used: ${Array.from(new Set(shortcuts)).join(", ")}`);
+        contextParts.push(
+          `Shortcuts used: ${Array.from(new Set(shortcuts)).join(", ")}`
+        );
       }
     }
 
@@ -547,16 +573,29 @@ Write in past tense. Be specific and factual.`;
 
   static friendlyError(err: unknown): string {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("429") || msg.includes("quota") || msg.includes("Too Many Requests")) {
+    if (
+      msg.includes("429") ||
+      msg.includes("quota") ||
+      msg.includes("Too Many Requests")
+    ) {
       return "AI quota exceeded — try again in a moment";
     }
     if (msg.includes("404") || msg.includes("not found")) {
       return "AI model unavailable — check your API key";
     }
-    if (msg.includes("401") || msg.includes("403") || msg.includes("API key") || msg.includes("authentication")) {
+    if (
+      msg.includes("401") ||
+      msg.includes("403") ||
+      msg.includes("API key") ||
+      msg.includes("authentication")
+    ) {
       return "Invalid API key — update it in Settings → AI";
     }
-    if (msg.includes("network") || msg.includes("fetch") || msg.includes("ENOTFOUND")) {
+    if (
+      msg.includes("network") ||
+      msg.includes("fetch") ||
+      msg.includes("ENOTFOUND")
+    ) {
       return "Network error — check your internet connection";
     }
     if (msg.includes("No AI provider")) {

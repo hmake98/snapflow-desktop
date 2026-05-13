@@ -237,7 +237,6 @@ export class SyncService {
       // Create a unique path in the bucket: userId/issueId/filename
       const storagePath = `${userId}/${issueId}/${fileName}`;
 
-
       // Upload to Supabase storage
       const { data, error } = await supabase.storage
         .from(BUCKET_NAME)
@@ -251,7 +250,6 @@ export class SyncService {
         log.error(`[Sync] Error details:`, JSON.stringify(error, null, 2));
         return null;
       }
-
 
       // Get public URL
       const { data: urlData } = supabase.storage
@@ -321,7 +319,6 @@ export class SyncService {
     fileName: string
   ): Promise<string | null> {
     try {
-
       // Fetch file from URL
       const response = await fetch(cloudUrl);
       if (!response.ok) {
@@ -334,7 +331,6 @@ export class SyncService {
       // Get file data as buffer
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
-
 
       // Import storage manager to save the file
       const { storageManager } = await import("../utils/storage");
@@ -410,7 +406,6 @@ export class SyncService {
           }
         }
       }
-
     } catch (error) {
       log.error("[Sync] Error deleting from cloud:", error);
       // Fail gracefully - log the error but don't throw
@@ -493,7 +488,6 @@ export class SyncService {
       // Upload each issue to Supabase
       for (const issue of localIssues) {
         try {
-
           // Upload file to storage and get public URL
           let cloudFileUrl: string | null = null;
           let cloudThumbnailUrl: string | null = null;
@@ -531,10 +525,12 @@ export class SyncService {
             }
 
             // For session snaps: upload all screenshots and collect cloud URLs
-            const sessionData = (issue as any).sessionData as {
-              screenshotPaths?: string[];
-              cloudScreenshotUrls?: string[];
-            } | undefined;
+            const sessionData = (issue as any).sessionData as
+              | {
+                  screenshotPaths?: string[];
+                  cloudScreenshotUrls?: string[];
+                }
+              | undefined;
 
             if (sessionData?.screenshotPaths?.length) {
               for (let i = 0; i < sessionData.screenshotPaths.length; i++) {
@@ -569,11 +565,13 @@ export class SyncService {
 
           // Build session_data with cloud URLs merged in (if this is a session snap)
           let sessionDataForDb: unknown = null;
-          const rawSessionData = (issue as any).sessionData as {
-            screenshotPaths?: string[];
-            cloudScreenshotUrls?: string[];
-            [key: string]: unknown;
-          } | undefined;
+          const rawSessionData = (issue as any).sessionData as
+            | {
+                screenshotPaths?: string[];
+                cloudScreenshotUrls?: string[];
+                [key: string]: unknown;
+              }
+            | undefined;
           if (rawSessionData) {
             sessionDataForDb = {
               ...rawSessionData,
@@ -603,7 +601,6 @@ export class SyncService {
             tags: issue.tags || [],
             session_data: sessionDataForDb,
           };
-
 
           if (existingIssue) {
             // Update existing issue
@@ -803,7 +800,6 @@ export class SyncService {
       // Merge cloud issues with local data
       for (const cloudIssue of cloudIssues) {
         try {
-
           let localFilePath = cloudIssue.file_path;
           let localThumbnailPath = cloudIssue.thumbnail_path;
           // For session snaps: rebuild the screenshotPaths array against the
@@ -812,7 +808,6 @@ export class SyncService {
 
           // Check if this is a cloud-only issue (not in local storage)
           if (!localIssueIds.has(cloudIssue.id)) {
-
             // Download main file from cloud if available
             if (cloudIssue.cloud_file_url) {
               const fileName = path.basename(
@@ -996,7 +991,6 @@ export class SyncService {
           errors: result.errors,
         });
       }
-
     } catch (error) {
       result.success = false;
       result.errors.push(
@@ -1049,7 +1043,6 @@ export class SyncService {
       if (updates.description !== undefined)
         updateData.description = updates.description;
       if (updates.tags !== undefined) updateData.tags = updates.tags;
-
 
       const { error } = await supabase
         .from("snaps")

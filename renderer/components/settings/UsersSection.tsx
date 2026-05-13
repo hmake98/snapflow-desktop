@@ -62,9 +62,7 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
   const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all");
 
   const isAdmin =
-    currentUserRole === "owner" ||
-    currentUserRole === "admin" ||
-    isTenantOwner;
+    currentUserRole === "owner" || currentUserRole === "admin" || isTenantOwner;
 
   const loadMembers = useCallback(async () => {
     try {
@@ -209,7 +207,7 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
   if (!isAdmin) {
     return (
       <div className="max-w-3xl">
-        <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-8 text-center">
+        <div className="bg-gray-900 border border-gray-800 rounded-md p-8 text-center">
           <div className="w-10 h-10 bg-gray-700/40 rounded-lg flex items-center justify-center mx-auto mb-3">
             <svg
               className="w-5 h-5 text-gray-500"
@@ -239,9 +237,9 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
   return (
     <div className="max-w-3xl space-y-3">
       {/* ── Members card ───────────────────────────────────────────────── */}
-      <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg overflow-hidden">
+      <div className="bg-gray-900 border border-gray-800 rounded-md overflow-hidden">
         {/* Card header */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-700/40">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
               Team Members
@@ -273,7 +271,7 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
 
         {/* Search + filter */}
         {!loading && members.length > 1 && (
-          <div className="flex gap-2 px-4 py-2.5 border-b border-gray-700/30 bg-gray-900/20">
+          <div className="flex gap-2 px-4 py-2.5 border-b border-gray-800 bg-gray-900/20">
             <div className="relative flex-1">
               <svg
                 className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500"
@@ -293,13 +291,15 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
                 placeholder="Search members…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 h-7 bg-gray-900/60 border border-gray-700/50 rounded-md text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500/60 transition-colors"
+                className="w-full pl-8 pr-3 h-7 bg-gray-900 border border-gray-800 rounded-md text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500/60 transition-colors"
               />
             </div>
             <select
               value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value as UserRole | "all")}
-              className="h-7 px-2 bg-gray-900/60 border border-gray-700/50 rounded-md text-xs text-gray-400 focus:outline-none focus:border-gray-500/60 transition-colors"
+              onChange={(e) =>
+                setRoleFilter(e.target.value as UserRole | "all")
+              }
+              className="h-7 px-2 bg-gray-900 border border-gray-800 rounded-md text-xs text-gray-400 focus:outline-none focus:border-gray-500/60 transition-colors"
             >
               <option value="all">All roles</option>
               {ALL_ROLES.map((role) => (
@@ -357,7 +357,7 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-700/30">
+          <div className="divide-y divide-gray-800">
             {filteredMembers.map((member) => {
               const isSelf = member.userId === currentUserId;
               const isUpdatingRole = updatingRoleId === member.userId;
@@ -366,7 +366,7 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
               return (
                 <div
                   key={member.id}
-                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-900/30 transition-colors"
+                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-800 transition-colors"
                 >
                   {/* Avatar + identity */}
                   <Avatar
@@ -531,9 +531,9 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
 
       {/* ── Invite Modal ── */}
       {showInviteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/80">
           <div className="bg-gray-900 border border-gray-700/50 rounded-xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-700/40">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
                   Invite Member
@@ -591,7 +591,7 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
                     onChange={(e) =>
                       setInviteForm({ ...inviteForm, email: e.target.value })
                     }
-                    className="w-full pl-9 pr-3 h-9 bg-gray-900/60 border border-gray-600/50 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500/60 transition-all"
+                    className="w-full pl-9 pr-3 h-9 bg-gray-900 border border-gray-800 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500/70 transition-all"
                     disabled={inviting}
                     autoFocus
                   />
@@ -616,7 +616,7 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
                       className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-left transition-all ${
                         inviteForm.role === role
                           ? "border-blue-500/50 bg-blue-500/10"
-                          : "border-gray-700/50 bg-gray-900/40 hover:border-gray-600/60 hover:bg-gray-800/40"
+                          : "border-gray-700/50 bg-gray-900/40 hover:border-gray-700 hover:bg-gray-800"
                       }`}
                     >
                       <div
@@ -666,9 +666,9 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
 
       {/* ── Remove confirm ── */}
       {confirmRemove && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/80">
           <div className="bg-gray-900 border border-gray-700/50 rounded-xl w-full max-w-sm mx-4 shadow-2xl overflow-hidden">
-            <div className="flex items-center px-4 py-2.5 border-b border-gray-700/40">
+            <div className="flex items-center px-4 py-2.5 border-b border-gray-800">
               <span className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
                 Remove Member
               </span>

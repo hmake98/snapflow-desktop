@@ -30,7 +30,6 @@ export class WindowPickerService {
    */
   async getSources(): Promise<RecordingSource[]> {
     try {
-
       // Check screen recording permission first (macOS requirement)
       const hasPermission =
         await captureService.checkScreenRecordingPermission();
@@ -76,7 +75,6 @@ export class WindowPickerService {
         },
       ];
 
-
       // Add window sources (filter out Snapflow windows and inactive windows)
       const windowSources = sources.filter((s) => {
         const isWindow = !s.id.startsWith("screen");
@@ -116,7 +114,6 @@ export class WindowPickerService {
         });
       }
 
-
       // Fallback: if no sources found from desktopCapturer, at least add displays
       if (recordingSources.length === 0) {
         log.warn(
@@ -137,7 +134,6 @@ export class WindowPickerService {
             displayBounds: display.bounds,
           });
         }
-
       }
 
       return recordingSources;

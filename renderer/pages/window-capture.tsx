@@ -91,7 +91,7 @@ export default function WindowCapture() {
         {/* Instructions */}
         {!isLoading && (
           <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-            <div className="bg-gray-900/90 backdrop-blur-md border border-gray-700/50 rounded-lg px-5 py-2.5 shadow-2xl">
+            <div className="bg-gray-900/90 backdrop-blur-md border border-gray-800 rounded-lg px-5 py-2.5 shadow-2xl">
               <p className="text-white text-sm font-medium text-center">
                 Click on a window below to capture it
               </p>
@@ -185,7 +185,7 @@ export default function WindowCapture() {
         {/* No windows found */}
         {!isLoading && windows.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center z-40">
-            <div className="bg-gray-900/90 backdrop-blur-md border border-gray-700/50 rounded-lg px-6 py-4 shadow-2xl">
+            <div className="bg-gray-900/90 backdrop-blur-md border border-gray-800 rounded-lg px-6 py-4 shadow-2xl">
               <p className="text-white text-base font-medium text-center">
                 No windows available to capture
               </p>

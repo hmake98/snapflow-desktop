@@ -5,7 +5,8 @@ import { useRouter } from "next/router";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "../components/ui/Button";
-import { Card, CardContent } from "../components/ui/Card";
+import { Card } from "../components/ui/Card";
+import { GitHubIcon, ZohoIcon } from "../components/ui/BrandIcons";
 import { Badge } from "../components/ui/Badge";
 import { ChipsInput } from "../components/ui/ChipsInput";
 import { SearchInput } from "../components/ui/SearchInput";
@@ -24,11 +25,9 @@ import {
   DialogTitle,
   DialogVisuallyHidden,
 } from "../components/ui/Dialog";
-import { WorkspaceSwitcher } from "../components/ui/WorkspaceSwitcher";
 import { useStore } from "../store/useStore";
 import { LocalImage } from "../components/ui/LocalImage";
-import { ProfileDropdown } from "../components/ui/ProfileDropdown";
-import { OfflineBanner } from "../components/ui/OfflineBanner";
+import { AppShell } from "../components/layout";
 import { useSyncQueue } from "../hooks/useSyncQueue";
 import type { Issue } from "../types";
 
@@ -62,7 +61,8 @@ function formatBugReportMarkdown(report: BugReport): string {
     lines.push(`\n## Actual Behavior\n${report.actual}`);
   }
   if (report.severity) {
-    const sev = report.severity.charAt(0).toUpperCase() + report.severity.slice(1);
+    const sev =
+      report.severity.charAt(0).toUpperCase() + report.severity.slice(1);
     lines.push(`\n## Severity\n${sev}`);
   }
   return lines.join("\n");
@@ -81,7 +81,6 @@ export default function HomePage() {
     updateIssue,
     activeWorkspace,
     setActiveWorkspace,
-    resetStore,
   } = useStore();
 
   const syncQueue = useSyncQueue(() => loadData());
@@ -93,11 +92,11 @@ export default function HomePage() {
   // Connectors loaded once at page level; passed as a prop to sync dropdowns
   // so that 12 cards don't each make their own IPC call on mount.
   const [connectors, setConnectors] = useState<any[]>([]);
-  const [workspaceId, setWorkspaceId] = useState<string>("");
+  const [_workspaceId, setWorkspaceId] = useState<string>("");
   const [filter, setFilter] = useState<"all" | "screenshot" | "session">("all");
-  const [statusFilter, setStatusFilter] = useState<
-    "all" | "github" | "zoho"
-  >("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "github" | "zoho">(
+    "all"
+  );
   const [sortBy, setSortBy] = useState<"date" | "name">("name");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -419,7 +418,6 @@ export default function HomePage() {
     }
   };
 
-
   const confirmDelete = (issueId: string) => {
     setIssueToDelete(issueId);
     setDeleteDialogOpen(true);
@@ -681,13 +679,7 @@ export default function HomePage() {
           className={className}
           title="No GitHub repositories configured. Go to Settings to add one."
         >
-          <svg
-            className="w-4 h-4 opacity-50"
-            fill="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-          </svg>
+          <GitHubIcon className="w-4 h-4 opacity-50" />
         </Button>
       );
     }
@@ -710,9 +702,7 @@ export default function HomePage() {
               : `Sync to ${connector.name}`
           }
         >
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-          </svg>
+          <GitHubIcon className="w-4 h-4" />
           {isAlreadySynced && (
             <svg
               className="w-3 h-3 text-green-400 ml-1"
@@ -744,9 +734,7 @@ export default function HomePage() {
           className={className}
           title="Sync to GitHub repository"
         >
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-          </svg>
+          <GitHubIcon className="w-4 h-4" />
         </Button>
 
         {/* Centered Modal Dialog */}
@@ -762,7 +750,7 @@ export default function HomePage() {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
-                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9998]"
+                    className="fixed inset-0 bg-gray-950/80 z-[9998]"
                     onClick={(e) => {
                       e.stopPropagation();
                       setIsOpen(false);
@@ -779,20 +767,14 @@ export default function HomePage() {
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.9, y: 20 }}
                       transition={{ duration: 0.2, ease: "easeOut" }}
-                      className="bg-gray-900/98 backdrop-blur-xl border border-gray-700/70 rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col pointer-events-auto"
+                      className="bg-gray-900 border border-gray-800 rounded-md shadow-lg shadow-black/40 w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col pointer-events-auto"
                       onClick={(e) => e.stopPropagation()}
                     >
                       {/* Header */}
-                      <div className="px-6 py-4 border-b border-gray-800/50 flex items-center justify-between flex-shrink-0">
+                      <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between flex-shrink-0">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 bg-blue-600/20 border border-blue-500/30 rounded-xl flex items-center justify-center">
-                            <svg
-                              className="w-5 h-5 text-blue-400"
-                              fill="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-                            </svg>
+                            <GitHubIcon className="w-5 h-5 text-blue-400" />
                           </div>
                           <div>
                             <h3 className="text-lg font-semibold text-gray-100">
@@ -845,7 +827,7 @@ export default function HomePage() {
                                 className={`w-full p-4 rounded-xl border transition-all duration-200 flex items-start gap-3 group ${
                                   isAlreadySynced
                                     ? "bg-green-500/10 border-green-500/30 cursor-not-allowed"
-                                    : "bg-gray-800/30 border-gray-700/50 hover:bg-gray-800/60 hover:border-gray-600/50 active:scale-[0.98] cursor-pointer"
+                                    : "bg-gray-800/30 border-gray-800 hover:bg-gray-800/60 hover:border-gray-600/50 active:scale-[0.98] cursor-pointer"
                                 }`}
                               >
                                 <div
@@ -870,13 +852,7 @@ export default function HomePage() {
                                       />
                                     </svg>
                                   ) : (
-                                    <svg
-                                      className="w-6 h-6"
-                                      fill="currentColor"
-                                      viewBox="0 0 24 24"
-                                    >
-                                      <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-                                    </svg>
+                                    <GitHubIcon className="w-6 h-6" />
                                   )}
                                 </div>
                                 <div className="flex-1 min-w-0 text-left">
@@ -931,7 +907,7 @@ export default function HomePage() {
                       </div>
 
                       {/* Footer */}
-                      <div className="px-6 py-4 border-t border-gray-800/50 bg-gray-900/50 flex-shrink-0">
+                      <div className="px-6 py-4 border-t border-gray-800 bg-gray-900/50 flex-shrink-0">
                         <button
                           onClick={() => {
                             setIsOpen(false);
@@ -1006,15 +982,7 @@ export default function HomePage() {
           className={className}
           title="No Zoho projects configured. Go to Settings to add one."
         >
-          <svg
-            className="w-4 h-4 text-orange-500 opacity-50"
-            fill="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <text x="2" y="18" fontSize="20" fontWeight="bold">
-              Z
-            </text>
-          </svg>
+          <ZohoIcon className="w-4 h-4 text-orange-500 opacity-50" />
         </Button>
       );
     }
@@ -1037,15 +1005,7 @@ export default function HomePage() {
               : `Sync to ${connector.config?.projectName || connector.name}`
           }
         >
-          <svg
-            className="w-4 h-4 text-orange-500"
-            fill="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <text x="2" y="18" fontSize="20" fontWeight="bold">
-              Z
-            </text>
-          </svg>
+          <ZohoIcon className="w-4 h-4 text-orange-500" />
           {isAlreadySynced && (
             <svg
               className="w-3 h-3 text-green-400 ml-1"
@@ -1077,15 +1037,7 @@ export default function HomePage() {
           className={className}
           title="Sync to Zoho project"
         >
-          <svg
-            className="w-4 h-4 text-orange-500"
-            fill="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <text x="2" y="18" fontSize="20" fontWeight="bold">
-              Z
-            </text>
-          </svg>
+          <ZohoIcon className="w-4 h-4 text-orange-500" />
         </Button>
 
         {/* Modal Dialog */}
@@ -1207,69 +1159,44 @@ export default function HomePage() {
     }
   };
 
-  const handleLogout = async () => {
-    // Wipe ALL store state atomically so the next user starts clean.
-    // Do this before calling logout() to prevent any brief render with stale data.
-    resetStore();
-    try {
-      await window.api.logout();
-      window.api.showNotification(
-        "Signed Out",
-        "You have been logged out of SnapFlow"
-      );
-    } catch (error) {
-      console.error("[Logout] error:", error);
-      window.api.showNotification("Signed Out", "Session ended");
-    } finally {
-      router.push("/auth");
-    }
-  };
-
   if (loading) {
     return (
       <>
         <Head>
           <title>Home - SnapFlow</title>
         </Head>
-        <div className="min-h-screen bg-gray-950 pt-8">
-          <header className="bg-gray-950 border-b border-gray-800/40 sticky top-8 z-20 flex items-center justify-between h-11 px-4">
-            <Skeleton className="h-7 w-40 rounded-md" />
-            <Skeleton className="h-7 w-7 rounded-full" />
-          </header>
-          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="mb-8 space-y-4">
-              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+        <AppShell>
+          <div className="max-w-6xl mx-auto px-6 py-5">
+            <div className="mb-5 space-y-3">
+              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3">
                 <div className="flex gap-2">
                   {[...Array(3)].map((_, i) => (
-                    <Skeleton key={i} className="h-8 w-24 rounded-full" />
+                    <Skeleton key={i} className="h-7 w-20 rounded-md" />
                   ))}
                 </div>
-                <div className="flex gap-3 w-full lg:w-auto">
-                  <Skeleton className="h-9 w-64 rounded-lg" />
-                  <Skeleton className="h-9 w-28 rounded-lg" />
+                <div className="flex gap-2 w-full lg:w-auto">
+                  <Skeleton className="h-9 w-60 rounded-md" />
+                  <Skeleton className="h-9 w-24 rounded-md" />
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {[...Array(6)].map((_, i) => (
-                <div
-                  key={i}
-                  className="bg-gray-800/30 border border-gray-700/50 rounded-xl overflow-hidden"
-                >
-                  <Skeleton className="h-40 w-full rounded-none" />
-                  <div className="p-4 space-y-3">
-                    <Skeleton className="h-5 w-3/4" />
-                    <Skeleton className="h-4 w-1/2" />
+                <div key={i} className="card overflow-hidden">
+                  <Skeleton className="h-36 w-full rounded-none" />
+                  <div className="p-3 space-y-2">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-1/2" />
                     <div className="flex gap-2 pt-1">
-                      <Skeleton className="h-5 w-16 rounded-full" />
-                      <Skeleton className="h-5 w-16 rounded-full" />
+                      <Skeleton className="h-5 w-14 rounded" />
+                      <Skeleton className="h-5 w-14 rounded" />
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-          </main>
-        </div>
+          </div>
+        </AppShell>
       </>
     );
   }
@@ -1279,30 +1206,13 @@ export default function HomePage() {
       <Head>
         <title>Home - SnapFlow</title>
       </Head>
-      <div className="min-h-screen bg-gray-950 pt-8">
-        {/* App header — sits below the global traffic light bar (pt-8) */}
-        <header className="bg-gray-950 border-b border-gray-800/40 sticky top-8 z-20 flex items-center justify-between h-11 px-4">
-          {/* Left: workspace switcher + silent refresh indicator */}
-          <div className="flex items-center gap-2 min-w-0">
-            <WorkspaceSwitcher />
-            {isRefreshing && (
-              <div
-                className="w-3.5 h-3.5 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin flex-shrink-0"
-                title="Refreshing…"
-              />
-            )}
+      <AppShell>
+        {isRefreshing && (
+          <div className="flex-shrink-0 px-4 py-1.5 bg-gray-950 border-b border-gray-800 flex items-center gap-2 text-xs text-gray-500">
+            <div className="w-3 h-3 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin flex-shrink-0" />
+            <span>Refreshing…</span>
           </div>
-
-          {/* Right: profile */}
-          <ProfileDropdown
-            user={user}
-            onSettings={() => router.push("/settings")}
-            onLogout={handleLogout}
-          />
-        </header>
-
-        {/* Offline / queued sync indicator */}
-        <OfflineBanner />
+        )}
 
         {/* Cloud sync banner — visible while snaps are being pulled from cloud */}
         {cloudSync.active && (
@@ -1364,286 +1274,297 @@ export default function HomePage() {
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {/* Toolbar — hidden until the user has snaps */}
-          {issues.length > 0 && (() => {
-            const typeCounts = {
-              all: issues.length,
-              screenshot: issues.filter(
-                (i) => !(i as any).sessionData && i.type === "screenshot"
-              ).length,
-              session: issues.filter((i) => !!(i as any).sessionData).length,
-            };
-            const statusCounts = {
-              all: issues.length,
-              github: issues.filter((i) =>
-                i.syncedTo?.some((s) => s.platform === "github")
-              ).length,
-              zoho: issues.filter((i) =>
-                i.syncedTo?.some((s) => s.platform === "zoho")
-              ).length,
-            };
-            const TYPE_OPTIONS: { id: "all" | "screenshot" | "session"; label: string }[] = [
-              { id: "all", label: "All" },
-              { id: "screenshot", label: "Screenshots" },
-              { id: "session", label: "Sessions" },
-            ];
-            const STATUS_OPTIONS: { id: "all" | "github" | "zoho"; label: string }[] = [
-              { id: "all", label: "All" },
-              { id: "github", label: "GitHub" },
-              { id: "zoho", label: "Zoho" },
-            ];
-            const showStatusRow =
-              statusCounts.github > 0 || statusCounts.zoho > 0;
-            return (
-            <motion.div
-              className="mb-6 space-y-3"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.15 }}
-            >
-              {/* Primary toolbar — segmented type + search + sort + view */}
-              <div className="flex flex-col md:flex-row md:items-center gap-3">
-                {/* Type segmented control */}
-                <div
-                  className="inline-flex bg-gray-800/40 border border-gray-700/50 rounded-lg p-0.5 flex-shrink-0"
-                  role="group"
-                  aria-label="Filter by type"
+          {issues.length > 0 &&
+            (() => {
+              const typeCounts = {
+                all: issues.length,
+                screenshot: issues.filter(
+                  (i) => !(i as any).sessionData && i.type === "screenshot"
+                ).length,
+                session: issues.filter((i) => !!(i as any).sessionData).length,
+              };
+              const statusCounts = {
+                all: issues.length,
+                github: issues.filter((i) =>
+                  i.syncedTo?.some((s) => s.platform === "github")
+                ).length,
+                zoho: issues.filter((i) =>
+                  i.syncedTo?.some((s) => s.platform === "zoho")
+                ).length,
+              };
+              const TYPE_OPTIONS: {
+                id: "all" | "screenshot" | "session";
+                label: string;
+              }[] = [
+                { id: "all", label: "All" },
+                { id: "screenshot", label: "Screenshots" },
+                { id: "session", label: "Sessions" },
+              ];
+              const STATUS_OPTIONS: {
+                id: "all" | "github" | "zoho";
+                label: string;
+              }[] = [
+                { id: "all", label: "All" },
+                { id: "github", label: "GitHub" },
+                { id: "zoho", label: "Zoho" },
+              ];
+              const showStatusRow =
+                statusCounts.github > 0 || statusCounts.zoho > 0;
+              return (
+                <motion.div
+                  className="mb-6 space-y-3"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.15 }}
                 >
-                  {TYPE_OPTIONS.map((opt) => {
-                    const active = filter === opt.id;
-                    const count = typeCounts[opt.id];
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => setFilter(opt.id as any)}
-                        aria-pressed={active}
-                        className={`h-7 px-3 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 ${
-                          active
-                            ? "bg-blue-600/25 text-blue-200 shadow-sm"
-                            : "text-gray-400 hover:text-gray-200 hover:bg-gray-700/40"
-                        }`}
-                      >
-                        {opt.label}
-                        <span
-                          className={`text-2xs px-1.5 py-0.5 rounded-full font-semibold tabular-nums ${
-                            active
-                              ? "bg-blue-500/30 text-blue-100"
-                              : "bg-gray-700/50 text-gray-500"
-                          }`}
-                        >
-                          {count}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Search */}
-                <div className="flex-1 min-w-0">
-                  <SearchInput
-                    value={searchQuery}
-                    onChange={setSearchQuery}
-                    placeholder="Search your snaps..."
-                    className="w-full max-w-md"
-                    variant="glass"
-                    suggestions={issues.map((issue) => issue.title).slice(0, 5)}
-                  />
-                </div>
-
-                {/* Sort + view toggle */}
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {/* Compact sort */}
-                  <div
-                    className="inline-flex bg-gray-800/40 border border-gray-700/50 rounded-lg p-0.5"
-                    role="group"
-                    aria-label="Sort by"
-                  >
-                    {[
-                      { value: "date" as const, label: "Date" },
-                      { value: "name" as const, label: "Name" },
-                    ].map((opt) => {
-                      const active = sortBy === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setSortBy(opt.value)}
-                          aria-pressed={active}
-                          className={`h-7 px-2.5 text-xs font-medium rounded-md transition-all ${
-                            active
-                              ? "bg-blue-600/25 text-blue-200"
-                              : "text-gray-400 hover:text-gray-200 hover:bg-gray-700/40"
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSortOrder(sortOrder === "asc" ? "desc" : "asc")
-                    }
-                    title={
-                      sortOrder === "asc"
-                        ? "Sorted ascending — click to flip"
-                        : "Sorted descending — click to flip"
-                    }
-                    className="h-7 w-7 inline-flex items-center justify-center rounded-lg border border-gray-700/50 bg-gray-800/40 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-colors"
-                  >
-                    <svg
-                      className={`w-3.5 h-3.5 transition-transform ${
-                        sortOrder === "desc" ? "rotate-180" : ""
-                      }`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+                  {/* Primary toolbar — segmented type + search + sort + view */}
+                  <div className="flex flex-col md:flex-row md:items-center gap-3">
+                    {/* Type segmented control */}
+                    <div
+                      className="inline-flex bg-gray-900 border border-gray-800 rounded-md p-0.5 flex-shrink-0"
+                      role="group"
+                      aria-label="Filter by type"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
-                      />
-                    </svg>
-                  </button>
-
-                  <div
-                    className="inline-flex rounded-lg border border-gray-700/50 bg-gray-800/40 p-0.5"
-                    role="group"
-                    aria-label="View mode"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setViewMode("grid")}
-                      aria-pressed={viewMode === "grid"}
-                      title="Grid view"
-                      className={`h-7 w-7 rounded-md flex items-center justify-center transition-colors ${
-                        viewMode === "grid"
-                          ? "bg-blue-600/25 text-blue-200"
-                          : "text-gray-500 hover:text-gray-200"
-                      }`}
-                    >
-                      <svg
-                        className="w-3.5 h-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M4 6h6v6H4zM14 6h6v6h-6zM4 16h6v4H4zM14 16h6v4h-6z"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode("list")}
-                      aria-pressed={viewMode === "list"}
-                      title="List view"
-                      className={`h-7 w-7 rounded-md flex items-center justify-center transition-colors ${
-                        viewMode === "list"
-                          ? "bg-blue-600/25 text-blue-200"
-                          : "text-gray-500 hover:text-gray-200"
-                      }`}
-                    >
-                      <svg
-                        className="w-3.5 h-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M4 6h16M4 12h16M4 18h16"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Secondary row — sync status chips + tag chips, only when relevant */}
-              {(showStatusRow || allTags.length > 0) && (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
-                  {showStatusRow && (
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-2xs font-semibold uppercase tracking-wide text-gray-500">
-                        Sync
-                      </span>
-                      {STATUS_OPTIONS.map((opt) => {
-                        const active = statusFilter === opt.id;
-                        const count = statusCounts[opt.id];
+                      {TYPE_OPTIONS.map((opt) => {
+                        const active = filter === opt.id;
+                        const count = typeCounts[opt.id];
                         return (
                           <button
                             key={opt.id}
                             type="button"
-                            onClick={() => setStatusFilter(opt.id as any)}
+                            onClick={() => setFilter(opt.id as any)}
                             aria-pressed={active}
-                            className={`h-6 px-2.5 text-2xs font-medium rounded-full border transition-all flex items-center gap-1 ${
+                            className={`h-7 px-3 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 ${
                               active
-                                ? "bg-blue-500/15 text-blue-300 border-blue-500/40"
-                                : "bg-transparent text-gray-400 border-gray-700/60 hover:border-gray-600 hover:text-gray-200"
+                                ? "bg-blue-600/25 text-blue-200 shadow-sm"
+                                : "text-gray-400 hover:text-gray-200 hover:bg-gray-700/40"
                             }`}
                           >
                             {opt.label}
-                            <span className="tabular-nums opacity-70">{count}</span>
+                            <span
+                              className={`text-2xs px-1.5 py-0.5 rounded-full font-semibold tabular-nums ${
+                                active
+                                  ? "bg-blue-500/30 text-blue-100"
+                                  : "bg-gray-700/50 text-gray-500"
+                              }`}
+                            >
+                              {count}
+                            </span>
                           </button>
                         );
                       })}
                     </div>
-                  )}
 
-                  {allTags.length > 0 && (
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-2xs font-semibold uppercase tracking-wide text-gray-500">
-                        Tags
-                      </span>
-                      {allTags.map((tag) => {
-                        const isSelected = tagsFilter.includes(tag);
-                        return (
-                          <button
-                            key={tag}
-                            type="button"
-                            onClick={() => {
-                              setTagsFilter(
-                                isSelected
-                                  ? tagsFilter.filter((t) => t !== tag)
-                                  : [...tagsFilter, tag]
-                              );
-                            }}
-                            className={`h-6 px-2.5 text-2xs font-medium rounded-full border transition-all ${
-                              isSelected
-                                ? "bg-blue-500/15 text-blue-300 border-blue-500/40"
-                                : "bg-transparent text-gray-400 border-gray-700/60 hover:border-gray-600 hover:text-gray-200"
-                            }`}
-                          >
-                            {isSelected && <span className="mr-1">✓</span>}
-                            {tag}
-                          </button>
-                        );
-                      })}
-                      {tagsFilter.length > 0 && (
+                    {/* Search */}
+                    <div className="flex-1 min-w-0">
+                      <SearchInput
+                        value={searchQuery}
+                        onChange={setSearchQuery}
+                        placeholder="Search your snaps..."
+                        className="w-full max-w-md"
+                        variant="glass"
+                        suggestions={issues
+                          .map((issue) => issue.title)
+                          .slice(0, 5)}
+                      />
+                    </div>
+
+                    {/* Sort + view toggle */}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {/* Compact sort */}
+                      <div
+                        className="inline-flex bg-gray-900 border border-gray-800 rounded-md p-0.5"
+                        role="group"
+                        aria-label="Sort by"
+                      >
+                        {[
+                          { value: "date" as const, label: "Date" },
+                          { value: "name" as const, label: "Name" },
+                        ].map((opt) => {
+                          const active = sortBy === opt.value;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => setSortBy(opt.value)}
+                              aria-pressed={active}
+                              className={`h-7 px-2.5 text-xs font-medium rounded-md transition-all ${
+                                active
+                                  ? "bg-blue-600/25 text-blue-200"
+                                  : "text-gray-400 hover:text-gray-200 hover:bg-gray-700/40"
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSortOrder(sortOrder === "asc" ? "desc" : "asc")
+                        }
+                        title={
+                          sortOrder === "asc"
+                            ? "Sorted ascending — click to flip"
+                            : "Sorted descending — click to flip"
+                        }
+                        className="h-7 w-7 inline-flex items-center justify-center rounded-lg border border-gray-800 bg-gray-800/40 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-colors"
+                      >
+                        <svg
+                          className={`w-3.5 h-3.5 transition-transform ${
+                            sortOrder === "desc" ? "rotate-180" : ""
+                          }`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
+                          />
+                        </svg>
+                      </button>
+
+                      <div
+                        className="inline-flex rounded-lg border border-gray-800 bg-gray-800/40 p-0.5"
+                        role="group"
+                        aria-label="View mode"
+                      >
                         <button
                           type="button"
-                          onClick={() => setTagsFilter([])}
-                          className="h-6 px-2 text-2xs text-gray-500 hover:text-gray-200 transition-colors"
+                          onClick={() => setViewMode("grid")}
+                          aria-pressed={viewMode === "grid"}
+                          title="Grid view"
+                          className={`h-7 w-7 rounded-md flex items-center justify-center transition-colors ${
+                            viewMode === "grid"
+                              ? "bg-blue-600/25 text-blue-200"
+                              : "text-gray-500 hover:text-gray-200"
+                          }`}
                         >
-                          Clear
+                          <svg
+                            className="w-3.5 h-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M4 6h6v6H4zM14 6h6v6h-6zM4 16h6v4H4zM14 16h6v4h-6z"
+                            />
+                          </svg>
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setViewMode("list")}
+                          aria-pressed={viewMode === "list"}
+                          title="List view"
+                          className={`h-7 w-7 rounded-md flex items-center justify-center transition-colors ${
+                            viewMode === "list"
+                              ? "bg-blue-600/25 text-blue-200"
+                              : "text-gray-500 hover:text-gray-200"
+                          }`}
+                        >
+                          <svg
+                            className="w-3.5 h-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M4 6h16M4 12h16M4 18h16"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Secondary row — sync status chips + tag chips, only when relevant */}
+                  {(showStatusRow || allTags.length > 0) && (
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
+                      {showStatusRow && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-2xs font-semibold uppercase tracking-wide text-gray-500">
+                            Sync
+                          </span>
+                          {STATUS_OPTIONS.map((opt) => {
+                            const active = statusFilter === opt.id;
+                            const count = statusCounts[opt.id];
+                            return (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => setStatusFilter(opt.id as any)}
+                                aria-pressed={active}
+                                className={`h-6 px-2.5 text-2xs font-medium rounded-full border transition-all flex items-center gap-1 ${
+                                  active
+                                    ? "bg-blue-500/15 text-blue-300 border-blue-500/40"
+                                    : "bg-transparent text-gray-400 border-gray-700/60 hover:border-gray-600 hover:text-gray-200"
+                                }`}
+                              >
+                                {opt.label}
+                                <span className="tabular-nums opacity-70">
+                                  {count}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {allTags.length > 0 && (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-2xs font-semibold uppercase tracking-wide text-gray-500">
+                            Tags
+                          </span>
+                          {allTags.map((tag) => {
+                            const isSelected = tagsFilter.includes(tag);
+                            return (
+                              <button
+                                key={tag}
+                                type="button"
+                                onClick={() => {
+                                  setTagsFilter(
+                                    isSelected
+                                      ? tagsFilter.filter((t) => t !== tag)
+                                      : [...tagsFilter, tag]
+                                  );
+                                }}
+                                className={`h-6 px-2.5 text-2xs font-medium rounded-full border transition-all ${
+                                  isSelected
+                                    ? "bg-blue-500/15 text-blue-300 border-blue-500/40"
+                                    : "bg-transparent text-gray-400 border-gray-700/60 hover:border-gray-600 hover:text-gray-200"
+                                }`}
+                              >
+                                {isSelected && <span className="mr-1">✓</span>}
+                                {tag}
+                              </button>
+                            );
+                          })}
+                          {tagsFilter.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setTagsFilter([])}
+                              className="h-6 px-2 text-2xs text-gray-500 hover:text-gray-200 transition-colors"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}
-                </div>
-              )}
-            </motion.div>
-            );
-          })()}
+                </motion.div>
+              );
+            })()}
 
           {/* Issues Grid */}
           {filteredIssues.length === 0 ? (
@@ -1672,7 +1593,7 @@ export default function HomePage() {
                 animate={{ opacity: 1 }}
                 className={
                   viewMode === "list"
-                    ? "bg-gray-800/20 border border-gray-700/40 rounded-xl overflow-hidden divide-y divide-gray-800/60"
+                    ? "bg-gray-800/20 border border-gray-800 rounded-xl overflow-hidden divide-y divide-gray-800/60"
                     : "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4"
                 }
               >
@@ -1683,9 +1604,18 @@ export default function HomePage() {
                         label: "Session",
                         cls: "bg-purple-500/15 text-purple-300 border-purple-500/30",
                         icon: (
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                              d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+                          <svg
+                            className="w-3 h-3"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
+                            />
                           </svg>
                         ),
                       }
@@ -1694,11 +1624,24 @@ export default function HomePage() {
                           label: "Screenshot",
                           cls: "bg-blue-500/15 text-blue-300 border-blue-500/30",
                           icon: (
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <svg
+                              className="w-3 h-3"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                              />
                             </svg>
                           ),
                         }
@@ -1706,9 +1649,18 @@ export default function HomePage() {
                           label: "Recording",
                           cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
                           icon: (
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            <svg
+                              className="w-3 h-3"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                              />
                             </svg>
                           ),
                         };
@@ -1737,7 +1689,7 @@ export default function HomePage() {
                         <button
                           type="button"
                           onClick={() => openPreview(issue)}
-                          className="relative flex-shrink-0 w-24 h-16 rounded-md bg-gray-800 border border-gray-700/50 overflow-hidden hover:ring-2 hover:ring-blue-500/40 transition-all"
+                          className="relative flex-shrink-0 w-24 h-16 rounded-md bg-gray-800 border border-gray-800 overflow-hidden hover:ring-2 hover:ring-blue-500/40 transition-all"
                         >
                           {hasThumb ? (
                             <LocalImage
@@ -1750,9 +1702,18 @@ export default function HomePage() {
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-gray-600">
-                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              <svg
+                                className="w-6 h-6"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={1.5}
+                                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                />
                               </svg>
                             </div>
                           )}
@@ -1779,7 +1740,11 @@ export default function HomePage() {
                                 title="Synced to cloud"
                                 className="flex-shrink-0 inline-flex items-center gap-1 h-5 px-1.5 text-2xs font-medium rounded-full border bg-blue-500/10 text-blue-300 border-blue-500/25"
                               >
-                                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24">
+                                <svg
+                                  className="w-2.5 h-2.5"
+                                  fill="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
                                   <path d="M19.35 10.04A7.49 7.49 0 0012 4 7.5 7.5 0 004.66 9.96 5.5 5.5 0 005.5 21h13.5a4.5 4.5 0 00.35-10.96z" />
                                 </svg>
                                 Synced
@@ -1788,7 +1753,10 @@ export default function HomePage() {
                           </div>
                           <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                             <span>
-                              {format(new Date(issue.timestamp), "MMM d, yyyy · h:mm a")}
+                              {format(
+                                new Date(issue.timestamp),
+                                "MMM d, yyyy · h:mm a"
+                              )}
                             </span>
                             {issue.tags && issue.tags.length > 0 && (
                               <span className="flex items-center gap-1 truncate">
@@ -1829,9 +1797,18 @@ export default function HomePage() {
                             title="Delete"
                             className="hover:bg-red-500/10 hover:text-red-400"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                              />
                             </svg>
                           </Button>
                         </div>
@@ -1874,9 +1851,18 @@ export default function HomePage() {
                               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors duration-200 flex items-center justify-center">
                                 <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                                   <div className="bg-white/15 backdrop-blur-sm rounded-full p-2.5">
-                                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                                    <svg
+                                      className="w-5 h-5 text-white"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"
+                                      />
                                     </svg>
                                   </div>
                                 </div>
@@ -1884,9 +1870,18 @@ export default function HomePage() {
                             </>
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
-                              <svg className="w-10 h-10 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              <svg
+                                className="w-10 h-10 text-gray-600"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={1.5}
+                                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                />
                               </svg>
                             </div>
                           )}
@@ -1905,7 +1900,11 @@ export default function HomePage() {
                               title="Synced to cloud"
                               className="absolute top-2 right-2 inline-flex items-center gap-1 h-5 px-1.5 text-2xs font-medium rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/30 backdrop-blur-sm"
                             >
-                              <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24">
+                              <svg
+                                className="w-2.5 h-2.5"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                              >
                                 <path d="M19.35 10.04A7.49 7.49 0 0012 4 7.5 7.5 0 004.66 9.96 5.5 5.5 0 005.5 21h13.5a4.5 4.5 0 00.35-10.96z" />
                               </svg>
                               Synced
@@ -1925,12 +1924,24 @@ export default function HomePage() {
 
                           {/* Meta — single tight line */}
                           <div className="flex items-center gap-1.5 text-2xs text-gray-500">
-                            <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            <svg
+                              className="w-3 h-3 flex-shrink-0"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                              />
                             </svg>
                             <span className="truncate">
-                              {format(new Date(issue.timestamp), "MMM d, yyyy · h:mm a")}
+                              {format(
+                                new Date(issue.timestamp),
+                                "MMM d, yyyy · h:mm a"
+                              )}
                             </span>
                           </div>
 
@@ -1979,9 +1990,18 @@ export default function HomePage() {
                                 title="Delete"
                                 className="hover:bg-red-500/10 hover:text-red-400"
                               >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                <svg
+                                  className="w-3.5 h-3.5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                  />
                                 </svg>
                               </Button>
                             </div>
@@ -2198,7 +2218,7 @@ export default function HomePage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="bg-gray-900/40 border border-gray-700/50 rounded-lg px-4 py-2.5">
+                        <div className="bg-gray-900/40 border border-gray-800 rounded-lg px-4 py-2.5">
                           <p className="text-sm font-medium text-gray-100 break-words leading-snug">
                             {previewIssue.title}
                           </p>
@@ -2372,13 +2392,13 @@ export default function HomePage() {
                           </div>
                         </div>
                       ) : previewIssue.description ? (
-                        <div className="max-h-40 overflow-y-auto bg-gray-900/40 border border-gray-700/50 rounded-lg px-4 py-2.5">
+                        <div className="max-h-40 overflow-y-auto bg-gray-900/40 border border-gray-800 rounded-lg px-4 py-2.5">
                           <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
                             {previewIssue.description}
                           </p>
                         </div>
                       ) : (
-                        <div className="bg-gray-900/40 border border-gray-700/40 border-dashed rounded-lg px-4 py-2.5">
+                        <div className="bg-gray-900/40 border border-gray-800 border-dashed rounded-lg px-4 py-2.5">
                           <p className="text-xs text-gray-500 italic">
                             No description
                           </p>
@@ -2398,9 +2418,18 @@ export default function HomePage() {
                               label: "Session",
                               cls: "bg-purple-500/15 text-purple-300 border-purple-500/30",
                               icon: (
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                    d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+                                <svg
+                                  className="w-3 h-3"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
+                                  />
                                 </svg>
                               ),
                             }
@@ -2409,11 +2438,24 @@ export default function HomePage() {
                                 label: "Screenshot",
                                 cls: "bg-blue-500/15 text-blue-300 border-blue-500/30",
                                 icon: (
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                      d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                      d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <svg
+                                    className="w-3 h-3"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                                    />
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                                    />
                                   </svg>
                                 ),
                               }
@@ -2421,14 +2463,23 @@ export default function HomePage() {
                                 label: "Recording",
                                 cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
                                 icon: (
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                      d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  <svg
+                                    className="w-3 h-3"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                                    />
                                   </svg>
                                 ),
                               };
                         return (
-                          <div className="bg-gray-900/40 border border-gray-700/50 rounded-lg px-4 py-2.5 flex flex-wrap items-center gap-2">
+                          <div className="bg-gray-900/40 border border-gray-800 rounded-lg px-4 py-2.5 flex flex-wrap items-center gap-2">
                             <span
                               className={`inline-flex items-center gap-1 h-5 px-1.5 text-2xs font-medium rounded-full border ${meta.cls}`}
                             >
@@ -2437,10 +2488,14 @@ export default function HomePage() {
                             </span>
                             {isSession && (
                               <span className="text-xs text-gray-500">
-                                {(previewIssue as any).sessionData.screenshotCount}{" "}
+                                {
+                                  (previewIssue as any).sessionData
+                                    .screenshotCount
+                                }{" "}
                                 screenshots ·{" "}
                                 {Math.round(
-                                  (previewIssue as any).sessionData.duration / 1000
+                                  (previewIssue as any).sessionData.duration /
+                                    1000
                                 )}
                                 s
                               </span>
@@ -2480,17 +2535,11 @@ export default function HomePage() {
                                       ? `Re-sync to ${platformLabel} to enable this link`
                                       : `Open in ${platformLabel}`
                                   }
-                                  className="group w-full h-9 px-3 bg-gray-800/40 hover:bg-gray-800 border border-gray-700/50 hover:border-gray-600 rounded-lg text-sm text-gray-200 transition-all flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gray-800/40 disabled:hover:border-gray-700/50"
+                                  className="group w-full h-9 px-3 bg-gray-800/40 hover:bg-gray-800 border border-gray-800 hover:border-gray-600 rounded-lg text-sm text-gray-200 transition-all flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gray-800/40 disabled:hover:border-gray-800"
                                 >
                                   <span className="flex items-center gap-2 min-w-0">
                                     {isGithub ? (
-                                      <svg
-                                        className="w-4 h-4 text-gray-300 flex-shrink-0"
-                                        fill="currentColor"
-                                        viewBox="0 0 24 24"
-                                      >
-                                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-                                      </svg>
+                                      <GitHubIcon className="w-4 h-4 text-gray-300 flex-shrink-0" />
                                     ) : isZoho ? (
                                       <svg
                                         className="w-4 h-4 text-orange-400 flex-shrink-0"
@@ -2543,7 +2592,7 @@ export default function HomePage() {
                       <label className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1.5 block">
                         Created At
                       </label>
-                      <div className="bg-gray-900/40 border border-gray-700/50 rounded-lg px-4 py-2.5 flex items-center gap-2 text-sm text-gray-300">
+                      <div className="bg-gray-900/40 border border-gray-800 rounded-lg px-4 py-2.5 flex items-center gap-2 text-sm text-gray-300">
                         <svg
                           className="w-3.5 h-3.5 text-gray-500 flex-shrink-0"
                           fill="none"
@@ -2598,7 +2647,7 @@ export default function HomePage() {
                           />
                         </svg>
                       </summary>
-                      <p className="text-2xs text-gray-400 font-mono bg-gray-900/40 border border-gray-700/50 px-4 py-2.5 rounded-lg break-all mt-2 leading-relaxed">
+                      <p className="text-2xs text-gray-400 font-mono bg-gray-900/40 border border-gray-800 px-4 py-2.5 rounded-lg break-all mt-2 leading-relaxed">
                         {(previewIssue as any).sessionData?.screenshotPaths?.[
                           activeCarouselIdx
                         ] ?? previewIssue.filePath}
@@ -2673,7 +2722,7 @@ export default function HomePage() {
                           setPreviewDialogOpen(false);
                           confirmDelete(previewIssue.id);
                         }}
-                        className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-red-300 hover:bg-red-500/10 border border-gray-700/50 hover:border-red-500/40 transition-colors"
+                        className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-red-300 hover:bg-red-500/10 border border-gray-800 hover:border-red-500/40 transition-colors"
                       >
                         <svg
                           className="w-4 h-4"
@@ -2698,7 +2747,7 @@ export default function HomePage() {
         </Dialog>
 
         {/* Recording picker is now in _app.tsx (global, works from any page) */}
-      </div>
+      </AppShell>
     </>
   );
 }
@@ -2786,7 +2835,7 @@ function SessionScreenshotCarousel({
         )}
 
         {/* Counter */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gray-900/80 border border-gray-700/50 text-xs text-gray-400 select-none">
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gray-900/80 border border-gray-800 text-xs text-gray-400 select-none">
           {activeIdx + 1} / {paths.length}
         </div>
       </div>
@@ -2803,7 +2852,7 @@ function SessionScreenshotCarousel({
                   "flex-shrink-0 w-16 h-10 rounded overflow-hidden border-2 transition-all duration-150",
                   activeIdx === i
                     ? "border-blue-500 shadow-md shadow-blue-500/20"
-                    : "border-gray-700/40 hover:border-gray-600 opacity-60 hover:opacity-100",
+                    : "border-gray-800 hover:border-gray-600 opacity-60 hover:opacity-100",
                 ].join(" ")}
               >
                 <LocalImage

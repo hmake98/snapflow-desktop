@@ -388,11 +388,15 @@ const api = {
   }) => ipcRenderer.invoke("ai:generate-screenshot-description", input),
   aiIsConfigured: () => ipcRenderer.invoke("ai:is-configured"),
   aiGetAllStatus: () => ipcRenderer.invoke("ai:get-all-status"),
-  aiGetKey: (provider: string) => ipcRenderer.invoke("ai:get-key", { provider }),
-  aiSetKey: (provider: string, key: string) => ipcRenderer.invoke("ai:set-key", { provider, key }),
-  aiClearKey: (provider: string) => ipcRenderer.invoke("ai:clear-key", { provider }),
+  aiGetKey: (provider: string) =>
+    ipcRenderer.invoke("ai:get-key", { provider }),
+  aiSetKey: (provider: string, key: string) =>
+    ipcRenderer.invoke("ai:set-key", { provider, key }),
+  aiClearKey: (provider: string) =>
+    ipcRenderer.invoke("ai:clear-key", { provider }),
   aiGetActiveProvider: () => ipcRenderer.invoke("ai:get-active-provider"),
-  aiSetActiveProvider: (provider: string) => ipcRenderer.invoke("ai:set-active-provider", { provider }),
+  aiSetActiveProvider: (provider: string) =>
+    ipcRenderer.invoke("ai:set-active-provider", { provider }),
 
   // Event listeners
   onScreenshotCaptured: (
@@ -513,18 +517,29 @@ const api = {
 
   // Display change events — fired automatically when monitors connect/disconnect
   onDisplaysChanged: (
-    callback: (data: { displays: Array<{ id: number; label: string; bounds: { x: number; y: number; width: number; height: number }; scaleFactor: number; isPrimary: boolean }> }) => void
+    callback: (data: {
+      displays: Array<{
+        id: number;
+        label: string;
+        bounds: { x: number; y: number; width: number; height: number };
+        scaleFactor: number;
+        isPrimary: boolean;
+      }>;
+    }) => void
   ) => {
-    const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
+    const subscription = (_event: IpcRendererEvent, data: any) =>
+      callback(data);
     ipcRenderer.on("displays:changed", subscription);
     return () => ipcRenderer.removeListener("displays:changed", subscription);
   },
   onDisplayDefaultCleared: (
     callback: (data: { removedDisplayId: number }) => void
   ) => {
-    const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
+    const subscription = (_event: IpcRendererEvent, data: any) =>
+      callback(data);
     ipcRenderer.on("displays:default-cleared", subscription);
-    return () => ipcRenderer.removeListener("displays:default-cleared", subscription);
+    return () =>
+      ipcRenderer.removeListener("displays:default-cleared", subscription);
   },
 
   // Utility methods

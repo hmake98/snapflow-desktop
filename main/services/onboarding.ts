@@ -9,7 +9,6 @@ export class OnboardingService {
     currentStep: number;
     isComplete: boolean;
   } | null> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.warn("[Onboarding Service] Supabase not configured");
@@ -41,7 +40,6 @@ export class OnboardingService {
    * Initialize onboarding progress for a user at step 1
    */
   async initializeProgress(userId: string): Promise<void> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Onboarding Service] ✗ Supabase not configured");
@@ -65,14 +63,12 @@ export class OnboardingService {
       );
       throw new Error(error.message);
     }
-
   }
 
   /**
    * Update the user's current onboarding step
    */
   async setStep(userId: string, step: number): Promise<void> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Onboarding Service] ✗ Supabase not configured");
@@ -94,14 +90,12 @@ export class OnboardingService {
       log.error("[Onboarding Service] ✗ Error updating step:", error.message);
       throw new Error(error.message);
     }
-
   }
 
   /**
    * Mark onboarding as complete
    */
   async complete(userId: string): Promise<void> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Onboarding Service] ✗ Supabase not configured");
@@ -121,14 +115,12 @@ export class OnboardingService {
       log.error("[Onboarding Service] ✗ Error completing:", error.message);
       throw new Error(error.message);
     }
-
   }
 
   /**
    * Reset onboarding progress (for testing or restart)
    */
   async reset(userId: string): Promise<void> {
-
     const supabase = getSupabase();
     if (!supabase) {
       log.error("[Onboarding Service] ✗ Supabase not configured");
@@ -148,7 +140,6 @@ export class OnboardingService {
       log.error("[Onboarding Service] ✗ Error resetting:", error.message);
       throw new Error(error.message);
     }
-
   }
 }
 

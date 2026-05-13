@@ -52,8 +52,8 @@ export const ChipsInput = React.forwardRef<HTMLDivElement, ChipsInputProps>(
       <div
         ref={ref}
         className={clsx(
-          "flex flex-wrap gap-1.5 items-center min-h-[40px] rounded-lg border bg-gray-900/40 px-3.5 py-2 text-sm transition-all duration-200",
-          "border-gray-700/50 focus-within:border-blue-500/60",
+          "flex flex-wrap gap-1.5 items-center min-h-[36px] rounded-md border bg-gray-900 px-2.5 py-1.5 text-sm transition-colors duration-150",
+          "border-gray-800 hover:border-gray-700 focus-within:border-blue-500/70 focus-within:ring-1 focus-within:ring-blue-500/40",
           disabled && "opacity-50 cursor-not-allowed",
           className
         )}
@@ -61,18 +61,18 @@ export const ChipsInput = React.forwardRef<HTMLDivElement, ChipsInputProps>(
         {value.map((tag) => (
           <div
             key={tag}
-            className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-500/15 text-blue-300 rounded-full text-2xs font-medium border border-blue-500/30 animate-in fade-in duration-200"
+            className="inline-flex items-center gap-1 px-1.5 h-5 bg-blue-500/10 text-blue-300 rounded text-2xs font-medium border border-blue-500/25"
           >
             <span>{tag}</span>
             {!disabled && (
               <button
                 type="button"
                 onClick={() => removeTag(tag)}
-                className="hover:text-blue-100 focus:outline-none transition-colors hover:scale-110"
+                className="hover:text-blue-100 focus:outline-none transition-colors"
                 aria-label={`Remove ${tag}`}
               >
                 <svg
-                  className="w-3.5 h-3.5"
+                  className="w-3 h-3"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"

@@ -40,7 +40,9 @@ export class EventTracker extends EventEmitter {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { uIOhook, UiohookKey } = require("uiohook-napi");
       if (!uIOhook) {
-        log.warn("[EventTracker] uiohook-napi loaded but uIOhook is undefined — native module may need rebuilding (run: npx electron-rebuild -f -w uiohook-napi)");
+        log.warn(
+          "[EventTracker] uiohook-napi loaded but uIOhook is undefined — native module may need rebuilding (run: npx electron-rebuild -f -w uiohook-napi)"
+        );
         return;
       }
       this.uiohook = uIOhook;

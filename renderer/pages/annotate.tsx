@@ -90,7 +90,6 @@ export default function AnnotatePage() {
 
   // Run once on mount: load user, load Konva, fetch pending screenshot, set up IPC listener
   useEffect(() => {
-
     // Load user first - this is critical for saving screenshots
     loadUser();
 
@@ -135,7 +134,6 @@ export default function AnnotatePage() {
         if (result.success && result.data) {
           setScreenshot(result.data.dataUrl);
           setTitle((prev) => prev || autoTitle());
-        } else {
         }
       } catch (error) {
         console.error("[Annotate] Error getting pending screenshot:", error);
@@ -214,11 +212,9 @@ export default function AnnotatePage() {
       const cssWidth = img.width / devicePixelRatio;
       const cssHeight = img.height / devicePixelRatio;
 
-
       const scaleX = maxWidth / cssWidth;
       const scaleY = maxHeight / cssHeight;
       const scale = Math.min(scaleX, scaleY, 1);
-
 
       setDimensions({
         width: Math.floor(cssWidth * scale),
@@ -484,7 +480,6 @@ export default function AnnotatePage() {
       return;
     }
 
-
     if (!stageRef.current) {
       window.api.showNotification("Error", "Editor not ready");
       return;
@@ -626,7 +621,10 @@ export default function AnnotatePage() {
       <Head>
         <title>Annotate Screenshot - SnapFlow</title>
       </Head>
-      <div className="bg-gray-950 flex flex-col overflow-hidden pt-8" style={{ height: "100vh" }}>
+      <div
+        className="bg-gray-950 flex flex-col overflow-hidden pt-8"
+        style={{ height: "100vh" }}
+      >
         {/* App header bar */}
         <div className="bg-gray-900 border-b border-gray-800 flex-shrink-0 h-11 flex items-center px-4">
           {/* Context label */}

@@ -5,31 +5,51 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
   label?: string;
   error?: string;
   helperText?: string;
+  leftIcon?: React.ReactNode;
+  rightIcon?: React.ReactNode;
 }
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, label, error, helperText, ...props }, ref) => {
+  (
+    { className, label, error, helperText, leftIcon, rightIcon, id, ...props },
+    ref
+  ) => {
+    const inputId = id ?? props.name;
     return (
-      <div className="w-full">
+      <div className="form-row w-full">
         {label && (
-          <label className="mb-2 block text-sm font-medium text-gray-300">
+          <label className="form-label" htmlFor={inputId}>
             {label}
           </label>
         )}
-        <input
-          className={clsx(
-            "flex h-10 w-full rounded-lg border bg-gray-800 px-3 py-2 text-sm text-gray-100 ring-offset-gray-950 file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-            error
-              ? "border-red-500 focus-visible:ring-red-500"
-              : "border-gray-700 focus-visible:ring-blue-500",
-            className
+        <div className="relative">
+          {leftIcon && (
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">
+              {leftIcon}
+            </span>
           )}
-          ref={ref}
-          {...props}
-        />
-        {error && <p className="mt-1 text-sm text-red-400">{error}</p>}
-        {helperText && !error && (
-          <p className="mt-1 text-sm text-gray-400">{helperText}</p>
+          <input
+            id={inputId}
+            ref={ref}
+            className={clsx(
+              "input",
+              error && "input-error",
+              leftIcon && "pl-9",
+              rightIcon && "pr-9",
+              className
+            )}
+            {...props}
+          />
+          {rightIcon && (
+            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500">
+              {rightIcon}
+            </span>
+          )}
+        </div>
+        {error ? (
+          <p className="text-xs text-red-400">{error}</p>
+        ) : (
+          helperText && <p className="form-helper">{helperText}</p>
         )}
       </div>
     );
