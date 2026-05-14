@@ -68,6 +68,10 @@ function formatBugReportMarkdown(report: BugReport): string {
   return lines.join("\n");
 }
 
+// Tracks workspaces that have already been synced from cloud this session.
+// Module-level so it survives page navigation remounts.
+const syncedWorkspaces = new Set<string>();
+
 // ─── Home Page ─────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
@@ -291,30 +295,38 @@ export default function HomePage() {
         setConnectors(connectorsResult.data || []);
       }
 
-      // Pull from cloud in the background — gives a fresh device the snaps
-      // synced from another device. Local list paints first; once the cloud
-      // pull finishes we re-fetch to surface any newly-downloaded snaps.
       setLoading(false);
-      setIsRefreshing(true);
-      try {
-        const cloudResult = await window.api.syncFromCloud(
-          effectiveUserId,
-          wsId
-        );
-        // Discard if workspace switched while we were pulling
-        if (myToken !== fetchIdRef.current) return;
-        if (cloudResult?.success && cloudResult.data?.syncedCount) {
-          const refreshed = await window.api.listIssues(effectiveUserId, wsId);
+
+      // Pull from cloud only on first visit per workspace per session.
+      // Subsequent navigations back to home skip this — local data is already
+      // up to date. onAutoSyncCompleted handles refreshes when something changes.
+      if (!syncedWorkspaces.has(wsId)) {
+        syncedWorkspaces.add(wsId);
+        setIsRefreshing(true);
+        try {
+          const cloudResult = await window.api.syncFromCloud(
+            effectiveUserId,
+            wsId
+          );
+          // Discard if workspace switched while we were pulling
           if (myToken !== fetchIdRef.current) return;
-          if (refreshed.success) {
-            setIssues(refreshed.data || []);
+          if (cloudResult?.success && cloudResult.data?.syncedCount) {
+            const refreshed = await window.api.listIssues(
+              effectiveUserId,
+              wsId
+            );
+            if (myToken !== fetchIdRef.current) return;
+            if (refreshed.success) {
+              setIssues(refreshed.data || []);
+            }
           }
-        }
-      } catch (err) {
-        console.warn("[Home] Cloud pull failed (non-fatal):", err);
-      } finally {
-        if (myToken === fetchIdRef.current) {
-          setIsRefreshing(false);
+        } catch (err) {
+          console.warn("[Home] Cloud pull failed (non-fatal):", err);
+          syncedWorkspaces.delete(wsId); // allow retry next visit on failure
+        } finally {
+          if (myToken === fetchIdRef.current) {
+            setIsRefreshing(false);
+          }
         }
       }
       return;
