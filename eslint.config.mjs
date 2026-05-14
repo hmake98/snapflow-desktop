@@ -17,6 +17,7 @@ export default [
       "**/*.config.mjs",
       "renderer/.next/**",
       "renderer/next-env.d.ts",
+      "**/*.d.ts",
     ],
   },
   // Base configuration for all files
