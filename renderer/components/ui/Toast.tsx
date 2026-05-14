@@ -10,6 +10,12 @@ interface Toast {
   variant: ToastVariant;
 }
 
+interface ToastDetail {
+  title: string;
+  body?: string;
+  variant?: ToastVariant;
+}
+
 const inferVariant = (title: string, body?: string): ToastVariant => {
   const text = `${title} ${body ?? ""}`.toLowerCase();
   if (
