@@ -283,7 +283,7 @@ export class CaptureService extends EventEmitter {
           throw new Error("No capture source found");
         }
 
-        buffer = source.thumbnail.toPNG();
+        buffer = source.thumbnail.toPNG() as Buffer<ArrayBuffer>;
 
         if (buffer.length >= 1000) break;
 

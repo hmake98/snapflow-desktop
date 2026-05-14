@@ -31,11 +31,17 @@ const DEFAULT_HOME_PREFS: HomeScreenPrefs = {
   activeWorkspaceId: null,
 };
 
-const recordingSettingsStore = new Store({
+interface SettingsStoreSchema {
+  defaultRecordingSource: RecordingSource | null;
+  defaultCaptureScreenId: number | null;
+  homeScreenPrefs: HomeScreenPrefs;
+}
+
+const recordingSettingsStore = new Store<SettingsStoreSchema>({
   name: "snapflow-recording-settings",
   defaults: {
     defaultRecordingSource: null,
-    defaultCaptureScreenId: null as number | null,
+    defaultCaptureScreenId: null,
     homeScreenPrefs: DEFAULT_HOME_PREFS,
   },
 });

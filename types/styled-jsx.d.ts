@@ -1,15 +1,22 @@
 /* eslint-disable no-undef */
-import React from "react";
+import "react";
 
-declare global {
+declare module "react" {
   namespace JSX {
     interface IntrinsicElements {
-      style: React.StyleHTMLAttributes<HTMLStyleElement> & {
+      style: DetailedHTMLProps<
+        StyleHTMLAttributes<HTMLStyleElement>,
+        HTMLStyleElement
+      > & {
         jsx?: boolean;
         global?: boolean;
         dynamic?: string | string[];
-        children?: string;
       };
     }
   }
+}
+
+declare module "*.css" {
+  const content: Record<string, string>;
+  export default content;
 }
