@@ -5,15 +5,6 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
-    inputs:
-      bump_type:
-        description: "Version bump type"
-        required: true
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
 
 permissions:
   contents: write
@@ -49,8 +40,7 @@ jobs:
       - name: Bump version in package.json
         id: bump
         run: |
-          BUMP="${{ github.event.inputs.bump_type }}"
-          NEW_VERSION=$(npm version $BUMP --no-git-tag-version | sed 's/^v//')
+          NEW_VERSION=$(npm version minor --no-git-tag-version | sed 's/^v//')
           TAG="v${NEW_VERSION}"
           echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
