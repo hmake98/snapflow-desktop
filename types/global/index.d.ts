@@ -1,3 +1,4 @@
+/// <reference path="./css.d.ts" />
 import "react";
 
 declare module "react" {
@@ -8,9 +9,4 @@ declare module "react" {
     global?: boolean;
     dynamic?: string | string[];
   }
-}
-
-declare module "*.css" {
-  const content: Record<string, string>;
-  export default content;
 }
