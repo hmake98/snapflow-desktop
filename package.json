@@ -2,7 +2,7 @@
   "private": true,
   "name": "snapflow-desktop",
   "description": "SnapFlow - Screenshot & Screen Recording Tool with Issue Tracking",
-  "version": "1.1.9",
+  "version": "1.1.10",
   "author": "SnapFlow Team",
   "main": "app/main.js",
   "scripts": {
