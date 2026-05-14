@@ -103,14 +103,8 @@ export const ToastHost: React.FC = () => {
 
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (
-        e as // eslint-disable-next-line no-undef
-        CustomEvent<{
-          title: string;
-          body?: string;
-          variant?: ToastVariant;
-        }>
-      ).detail;
+      // eslint-disable-next-line no-undef
+      const detail = (e as CustomEvent<ToastDetail>).detail;
       if (!detail || !detail.title) return;
       const id = ++nextId;
       const variant: ToastVariant =
