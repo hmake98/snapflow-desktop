@@ -72,8 +72,9 @@ jobs:
       always() &&
       (startsWith(github.ref, 'refs/tags/') || needs.prepare.result == 'success')
     strategy:
+      fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -142,6 +143,8 @@ jobs:
           name: ${{ matrix.os }}-build
           path: |
             dist/*.exe
+            dist/*.dmg
+            dist/*.zip
             dist/*.AppImage
             dist/*.deb
             dist/*.rpm
@@ -188,6 +191,8 @@ jobs:
           fail_on_unmatched_files: false
           files: |
             artifacts/**/*.exe
+            artifacts/**/*.dmg
+            artifacts/**/*.zip
             artifacts/**/*.AppImage
             artifacts/**/*.deb
             artifacts/**/*.rpm

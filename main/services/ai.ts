@@ -123,16 +123,7 @@ export class AiService {
   }
 
   getStoredApiKey(provider: Provider): string | null {
-    const envKey: Record<Provider, string | undefined> = {
-      groq: process.env.GROQ_API_KEY,
-      openai: process.env.OPENAI_API_KEY,
-      gemini: process.env.GEMINI_API_KEY,
-      anthropic: process.env.ANTHROPIC_API_KEY,
-    };
-    return (
-      envKey[provider] ||
-      (aiStore.get(this.storeKey(provider)) as string | null)
-    );
+    return aiStore.get(this.storeKey(provider)) as string | null;
   }
 
   getMaskedKey(provider: Provider): string | null {

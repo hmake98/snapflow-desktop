@@ -187,7 +187,7 @@ export default function AuthPage() {
           <p className="text-caption mt-1">
             {isLogin
               ? "Sign in to continue to SnapFlow."
-              : "Get started for free — no credit card required."}
+              : "Set up in minutes. No credit card required."}
           </p>
         </div>
 

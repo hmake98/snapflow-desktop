@@ -1,42 +1,96 @@
 appId: com.snapflow.desktop
 productName: SnapFlow
 copyright: Copyright © 2026 SnapFlow Team
+
 directories:
   output: dist
   buildResources: resources
+
 publish:
   provider: github
   owner: harsh-simform
   repo: snapflow-desktop
   private: false
-asarUnpack:
-  - node_modules/uiohook-napi/**/*
 
+# ─── ASAR ─────────────────────────────────────────────────────────────────────
+asar: true
+asarUnpack:
+  # uiohook-napi: native node addon, must run from disk
+  - node_modules/uiohook-napi/**/*
+  # ffmpeg-static: native binary, execFile path resolution breaks inside asar
+  - node_modules/ffmpeg-static/**/*
+
+compression: maximum
+
+# ─── Files ────────────────────────────────────────────────────────────────────
 files:
   - from: .
     filter:
       - package.json
-      - app
+      - app/**/*
       - node_modules/**/*
+      - "!node_modules/.cache/**/*"
+      - "!**/*.map"
 
-# Extra resources that should be copied to app.asar.unpacked or Resources
+# ─── Extra Resources ──────────────────────────────────────────────────────────
+# app-bootstrap.json is created by CI before build and gitignored locally.
+# secure-config.ts reads it at process.resourcesPath, encrypts into electron-store,
+# then deletes it — so secrets are never left on disk in plaintext.
 extraResources:
+  - from: resources/app-bootstrap.json
+    to: app-bootstrap.json
   - from: resources/tray-icon.png
     to: tray-icon.png
   - from: resources/tray-icon-white.png
     to: tray-icon-white.png
+  - from: resources/tray-icon-record-white.png
+    to: tray-icon-record-white.png
+  - from: resources/tray-icon-stop-white.png
+    to: tray-icon-stop-white.png
   - from: resources/icon.png
     to: icon.png
-  - from: .env
-    to: .env
 
+# ─── Deep-link Protocol ───────────────────────────────────────────────────────
 protocols:
   - name: SnapFlow
     schemes:
       - snapflow
 
+# ─── macOS ────────────────────────────────────────────────────────────────────
+mac:
+  icon: resources/icon.icns
+  # Hardened runtime is required for notarization and Gatekeeper acceptance.
+  hardenedRuntime: true
+  # gatekeeperAssess must be false when you manage signing yourself.
+  gatekeeperAssess: false
+  # Entitlements grant the permissions declared in entitlements.mac.plist
+  # (screen capture, JIT, network client/server, library validation bypass).
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    # zip is required by update-electron-app / electron-updater for delta updates
+    - target: zip
+      arch:
+        - x64
+        - arm64
+
+dmg:
+  # The .app inside the DMG is signed; the DMG itself does not need signing.
+  sign: false
+  window:
+    width: 540
+    height: 380
+
+# ─── Windows ──────────────────────────────────────────────────────────────────
 win:
   icon: resources/icon.ico
+  # Do not request admin elevation — app works fine as a standard user.
+  requestedExecutionLevel: asInvoker
+  verifyUpdateCodeSignature: false
   target:
     - target: nsis
       arch:
@@ -53,7 +107,10 @@ nsis:
   shortcutName: SnapFlow
   installerIcon: resources/icon.ico
   uninstallerIcon: resources/icon.ico
+  # Preserve user data on uninstall — electron-store lives in AppData.
+  deleteAppDataOnUninstall: false
 
+# ─── Linux ────────────────────────────────────────────────────────────────────
 linux:
   icon: resources/icon.png
   target:
@@ -67,6 +124,9 @@ linux:
       arch:
         - x64
   category: Utility
-  maintainer: SnapFlow Team
+  maintainer: SnapFlow Team <support@snapflow.app>
   vendor: SnapFlow Team
-  description: Screenshot Annotating Tool with Issue Tracking
+  description: Screenshot and screen recording tool with team collaboration
+  desktop:
+    entry:
+      StartupWMClass: SnapFlow
