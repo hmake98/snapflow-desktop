@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { showToast } from "../components/ui/Toast";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { format } from "date-fns";
@@ -92,7 +93,6 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   // Subtle background-refresh indicator — shown when stale data is already
   // visible and we're silently fetching fresh data behind the scenes.
-  const [isRefreshing, setIsRefreshing] = useState(false);
   // Connectors loaded once at page level; passed as a prop to sync dropdowns
   // so that 12 cards don't each make their own IPC call on mount.
   const [connectors, setConnectors] = useState<any[]>([]);
@@ -109,15 +109,6 @@ export default function HomePage() {
   // render, since that would overwrite the user's saved prefs with defaults.
   const [prefsLoaded, setPrefsLoaded] = useState(false);
 
-  // Cloud-sync progress (snaps being downloaded from cloud → local). Surfaces
-  // a clear banner so users don't think snaps are missing after switching
-  // accounts or devices.
-  const [cloudSync, setCloudSync] = useState<{
-    active: boolean;
-    current: number;
-    total: number;
-  }>({ active: false, current: 0, total: 0 });
-  const [cloudSyncToast, setCloudSyncToast] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [issueToDelete, setIssueToDelete] = useState<string | null>(null);
@@ -196,33 +187,22 @@ export default function HomePage() {
   useEffect(() => {
     const unsubscribe = window.api.onCloudSyncProgress?.((data) => {
       if (data.phase === "start") {
-        setCloudSync({
-          active: true,
-          current: 0,
-          total: data.total ?? 0,
-        });
-        setCloudSyncToast(null);
-      } else if (data.phase === "progress") {
-        setCloudSync((prev) => ({
-          active: true,
-          current: data.current ?? prev.current,
-          total: data.total ?? prev.total,
-        }));
+        const total = data.total ?? 0;
+        showToast("Syncing from cloud…", total > 0 ? `${total} snaps` : undefined, "info");
       } else if (data.phase === "complete") {
-        setCloudSync({ active: false, current: 0, total: 0 });
         const synced = data.syncedCount ?? 0;
         const failed = data.failedCount ?? 0;
         if (synced > 0) {
-          setCloudSyncToast(
-            `Synced ${synced} ${synced === 1 ? "snap" : "snaps"} from cloud${
-              failed > 0 ? ` (${failed} failed)` : ""
-            }`
+          showToast(
+            `Synced ${synced} ${synced === 1 ? "snap" : "snaps"} from cloud`,
+            failed > 0 ? `${failed} failed` : undefined,
+            failed > 0 ? "warning" : "success"
           );
         } else if (failed > 0) {
-          setCloudSyncToast(
-            `Cloud sync finished with ${failed} ${
-              failed === 1 ? "error" : "errors"
-            }`
+          showToast(
+            `Cloud sync finished with ${failed} ${failed === 1 ? "error" : "errors"}`,
+            undefined,
+            "error"
           );
         }
       }
@@ -231,13 +211,6 @@ export default function HomePage() {
       if (unsubscribe) unsubscribe();
     };
   }, []);
-
-  // Auto-dismiss the completion toast after a few seconds.
-  useEffect(() => {
-    if (!cloudSyncToast) return;
-    const timer = setTimeout(() => setCloudSyncToast(null), 4000);
-    return () => clearTimeout(timer);
-  }, [cloudSyncToast]);
 
   // Single source of truth for snaps: whenever the active workspace changes,
   // immediately wipe stale data and fetch fresh snaps for the new workspace.
@@ -302,7 +275,6 @@ export default function HomePage() {
       // up to date. onAutoSyncCompleted handles refreshes when something changes.
       if (!syncedWorkspaces.has(wsId)) {
         syncedWorkspaces.add(wsId);
-        setIsRefreshing(true);
         try {
           const cloudResult = await window.api.syncFromCloud(
             effectiveUserId,
@@ -323,10 +295,6 @@ export default function HomePage() {
         } catch (err) {
           console.warn("[Home] Cloud pull failed (non-fatal):", err);
           syncedWorkspaces.delete(wsId); // allow retry next visit on failure
-        } finally {
-          if (myToken === fetchIdRef.current) {
-            setIsRefreshing(false);
-          }
         }
       }
       return;
@@ -335,7 +303,6 @@ export default function HomePage() {
     } finally {
       if (myToken === fetchIdRef.current) {
         setLoading(false);
-        setIsRefreshing(false);
       }
     }
   };
@@ -1219,70 +1186,6 @@ export default function HomePage() {
         <title>Home - SnapFlow</title>
       </Head>
       <AppShell>
-        {isRefreshing && (
-          <div className="flex-shrink-0 px-4 py-1.5 bg-gray-950 border-b border-gray-800 flex items-center gap-2 text-xs text-gray-500">
-            <div className="w-3 h-3 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin flex-shrink-0" />
-            <span>Refreshing…</span>
-          </div>
-        )}
-
-        {/* Cloud sync banner — visible while snaps are being pulled from cloud */}
-        {cloudSync.active && (
-          <div className="bg-blue-600/15 border-b border-blue-500/30 text-blue-200 text-sm">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-center gap-3">
-              <div className="w-3.5 h-3.5 border-2 border-blue-400/30 border-t-blue-300 rounded-full animate-spin flex-shrink-0" />
-              <span className="flex-1 min-w-0 truncate">
-                {cloudSync.total > 0
-                  ? `Syncing snaps from cloud — ${cloudSync.current} of ${cloudSync.total}…`
-                  : "Syncing snaps from cloud…"}
-              </span>
-              {cloudSync.total > 0 && (
-                <div className="hidden sm:block w-32 h-1.5 bg-blue-900/40 rounded-full overflow-hidden flex-shrink-0">
-                  <div
-                    className="h-full bg-blue-400 transition-all duration-200"
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        Math.round((cloudSync.current / cloudSync.total) * 100)
-                      )}%`,
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Cloud sync completion toast — auto-dismisses after a few seconds */}
-        {!cloudSync.active && cloudSyncToast && (
-          <div className="bg-emerald-600/15 border-b border-emerald-500/30 text-emerald-200 text-sm">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-center gap-3">
-              <svg
-                className="w-4 h-4 flex-shrink-0"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
-              <span className="flex-1 min-w-0 truncate">{cloudSyncToast}</span>
-              <button
-                type="button"
-                onClick={() => setCloudSyncToast(null)}
-                className="text-emerald-300 hover:text-emerald-100 text-xs"
-                aria-label="Dismiss"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {/* Toolbar — hidden until the user has snaps */}

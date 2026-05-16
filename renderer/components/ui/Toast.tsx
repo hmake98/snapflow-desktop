@@ -1,19 +1,22 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
-export type ToastVariant = "info" | "success" | "error";
+export type ToastVariant = "info" | "success" | "error" | "warning";
 
 interface Toast {
   id: number;
   title: string;
   body?: string;
   variant: ToastVariant;
+  persistent?: boolean;
 }
 
 interface ToastDetail {
   title: string;
   body?: string;
   variant?: ToastVariant;
+  persistent?: boolean;
+  id?: number;
 }
 
 const inferVariant = (title: string, body?: string): ToastVariant => {
@@ -93,6 +96,24 @@ const VARIANT_STYLES: Record<
       </svg>
     ),
   },
+  warning: {
+    ring: "border-amber-500/30",
+    icon: (
+      <svg
+        className="w-3.5 h-3.5 text-amber-400"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M18.364 5.636a9 9 0 010 12.728M15.536 8.464a5 5 0 010 7.072M12 12h.01M3 3l18 18"
+        />
+      </svg>
+    ),
+  },
 };
 
 const DEFAULT_DURATION = 3500;
@@ -108,26 +129,39 @@ export const ToastHost: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const handler = (e: Event) => {
+    const addHandler = (e: Event) => {
       // eslint-disable-next-line no-undef
       const detail = (e as CustomEvent<ToastDetail>).detail;
       if (!detail || !detail.title) return;
-      const id = ++nextId;
+      const id = detail.id ?? ++nextId;
       const variant: ToastVariant =
         detail.variant ?? inferVariant(detail.title, detail.body);
       setToasts((prev) => {
+        // Replace if same id already exists (update in place)
+        const without = prev.filter((t) => t.id !== id);
         const next = [
-          ...prev,
-          { id, title: detail.title, body: detail.body, variant },
+          ...without,
+          { id, title: detail.title, body: detail.body, variant, persistent: detail.persistent },
         ];
-        // keep only the most recent MAX_VISIBLE
         return next.slice(-MAX_VISIBLE);
       });
-      window.setTimeout(() => dismiss(id), DEFAULT_DURATION);
+      if (!detail.persistent) {
+        window.setTimeout(() => dismiss(id), DEFAULT_DURATION);
+      }
     };
 
-    window.addEventListener("snapflow-toast", handler);
-    return () => window.removeEventListener("snapflow-toast", handler);
+    const dismissHandler = (e: Event) => {
+      // eslint-disable-next-line no-undef
+      const { id } = (e as CustomEvent<{ id: number }>).detail ?? {};
+      if (id != null) dismiss(id);
+    };
+
+    window.addEventListener("snapflow-toast", addHandler);
+    window.addEventListener("snapflow-toast-dismiss", dismissHandler);
+    return () => {
+      window.removeEventListener("snapflow-toast", addHandler);
+      window.removeEventListener("snapflow-toast-dismiss", dismissHandler);
+    };
   }, [dismiss]);
 
   return (
@@ -194,15 +228,27 @@ export const ToastHost: React.FC = () => {
 
 /**
  * Programmatic toast — call from anywhere in the renderer.
- * Equivalent to dispatching a "snapflow-toast" CustomEvent.
+ * Returns the toast ID. Pass `persistent: true` for toasts that don't
+ * auto-dismiss; call `dismissToast(id)` to remove them manually.
  */
 export function showToast(
   title: string,
   body?: string,
-  variant?: ToastVariant
-): void {
+  variant?: ToastVariant,
+  persistent?: boolean
+): number {
+  const id = ++nextId;
   window.dispatchEvent(
     // eslint-disable-next-line no-undef
-    new CustomEvent("snapflow-toast", { detail: { title, body, variant } })
+    new CustomEvent("snapflow-toast", { detail: { id, title, body, variant, persistent } })
+  );
+  return id;
+}
+
+/** Dismiss a specific toast by the ID returned from showToast. */
+export function dismissToast(id: number): void {
+  window.dispatchEvent(
+    // eslint-disable-next-line no-undef
+    new CustomEvent("snapflow-toast-dismiss", { detail: { id } })
   );
 }
