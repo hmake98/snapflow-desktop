@@ -961,11 +961,7 @@ async function handleScreenshotCapture(
 
     // For fullscreen, auto-upgrade to all-screens when multiple displays are connected
     let resolvedMode = mode as
-      | "fullscreen"
-      | "window"
-      | "region"
-      | "all-screens"
-      | "specific-screen";
+      "fullscreen" | "window" | "region" | "all-screens" | "specific-screen";
 
     if (mode === "fullscreen" && screen.getAllDisplays().length > 1) {
       resolvedMode = "all-screens";
@@ -976,11 +972,7 @@ async function handleScreenshotCapture(
 
     const captureOptions: {
       mode:
-        | "fullscreen"
-        | "window"
-        | "region"
-        | "all-screens"
-        | "specific-screen";
+        "fullscreen" | "window" | "region" | "all-screens" | "specific-screen";
       screenId?: string;
     } = { mode: resolvedMode };
 
@@ -2323,20 +2315,6 @@ function setupIPCHandlers() {
       }
     }
   );
-
-  ipcMain.handle("user:google-signin", async () => {
-    try {
-      const oauthUrl = await authService.googleSignIn();
-      // Open the URL in the default browser
-      shell.openExternal(oauthUrl);
-      return { success: true, data: { url: oauthUrl } };
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "An unexpected error occurred";
-      log.error("Google signin error:", error);
-      return { success: false, error: errorMessage };
-    }
-  });
 
   ipcMain.handle("user:github-signin", async () => {
     try {

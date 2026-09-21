@@ -188,7 +188,11 @@ export default function HomePage() {
     const unsubscribe = window.api.onCloudSyncProgress?.((data) => {
       if (data.phase === "start") {
         const total = data.total ?? 0;
-        showToast("Syncing from cloud…", total > 0 ? `${total} snaps` : undefined, "info");
+        showToast(
+          "Syncing from cloud…",
+          total > 0 ? `${total} snaps` : undefined,
+          "info"
+        );
       } else if (data.phase === "complete") {
         const synced = data.syncedCount ?? 0;
         const failed = data.failedCount ?? 0;

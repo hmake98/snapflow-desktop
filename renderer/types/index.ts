@@ -220,7 +220,6 @@ export type IPCChannel =
   | "user:get"
   | "user:login"
   | "user:logout"
-  | "user:google-signin"
   | "user:get-session-expiry"
   | "user:is-session-expiring-soon"
   | "tenant:create"
