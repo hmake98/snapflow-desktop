@@ -1,3 +1,13 @@
+/**
+ * GitHub Sync Connector — NOT the "Sign in with GitHub" login flow.
+ *
+ * This is a separate GitHub OAuth App (GITHUB_CLIENT_ID/SECRET in .env) used
+ * per-workspace to push snaps as GitHub issues. Login via GitHub is a
+ * different OAuth App configured in the Supabase Dashboard and handled by
+ * `authService.githubSignIn()` in auth.ts — the two do not share credentials
+ * or tokens.
+ */
+
 import axios from "axios";
 import log from "electron-log";
 

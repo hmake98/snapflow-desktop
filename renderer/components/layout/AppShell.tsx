@@ -58,7 +58,6 @@ export function AppShell({
     }
 
     prevIsOnline.current = isOnline;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOnline]);
 
   // "All synced" toast when queue drains while online

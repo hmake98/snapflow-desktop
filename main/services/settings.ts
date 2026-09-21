@@ -102,8 +102,7 @@ export const captureScreenSettings = {
 export const homeScreenSettings = {
   get(): HomeScreenPrefs {
     const stored = recordingSettingsStore.get("homeScreenPrefs") as
-      | Partial<HomeScreenPrefs>
-      | undefined;
+      Partial<HomeScreenPrefs> | undefined;
     if (!stored) return { ...DEFAULT_HOME_PREFS };
     return { ...DEFAULT_HOME_PREFS, ...stored };
   },

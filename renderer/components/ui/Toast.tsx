@@ -141,7 +141,13 @@ export const ToastHost: React.FC = () => {
         const without = prev.filter((t) => t.id !== id);
         const next = [
           ...without,
-          { id, title: detail.title, body: detail.body, variant, persistent: detail.persistent },
+          {
+            id,
+            title: detail.title,
+            body: detail.body,
+            variant,
+            persistent: detail.persistent,
+          },
         ];
         return next.slice(-MAX_VISIBLE);
       });
@@ -240,7 +246,9 @@ export function showToast(
   const id = ++nextId;
   window.dispatchEvent(
     // eslint-disable-next-line no-undef
-    new CustomEvent("snapflow-toast", { detail: { id, title, body, variant, persistent } })
+    new CustomEvent("snapflow-toast", {
+      detail: { id, title, body, variant, persistent },
+    })
   );
   return id;
 }

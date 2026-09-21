@@ -74,7 +74,9 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key   # required for team invites
 
-# Optional — GitHub integration
+# Optional — GitHub sync connector (NOT the "Sign in with GitHub" login button,
+# which uses Supabase Auth's GitHub provider — configure that in the Supabase
+# Dashboard under Authentication → Providers, not here)
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 
