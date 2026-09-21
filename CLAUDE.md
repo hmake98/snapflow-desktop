@@ -113,6 +113,21 @@ In `handleAuthCallback` (background.ts), navigation is decided in this order:
 - `OfflineBanner` component shows amber (offline) or green (draining queue) status
 - Sync queue is stored in Zustand: `syncQueue`, `addToSyncQueue`, `removeFromSyncQueue`
 
+### 9. Two Separate GitHub OAuth Integrations — Don't Conflate Them
+
+There are **two independent** GitHub OAuth flows in this app. They use different GitHub OAuth Apps, different credentials, and different code paths:
+
+|                   | **Login** ("Sign in with GitHub")                                                                                        | **Sync connector** (push snaps as GitHub issues)           |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| Purpose           | Auth provider (via Supabase Auth)                                                                                        | Per-workspace connector, like Zoho                         |
+| Code              | `main/services/auth.ts` `githubSignIn()`                                                                                 | `main/services/github.ts`, `main/services/connectors.ts`   |
+| Credentials       | Configured in **Supabase Dashboard** → Authentication → Providers → GitHub (not in `.env`)                               | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` in `.env`      |
+| Callback URL      | `https://<project-ref>.supabase.co/auth/v1/callback` (Supabase-owned)                                                    | `http://localhost:3000/auth/github/callback`               |
+| App-side redirect | Both ultimately land back in-app via the `snapflow://auth/callback` deep link (see `main/main.ts` `handleOAuthCallback`) | Uses the same deep link scheme for the token exchange step |
+| Token stored      | Supabase session (`provider_token` unused)                                                                               | Per-workspace `connectors` table row                       |
+
+`GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` in `.env` are for the sync connector only — setting them up does nothing for the login button, and vice versa. If GitHub login stops working, check Supabase Dashboard, not `.env`.
+
 ## Common Tasks
 
 ### Adding a New IPC Handler

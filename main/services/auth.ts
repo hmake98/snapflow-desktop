@@ -8,7 +8,7 @@
  *
  * Public surface used by session.ts and background.ts:
  *   createUser / login / logout / getCurrentUser / updateUser /
- *   changePassword / deleteUser / googleSignIn / exchangeCodeForSession /
+ *   changePassword / deleteUser / githubSignIn / exchangeCodeForSession /
  *   getSession / setSession / hasAnyUser / getUserById
  */
 
@@ -326,33 +326,17 @@ class AuthService {
     await this.logout();
   }
 
-  // ── Google OAuth ─────────────────────────────────────────────────────────────
+  // ── GitHub OAuth (LOGIN — not the sync connector) ───────────────────────────
 
   /**
-   * Returns the OAuth redirect URL to be opened in the system browser.
-   * After the user completes the flow, the app handles the deep-link callback
-   * via exchangeCodeForSession.
-   */
-  async googleSignIn(): Promise<string> {
-    const supabase = requireSupabase();
-
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: "snapflow://auth/callback",
-        skipBrowserRedirect: true,
-      },
-    });
-
-    if (error) throw new Error(error.message);
-    if (!data?.url) throw new Error("Failed to generate Google OAuth URL.");
-
-    return data.url;
-  }
-
-  /**
-   * Begin a GitHub OAuth flow via Supabase. Mirrors googleSignIn — relies on
-   * the same `snapflow://auth/callback` deep link to complete via PKCE.
+   * Begin a GitHub OAuth flow via Supabase. Returns the OAuth redirect URL to
+   * be opened in the system browser; the app completes the flow via the
+   * `snapflow://auth/callback` deep link and exchangeCodeForSession.
+   *
+   * This is the "Sign in with GitHub" login button, using the GitHub OAuth
+   * App configured in the Supabase Dashboard (Authentication → Providers).
+   * It is unrelated to the separate GitHub sync connector in
+   * `services/github.ts`, which uses its own GITHUB_CLIENT_ID/SECRET from `.env`.
    */
   async githubSignIn(): Promise<string> {
     const supabase = requireSupabase();

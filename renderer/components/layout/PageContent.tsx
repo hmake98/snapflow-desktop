@@ -1,16 +1,7 @@
 import React from "react";
 
 type MaxWidth =
-  | "sm"
-  | "md"
-  | "lg"
-  | "xl"
-  | "2xl"
-  | "3xl"
-  | "4xl"
-  | "5xl"
-  | "6xl"
-  | "full";
+  "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "6xl" | "full";
 
 const WIDTH_MAP: Record<MaxWidth, string> = {
   sm: "max-w-sm",

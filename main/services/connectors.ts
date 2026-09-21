@@ -1126,8 +1126,7 @@ export class ConnectorService {
       type: data.type as "github" | "zoho",
       enabled: data.enabled as boolean,
       config: data.config as unknown as
-        | GitHubConnectorConfig
-        | ZohoConnectorConfig,
+        GitHubConnectorConfig | ZohoConnectorConfig,
       lastSyncAt: (data.last_sync_at as string) || undefined,
       createdAt: (data.created_at as string) || undefined,
       updatedAt: (data.updated_at as string) || undefined,
