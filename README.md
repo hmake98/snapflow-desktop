@@ -1,6 +1,6 @@
 # SnapFlow Desktop
 
-A cross-platform desktop app for screenshot capture, screen recording, annotation, and team collaboration — with sync to GitHub Issues, Zoho Projects, and the cloud.
+A cross-platform desktop app for screenshot capture, session recording, annotation, and team collaboration — with sync to GitHub Issues, Zoho Projects, and the cloud.
 
 Built with **Electron + Next.js** (Nextron), **Supabase**, and **TypeScript**.
 
@@ -9,9 +9,9 @@ Built with **Electron + Next.js** (Nextron), **Supabase**, and **TypeScript**.
 ## Features
 
 - **Screenshot capture** — full screen, area selection, or individual window; auto-copied to clipboard
-- **Screen recording** — full screen or window, red overlay border during recording, remembers the last-used source
+- **Session recording** — `F9` starts/stops a capture session that tracks interaction events and screenshots (`Ctrl+Shift+S` for a manual in-session snap) into a timeline, with a live HUD (elapsed time, screenshot/event counts). Replaces the older video-based screen recorder, whose UI is now disabled (stubbed pages, code kept in git history)
 - **Annotation editor** — freehand drawing, shapes, arrows, color picker, undo/redo (Konva.js)
-- **AI session review** — auto-generates bug descriptions from recorded sessions; choice of Groq, OpenAI, Google Gemini, or Anthropic Claude (API key entered per-provider in Settings, not via `.env`)
+- **AI session review** — auto-generates bug descriptions from a session's timeline; choice of Groq, OpenAI, Google Gemini, or Anthropic Claude (API key entered per-provider in Settings, not via `.env`)
 - **Snap management** — create, tag, filter, search, and preview captures locally
 - **Cloud sync** — sync snaps to Supabase Storage with per-snap status (local / syncing / synced / failed)
 - **GitHub integration** — create issues with embedded screenshots via OAuth
@@ -123,20 +123,20 @@ snapflow-desktop/
 │   ├── services/
 │   │   ├── ai.ts                # AI session description (Groq/OpenAI/Gemini/Anthropic)
 │   │   ├── auth.ts              # Supabase auth (session management)
-│   │   ├── capture.ts           # Screenshot + ffmpeg recording
+│   │   ├── capture.ts           # Screenshot capture; legacy ffmpeg video-recording engine (disabled in UI)
 │   │   ├── clipboard.ts         # Bug report clipboard formatting
 │   │   ├── connectors.ts        # GitHub/Zoho connector CRUD + issue/bug sync + screenshot embedding
-│   │   ├── debug-collector/     # Debug log collection utilities
+│   │   ├── debug-collector/     # Session recording — event tracking, screenshots, timeline (powers session-hud + AI review)
 │   │   ├── github.ts            # GitHub OAuth (token exchange, user, repos)
 │   │   ├── issues.ts            # Snap CRUD (local + cloud)
 │   │   ├── onboarding.ts        # Onboarding progress (persistent, per-user)
-│   │   ├── overlay.ts           # Red border overlay window shown while recording
-│   │   ├── recorder.ts          # Recording state machine
+│   │   ├── overlay.ts           # Red border overlay for the legacy video-recording flow (disabled in UI)
+│   │   ├── recorder.ts          # Recording state machine for the legacy video-recording flow (disabled in UI)
 │   │   ├── settings.ts          # App settings (electron-store)
 │   │   ├── sync.ts              # Supabase Storage sync
 │   │   ├── tenant.ts            # Organization management
 │   │   ├── updater.ts           # Auto-update (electron-updater)
-│   │   ├── window-picker.ts     # Available screens/windows list, remembers default source
+│   │   ├── window-picker.ts     # Screen/window source picker for the legacy video-recording flow (disabled in UI)
 │   │   ├── workspace.ts         # Workspace + invite + pending_invites
 │   │   └── zoho.ts              # Zoho OAuth & bug creation/update/delete
 │   ├── utils/
@@ -157,17 +157,17 @@ snapflow-desktop/
 │   │   ├── join-workspace.tsx   # Invite acceptance with multi-invite chaining
 │   │   ├── settings.tsx         # Account, connectors, sync, workspace settings
 │   │   ├── annotate.tsx         # Image annotation editor
-│   │   ├── annotate-recording.tsx
 │   │   ├── annotate-session.tsx # AI-assisted session review and annotation
-│   │   ├── session-hud.tsx      # In-session HUD overlay
-│   │   ├── area-capture.tsx / area-selector.tsx
-│   │   ├── window-capture.tsx / window-picker.tsx
-│   │   └── recording-*.tsx      # Recording control, overlay, area selector
+│   │   ├── session-hud.tsx      # Live session capture HUD (elapsed time, screenshot/event counts)
+│   │   ├── area-capture.tsx / area-selector.tsx   # Area screenshot capture
+│   │   ├── window-capture.tsx   # Window screenshot capture
+│   │   └── annotate-recording.tsx, recording-*.tsx, window-picker.tsx
+│   │       # Legacy video-recording UI — disabled, all stubbed to `return null`
 │   ├── components/
 │   │   ├── layout/              # AppShell, PageContent, PageHeader, Section, CenteredLayout
 │   │   ├── ui/                  # Button, Card, Dialog, Select, Avatar, ProfileDropdown, WorkspaceSwitcher, …
 │   │   ├── settings/            # AccountSection, GitHubConnectorManager, WorkspacesSection, …
-│   │   └── WindowPickerModal.tsx
+│   │   └── WindowPickerModal.tsx  # Legacy video-recording source picker — disabled
 │   ├── hooks/
 │   │   ├── useNetworkStatus.ts  # navigator.onLine → Zustand
 │   │   └── useSyncQueue.ts      # Offline-aware sync queue
