@@ -43,7 +43,6 @@ const api = {
   removeAvatar: (userId: string) =>
     ipcRenderer.invoke("user:remove-avatar", { userId }),
   logout: () => ipcRenderer.invoke("user:logout"),
-  googleSignIn: () => ipcRenderer.invoke("user:google-signin"),
   githubUserSignIn: () => ipcRenderer.invoke("user:github-signin"),
   getSessionExpiry: () => ipcRenderer.invoke("user:get-session-expiry"),
   isSessionExpiringSoon: (minutesBuffer?: number) =>

@@ -4,12 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { motion, type HTMLMotionProps } from "framer-motion";
 
 type TimelineColor =
-  | "primary"
-  | "secondary"
-  | "muted"
-  | "accent"
-  | "destructive"
-  | "warning";
+  "primary" | "secondary" | "muted" | "accent" | "destructive" | "warning";
 
 // ── Variants ──────────────────────────────────────────────────────────────
 
