@@ -9,14 +9,14 @@ Built with **Electron + Next.js** (Nextron), **Supabase**, and **TypeScript**.
 ## Features
 
 - **Screenshot capture** — full screen, area selection, or individual window; auto-copied to clipboard
-- **Screen recording** — full screen or window, red overlay border during recording, default source memory
+- **Screen recording** — full screen or window, red overlay border during recording, remembers the last-used source
 - **Annotation editor** — freehand drawing, shapes, arrows, color picker, undo/redo (Konva.js)
-- **AI session review** — auto-generates bug descriptions from recorded sessions via Groq (llama-4-scout)
+- **AI session review** — auto-generates bug descriptions from recorded sessions; choice of Groq, OpenAI, Google Gemini, or Anthropic Claude (API key entered per-provider in Settings, not via `.env`)
 - **Snap management** — create, tag, filter, search, and preview captures locally
 - **Cloud sync** — sync snaps to Supabase Storage with per-snap status (local / syncing / synced / failed)
 - **GitHub integration** — create issues with embedded screenshots via OAuth
-- **Zoho Projects integration** — create bugs/tasks via OAuth
-- **Multi-tenant workspaces** — organizations → workspaces → snaps; roles: owner, admin, pm, dev, qa, client
+- **Zoho Projects integration** — create bugs (with embedded screenshot) via OAuth
+- **Multi-tenant workspaces** — organizations → workspaces → snaps; roles: owner, admin, member
 - **Team invites** — email invites with multi-invite chaining (multiple pending invites processed in order)
 - **Offline support** — sync queue drains automatically on reconnect
 - **Auto-updates** — background update check and install via electron-updater
@@ -25,22 +25,24 @@ Built with **Electron + Next.js** (Nextron), **Supabase**, and **TypeScript**.
 
 ## Tech Stack
 
-| Layer        | Technologies                                                                                 |
-| ------------ | -------------------------------------------------------------------------------------------- |
-| Renderer     | Next.js 16, React 19, TypeScript, Tailwind CSS 4, Zustand, Konva.js, Framer Motion, Radix UI |
-| Main process | Electron 42, Nextron, electron-store, electron-log, electron-updater, sharp, ffmpeg-static   |
-| Database     | Supabase (PostgreSQL + Auth + Storage), Row Level Security                                   |
-| AI           | Groq API (llama-4-scout vision model)                                                        |
-| Integrations | GitHub OAuth + REST API, Zoho OAuth + Projects API                                           |
-| Build        | electron-builder 26, GitHub Actions                                                          |
-| Code quality | ESLint, Prettier, Husky + lint-staged, TypeScript strict                                     |
+| Layer        | Technologies                                                                                   |
+| ------------ | ---------------------------------------------------------------------------------------------- |
+| Renderer     | Next.js 16, React 19, TypeScript 6, Tailwind CSS 4, Zustand, Konva.js, Framer Motion, Radix UI |
+| Main process | Electron 43, Nextron, electron-store, electron-log, electron-updater, sharp, ffmpeg-static     |
+| Database     | Supabase (PostgreSQL + Auth + Storage), Row Level Security                                     |
+| AI           | Groq, OpenAI, Google Gemini, or Anthropic Claude (user-selected, user-supplied API key)        |
+| Integrations | GitHub OAuth + REST API, Zoho OAuth + Projects API                                             |
+| Build        | electron-builder 26, GitHub Actions                                                            |
+| Code quality | ESLint, Prettier, Husky + lint-staged, TypeScript                                              |
+
+Electron is pinned to `^43.x` (not latest 44) — Electron 44 removed the synchronous clipboard API this app's screenshot-copy feature depends on.
 
 ---
 
 ## Prerequisites
 
-- Node.js 20+
-- A [Supabase](https://supabase.com) project (free tier works)
+- Node.js 20 (matches CI)
+- The [Supabase CLI](https://supabase.com/docs/guides/cli) and a [Supabase](https://supabase.com) project (free tier works)
 - (Optional) GitHub OAuth app and/or Zoho API credentials for integrations
 
 ---
@@ -59,9 +61,9 @@ On first launch, complete the onboarding: create an organization → workspace �
 
 ### Supabase Setup
 
-1. Create a project at [app.supabase.com](https://app.supabase.com)
-2. Run migrations in order from `supabase/migrations/` via the SQL editor
-3. Create a public storage bucket named `snapflow-public-bucket` (allowed types: `image/*`, `video/*`)
+1. Create a project at [app.supabase.com](https://app.supabase.com) and run `supabase link` in the repo root
+2. Apply migrations: `supabase db push --linked`
+3. Create the storage bucket declared in `supabase/config.toml`: `supabase seed buckets --linked`
 4. Copy credentials from **Project Settings → API** into your `.env`
 
 ---
@@ -87,6 +89,8 @@ ZOHO_CLIENT_SECRET=
 NODE_ENV=development
 ```
 
+AI provider keys (Groq/OpenAI/Gemini/Anthropic) are **not** env vars — they're entered per-provider in Settings → AI and stored locally via `electron-store`.
+
 ---
 
 ## Available Scripts
@@ -96,15 +100,15 @@ npm run dev            # development server + Electron with hot reload
 npm run build          # Next.js build only (used in CI)
 npm run build:pack     # full production build with installers
 
-npm run lint           # ESLint
-npm run lint:fix       # ESLint with auto-fix
-npm run format         # Prettier (write)
-npm run format:check   # Prettier (check only)
-npm run type-check     # TypeScript (no emit)
+npm run lint            # ESLint
+npm run lint:fix        # ESLint with auto-fix
+npm run format           # Prettier (write)
+npm run format:check     # Prettier (check only)
+npm run type-check       # TypeScript (no emit)
 
-npm run version:patch  # bump patch version in package.json
-npm run version:minor  # bump minor version
-npm run version:major  # bump major version
+npm run version:patch   # bump patch version in package.json (local only, doesn't trigger CI)
+npm run version:minor   # bump minor version
+npm run version:major   # bump major version
 ```
 
 ---
@@ -117,24 +121,24 @@ snapflow-desktop/
 │   ├── main.ts                  # Electron entry, IPC handlers, OAuth callbacks
 │   ├── preload.ts               # Context bridge (window.api)
 │   ├── services/
-│   │   ├── ai.ts                # AI session description via Groq
+│   │   ├── ai.ts                # AI session description (Groq/OpenAI/Gemini/Anthropic)
 │   │   ├── auth.ts              # Supabase auth (session management)
 │   │   ├── capture.ts           # Screenshot + ffmpeg recording
 │   │   ├── clipboard.ts         # Bug report clipboard formatting
-│   │   ├── connectors.ts        # GitHub / Zoho connector CRUD
+│   │   ├── connectors.ts        # GitHub/Zoho connector CRUD + issue/bug sync + screenshot embedding
 │   │   ├── debug-collector/     # Debug log collection utilities
-│   │   ├── github.ts            # GitHub OAuth & Issues API
+│   │   ├── github.ts            # GitHub OAuth (token exchange, user, repos)
 │   │   ├── issues.ts            # Snap CRUD (local + cloud)
 │   │   ├── onboarding.ts        # Onboarding progress (persistent, per-user)
-│   │   ├── overlay.ts           # Recording overlay window
+│   │   ├── overlay.ts           # Red border overlay window shown while recording
 │   │   ├── recorder.ts          # Recording state machine
 │   │   ├── settings.ts          # App settings (electron-store)
 │   │   ├── sync.ts              # Supabase Storage sync
 │   │   ├── tenant.ts            # Organization management
 │   │   ├── updater.ts           # Auto-update (electron-updater)
-│   │   ├── window-picker.ts     # Available screens/windows list
+│   │   ├── window-picker.ts     # Available screens/windows list, remembers default source
 │   │   ├── workspace.ts         # Workspace + invite + pending_invites
-│   │   └── zoho.ts              # Zoho OAuth & Projects API
+│   │   └── zoho.ts              # Zoho OAuth & bug creation/update/delete
 │   ├── utils/
 │   │   ├── secure-config.ts     # Bootstrap secrets → encrypt → electron-store
 │   │   ├── supabase.ts          # getSupabase() / getSupabaseAdmin()
@@ -160,8 +164,10 @@ snapflow-desktop/
 │   │   ├── window-capture.tsx / window-picker.tsx
 │   │   └── recording-*.tsx      # Recording control, overlay, area selector
 │   ├── components/
-│   │   ├── ui/                  # Button, Card, Dialog, Select, Badge, OfflineBanner, WorkspaceSwitcher, …
-│   │   └── settings/            # AccountSection, GitHubConnectorManager, WorkspacesSection, …
+│   │   ├── layout/              # AppShell, PageContent, PageHeader, Section, CenteredLayout
+│   │   ├── ui/                  # Button, Card, Dialog, Select, Avatar, ProfileDropdown, WorkspaceSwitcher, …
+│   │   ├── settings/            # AccountSection, GitHubConnectorManager, WorkspacesSection, …
+│   │   └── WindowPickerModal.tsx
 │   ├── hooks/
 │   │   ├── useNetworkStatus.ts  # navigator.onLine → Zustand
 │   │   └── useSyncQueue.ts      # Offline-aware sync queue
@@ -169,46 +175,36 @@ snapflow-desktop/
 │   └── types/index.ts
 │
 ├── supabase/
-│   ├── migrations/              # SQL migrations (apply in order)
+│   ├── migrations/              # SQL migrations (apply in order via `supabase db push`)
 │   ├── templates/               # Branded email templates
-│   └── config.toml
+│   └── config.toml              # Local dev stack + declared storage buckets
 │
 ├── resources/                   # Icons, tray images, entitlements.mac.plist, app-bootstrap.json
 ├── .github/workflows/
-│   ├── ci.yml                   # Lint + type-check + build on every push
-│   └── release.yml              # Build all platforms + publish release on tag
+│   ├── ci.yml                   # Lint + format check + build on push/PR to main/develop
+│   └── release.yml              # Manual: validate → bump minor → build all platforms → publish release
 ├── electron-builder.yml
-└── package.json                 # v1.1.9
+└── package.json
 ```
 
 ---
 
 ## Release Process
 
-### Manual trigger (recommended)
-
-Go to **Actions → Build and Release → Run workflow**, choose `patch / minor / major`. The workflow bumps the version, commits, tags, builds for all three platforms, and publishes a GitHub release.
-
-### Tag push
-
-```bash
-npm run version:patch     # or minor / major
-git add package.json && git commit -m "chore: release vX.Y.Z"
-git tag vX.Y.Z && git push origin main --tags
-```
+Releases are **manual only** — go to **Actions → Build and Release → Run workflow**. There is no tag-push or patch/major trigger: the workflow always bumps the **minor** version, builds all three platforms, and publishes a GitHub release. `npm run version:patch`/`version:major` are for local/manual version bumps outside this workflow.
 
 ### Required GitHub Secrets
 
-| Secret                                      | Purpose                                 |
-| ------------------------------------------- | --------------------------------------- |
-| `SUPABASE_URL`                              | Bundled into the app at build time      |
-| `SUPABASE_ANON_KEY`                         | Bundled into the app at build time      |
-| `SUPABASE_SERVICE_ROLE_KEY`                 | Bundled into the app at build time      |
-| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | GitHub OAuth connector                  |
-| `ZOHO_CLIENT_ID` / `ZOHO_CLIENT_SECRET`     | Zoho OAuth connector                    |
-| `GITHUB_TOKEN`                              | Auto-provided — GitHub release creation |
+| Secret                                  | Purpose                                                        |
+| --------------------------------------- | -------------------------------------------------------------- |
+| `SUPABASE_URL`                          | Bundled into the app at build time                             |
+| `SUPABASE_ANON_KEY`                     | Bundled into the app at build time                             |
+| `SUPABASE_SERVICE_ROLE_KEY`             | Bundled into the app at build time                             |
+| `CLIENT_ID` / `CLIENT_SECRET`           | GitHub OAuth connector (mapped to `GITHUB_CLIENT_ID`/`SECRET`) |
+| `ZOHO_CLIENT_ID` / `ZOHO_CLIENT_SECRET` | Zoho OAuth connector                                           |
+| `GITHUB_TOKEN`                          | Auto-provided — GitHub release creation                        |
 
-Secrets are written to `resources/app-bootstrap.json` by CI, read by `secure-config.ts` at first launch, encrypted into `electron-store`, then the bootstrap file is deleted.
+Secrets are written to `resources/app-bootstrap.json` by CI, read by `secure-config.ts` at first launch, encrypted into `electron-store`, then the bootstrap file is deleted. Builds are not code-signed (no `CSC_LINK`/notarization secrets configured).
 
 ### Release Artifacts
 
@@ -230,6 +226,8 @@ Secrets are written to `resources/app-bootstrap.json` by CI, read by `secure-con
 
 **Invite email not received** — Verify `SUPABASE_SERVICE_ROLE_KEY` is set. Without it, invites fall back to OTP/magic-link. Check Supabase Dashboard → Authentication → Logs.
 
+**Storage upload fails with "row-level security policy"** — The storage bucket needs RLS policies in addition to being created; `supabase seed buckets` only creates the bucket, it doesn't attach policies. Check `supabase/migrations/` for a `storage.objects` policy migration and run `supabase db push --linked`.
+
 **App logs**
 
 ```
@@ -242,4 +240,4 @@ Linux:   ~/.config/SnapFlow/logs/main.log
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE) for details.
