@@ -10,17 +10,17 @@ Static context for AI coding assistants working on SnapFlow Desktop. **Load sele
 
 Pick the file(s) that match the task. Stop there.
 
-| You are about to...                           | Load                                                                                                   |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Add or modify an IPC handler                  | `ipc-map.md`, `coding-standards.md`                                                                    |
-| Touch a `main/services/*.ts` file             | `services.md` to find the file; `coding-standards.md` for the pattern                                  |
-| Add or modify a renderer page                 | `pages.md`                                                                                             |
-| Debug recording / capture flow                | `ipc-map.md` (capture + recording sections), `services.md` (capture, recorder, window-picker, overlay) |
-| Touch sync, offline queue, or Supabase        | `services.md` (sync, workspace), `glossary.md` (Snap vs Issue)                                         |
-| Touch auth, onboarding, invites               | `services.md` (auth, onboarding, workspace, tenant), `workflows.md`                                    |
-| Add a Supabase migration                      | `workflows.md` § "Add a migration"                                                                     |
-| Read or write `main/background.ts`            | `ipc-map.md` **first** — find the handler by name, read only the relevant range                        |
-| Understand stack / build / process boundaries | `architecture.md`                                                                                      |
+| You are about to...                           | Load                                                                            |
+| --------------------------------------------- | ------------------------------------------------------------------------------- |
+| Add or modify an IPC handler                  | `ipc-map.md`, `coding-standards.md`                                             |
+| Touch a `main/services/*.ts` file             | `services.md` to find the file; `coding-standards.md` for the pattern           |
+| Add or modify a renderer page                 | `pages.md`                                                                      |
+| Debug a capture flow                          | `ipc-map.md` (capture section), `services.md` (capture)                         |
+| Touch sync, offline queue, or Supabase        | `services.md` (sync, workspace), `glossary.md` (Snap vs Issue)                  |
+| Touch auth, onboarding, invites               | `services.md` (auth, onboarding, workspace, tenant), `workflows.md`             |
+| Add a Supabase migration                      | `workflows.md` § "Add a migration"                                              |
+| Read or write `main/background.ts`            | `ipc-map.md` **first** — find the handler by name, read only the relevant range |
+| Understand stack / build / process boundaries | `architecture.md`                                                               |
 
 ## Never load
 

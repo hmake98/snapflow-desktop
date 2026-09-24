@@ -11,7 +11,6 @@ Stack and process boundaries. Stable.
 - **Database / Auth / Storage:** Supabase. Client in `main/utils/supabase.ts` (`getSupabase`, `getSupabaseAdmin`).
 - **Local persistence:** `electron-store` for issues (`snapflow-issues.json`); plain JSON for app settings.
 - **AI provider SDKs:** `@anthropic-ai/sdk`, `openai` (Anthropic, OpenAI, Groq, Gemini routed through `main/services/ai.ts`).
-- **Recording:** `ffmpeg-static` + `fluent-ffmpeg`, `desktopCapturer`, `getUserMedia` via hidden BrowserWindow.
 - **Logging:** `electron-log` (`~/Library/Logs/SnapFlow/`, `%APPDATA%/SnapFlow/logs/`).
 - **Updates:** `electron-updater` (formerly `update-electron-app`; see `main/services/updater.ts`).
 
@@ -28,13 +27,13 @@ main/                  Electron main process
   helpers/             Small main-process utilities
 
 renderer/              Next.js app running in renderer process
-  pages/               Next.js pages (home, auth, onboarding, recording overlays...)
+  pages/               Next.js pages (home, auth, onboarding, capture overlays...)
   components/          Shared UI
   hooks/               useNetworkStatus, useSyncQueue
   store/               Zustand
   types/               Shared TypeScript types
 
-resources/             Tray icons + blank.html (required for hidden recording window)
+resources/             Tray icons, entitlements, app-bootstrap.json
 supabase/              SQL migrations + email templates
 app/                   Nextron build output. NEVER EDIT.
 ```
@@ -50,14 +49,12 @@ Pre-commit checks run via Husky + lint-staged.
 
 ## Why `app/` is `__dirname` in production
 
-Nextron bundles `main/background.ts` into `app/background.js`. At runtime `__dirname === "<install>/app"`, not `main/`. Resource paths must be resolved relative to `app/`, e.g. `path.join(__dirname, "../resources/blank.html")`.
+Nextron bundles `main/background.ts` into `app/background.js`. At runtime `__dirname === "<install>/app"`, not `main/`. Resource paths must be resolved relative to `app/`, e.g. `path.join(__dirname, "../resources/icon.png")`.
 
 This is the single most common source of "file not found" bugs in main-process code. Restart Electron (not just renderer) to pick up main-process changes.
 
-## Capture / recording invariants
+## Capture invariants
 
-- `desktopCapturer.getSources()` returns empty thumbnails (0×0) from the main process on macOS. Use `captureFrameViaRenderer()` (hidden BrowserWindow + `getUserMedia`) instead.
-- Hidden windows must `loadFile("blank.html")`. Never `loadURL("data:...")` — `data:` URLs lack `navigator.mediaDevices` (not a secure context in Chromium).
 - macOS screen-recording permission requires an Electron restart after grant. `captureService.checkScreenRecordingPermission()` is the source of truth; cache cleared on app activation.
 
 ## Auth + session

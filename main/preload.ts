@@ -106,7 +106,7 @@ const api = {
   createIssue: (
     userId: string,
     title: string,
-    type: "screenshot" | "recording",
+    type: "screenshot",
     filePath: string,
     description?: string,
     thumbnailPath?: string,
@@ -175,49 +175,6 @@ const api = {
     ipcRenderer.invoke("capture:select-window", { windowId }),
   cancelWindowSelect: () => ipcRenderer.invoke("capture:cancel-window-select"),
 
-  // Recording methods
-  recordingAreaSelected: (bounds: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  }) => ipcRenderer.invoke("recording:area-selected", { bounds }),
-  startRecording: (bounds: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  }) => ipcRenderer.invoke("recording:start", { bounds }),
-  stopRecording: () => ipcRenderer.invoke("recording:stop"),
-  cancelRecording: () => ipcRenderer.invoke("recording:cancel"),
-  getPendingRecording: () => ipcRenderer.invoke("recording:get-pending"),
-  getRecordingSources: () => ipcRenderer.invoke("recording:get-sources"),
-  startRecordingWithSource: (args: {
-    sourceId: string;
-    sourceName: string;
-    displayBounds?: {
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-    } | null;
-    setAsDefault?: boolean;
-  }) => ipcRenderer.invoke("recording:start-with-source", args),
-  getDefaultRecordingSource: () =>
-    ipcRenderer.invoke("recording:get-default-source"),
-  setDefaultRecordingSource: (source: Record<string, unknown>) =>
-    ipcRenderer.invoke("recording:set-default-source", source),
-  clearDefaultRecordingSource: () =>
-    ipcRenderer.invoke("recording:clear-default-source"),
-  getRecordingSourcesWithDefault: () =>
-    ipcRenderer.invoke("recording:get-sources-with-default"),
-  onShowRecordingPicker: (callback: (payload: unknown) => void) => {
-    const handler = (_event: IpcRendererEvent, payload: unknown) =>
-      callback(payload);
-    ipcRenderer.on("recording:show-picker", handler);
-    return () => ipcRenderer.removeListener("recording:show-picker", handler);
-  },
-
   // Clipboard methods
   pasteBug: (snapId: string) =>
     ipcRenderer.invoke("clipboard:paste-bug", { snapId }),
@@ -234,13 +191,6 @@ const api = {
       connectorId?: string;
     }[];
   }) => ipcRenderer.invoke("clipboard:copy-bug-data", data),
-
-  // Listeners
-  onRecordingSources: (callback: (sources: unknown[]) => void) => {
-    return ipcRenderer.on("recording:sources", (_event, sources) =>
-      callback(sources)
-    );
-  },
 
   // Connector methods
   listConnectors: (workspaceId: string) =>

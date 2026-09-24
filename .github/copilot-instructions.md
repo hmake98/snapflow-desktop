@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-SnapFlow is an Electron-based desktop app for screenshot/screen recording with issue tracking and cloud sync (GitHub integration + Supabase). Built with **Nextron** (Next.js + Electron), TypeScript, Tailwind CSS, Zustand, and **Supabase** (PostgreSQL + Auth + Storage).
+SnapFlow is an Electron-based desktop app for screenshot capture and session capture with issue tracking and cloud sync (GitHub integration + Supabase). Built with **Nextron** (Next.js + Electron), TypeScript, Tailwind CSS, Zustand, and **Supabase** (PostgreSQL + Auth + Storage).
 
 ## Architecture
 
@@ -62,7 +62,7 @@ npm run type-check       # TypeScript type checking
 All business logic lives in `main/services/`:
 
 - `auth.ts` - Supabase Auth (signup, login, logout, session management, JWT tokens)
-- `capture.ts` - Screenshot/recording using `desktopCapturer` + Electron `nativeImage`
+- `capture.ts` - Screenshot capture using `desktopCapturer` + Electron `nativeImage`
 - `issues.ts` - Issue/Snap CRUD (workspace-scoped) with local + Supabase storage
 - `connectors.ts` - Connector CRUD and sync status management
 - `github.ts` - Dedicated GitHub OAuth integration, token management, repo listing, and user data syncing
@@ -105,7 +105,7 @@ Each service uses Supabase Client for database/storage or `electron-store` for l
 - Main window uses `main/helpers/create-window.ts` for position persistence
 - Hide instead of close (minimize to tray): `window.on('close', event.preventDefault())`
 - System tray always present with quick actions menu
-- **Multi-window types**: Main, window capture overlay, recording control, area selector
+- **Multi-window types**: Main, window capture overlay, area capture overlay, session HUD
 
 ## File Organization Patterns
 
@@ -130,7 +130,7 @@ Each service uses Supabase Client for database/storage or `electron-store` for l
 - `tenant:*` - Create, fetch, list, update tenant operations
 - `workspace:*` - Create, fetch, list, update, member management
 - `workspace-member:*` - Invite, remove, role assignment
-- `capture:*` - Screenshot/recording operations (with multi-display variants)
+- `capture:*` - Screenshot operations (with multi-display variants)
 - `sync:*` - Cloud sync and connector operations
 - `connector:*` - GitHub/Zoho OAuth, config, repo/project listing
 - `onboarding:*` - Progress tracking and step management
@@ -173,13 +173,6 @@ Each service uses Supabase Client for database/storage or `electron-store` for l
 4. Save processed buffer to disk after user confirms
 5. Snap is stored in workspace-specific directory: `~/SnapFlow/Users/{userId}/{workspaceId}/{year}/{month}/{day}/`
 
-### Screen Recording Status
-
-**Status**: Feature partially implemented and preserved but disabled in UI/IPC channels  
-**Location**: Code with `_` prefix functions (e.g., `_startRecording`, `_stopRecording`)  
-**Implementation**: Area selector overlay, recording control window, thumbnail generation  
-**Reactivation**: Remove `_` prefix from function names and uncomment recording-related IPC handlers in `main/background.ts`
-
 ### Connector Sync
 
 - GitHub: Creates issue with base64-embedded image in markdown body
@@ -191,7 +184,7 @@ Each service uses Supabase Client for database/storage or `electron-store` for l
 - Shared types in `renderer/types/index.ts` (keep in sync with Supabase tables)
 - Supabase types match SQL schema in `supabase-schema.sql`
 - IPC responses always shaped as `{success: boolean, data?: T, error?: string}`
-- Use discriminated unions for multi-type captures: `type: 'screenshot' | 'recording'`
+- Snap `type` field is currently a single-value union: `type: 'screenshot'`
 
 ## Database Workflows
 

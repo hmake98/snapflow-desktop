@@ -1,6 +1,6 @@
 # SnapFlow Desktop
 
-A cross-platform desktop app for screenshot capture, session recording, annotation, and team collaboration — with sync to GitHub Issues, Zoho Projects, and the cloud.
+A cross-platform desktop app for screenshot capture, session capture, annotation, and team collaboration — with sync to GitHub Issues, Zoho Projects, and the cloud.
 
 Built with **Electron + Next.js** (Nextron), **Supabase**, and **TypeScript**.
 
@@ -9,7 +9,7 @@ Built with **Electron + Next.js** (Nextron), **Supabase**, and **TypeScript**.
 ## Features
 
 - **Screenshot capture** — full screen, area selection, or individual window; auto-copied to clipboard
-- **Session recording** — `F9` starts/stops a capture session that tracks interaction events and screenshots (`Ctrl+Shift+S` for a manual in-session snap) into a timeline, with a live HUD (elapsed time, screenshot/event counts). Replaces the older video-based screen recorder, whose UI is now disabled (stubbed pages, code kept in git history)
+- **Session capture** — `F9` starts/stops a capture session that tracks interaction events and screenshots (`Ctrl+Shift+S` for a manual in-session snap) into a timeline, with a live HUD (elapsed time, screenshot/event counts)
 - **Annotation editor** — freehand drawing, shapes, arrows, color picker, undo/redo (Konva.js)
 - **AI session review** — auto-generates bug descriptions from a session's timeline; choice of Groq, OpenAI, Google Gemini, or Anthropic Claude (API key entered per-provider in Settings, not via `.env`)
 - **Snap management** — create, tag, filter, search, and preview captures locally
@@ -28,7 +28,7 @@ Built with **Electron + Next.js** (Nextron), **Supabase**, and **TypeScript**.
 | Layer        | Technologies                                                                                   |
 | ------------ | ---------------------------------------------------------------------------------------------- |
 | Renderer     | Next.js 16, React 19, TypeScript 6, Tailwind CSS 4, Zustand, Konva.js, Framer Motion, Radix UI |
-| Main process | Electron 43, Nextron, electron-store, electron-log, electron-updater, sharp, ffmpeg-static     |
+| Main process | Electron 43, Nextron, electron-store, electron-log, electron-updater, sharp                    |
 | Database     | Supabase (PostgreSQL + Auth + Storage), Row Level Security                                     |
 | AI           | Groq, OpenAI, Google Gemini, or Anthropic Claude (user-selected, user-supplied API key)        |
 | Integrations | GitHub OAuth + REST API, Zoho OAuth + Projects API                                             |
@@ -123,28 +123,24 @@ snapflow-desktop/
 │   ├── services/
 │   │   ├── ai.ts                # AI session description (Groq/OpenAI/Gemini/Anthropic)
 │   │   ├── auth.ts              # Supabase auth (session management)
-│   │   ├── capture.ts           # Screenshot capture; legacy ffmpeg video-recording engine (disabled in UI)
+│   │   ├── capture.ts           # Screenshot capture (full screen, region, window, multi-screen)
 │   │   ├── clipboard.ts         # Bug report clipboard formatting
 │   │   ├── connectors.ts        # GitHub/Zoho connector CRUD + issue/bug sync + screenshot embedding
-│   │   ├── debug-collector/     # Session recording — event tracking, screenshots, timeline (powers session-hud + AI review)
+│   │   ├── debug-collector/     # Session capture — event tracking, screenshots, timeline (powers session-hud + AI review)
 │   │   ├── github.ts            # GitHub OAuth (token exchange, user, repos)
 │   │   ├── issues.ts            # Snap CRUD (local + cloud)
 │   │   ├── onboarding.ts        # Onboarding progress (persistent, per-user)
-│   │   ├── overlay.ts           # Red border overlay for the legacy video-recording flow (disabled in UI)
-│   │   ├── recorder.ts          # Recording state machine for the legacy video-recording flow (disabled in UI)
 │   │   ├── settings.ts          # App settings (electron-store)
 │   │   ├── sync.ts              # Supabase Storage sync
 │   │   ├── tenant.ts            # Organization management
 │   │   ├── updater.ts           # Auto-update (electron-updater)
-│   │   ├── window-picker.ts     # Screen/window source picker for the legacy video-recording flow (disabled in UI)
 │   │   ├── workspace.ts         # Workspace + invite + pending_invites
 │   │   └── zoho.ts              # Zoho OAuth & bug creation/update/delete
 │   ├── utils/
 │   │   ├── secure-config.ts     # Bootstrap secrets → encrypt → electron-store
 │   │   ├── supabase.ts          # getSupabase() / getSupabaseAdmin()
 │   │   ├── session.ts           # JWT session helpers
-│   │   ├── storage.ts           # File system helpers
-│   │   └── tray-icon-manager.ts # Tray icon state
+│   │   └── storage.ts           # File system helpers
 │   └── helpers/
 │       └── create-window.ts     # BrowserWindow factory
 │
@@ -159,15 +155,12 @@ snapflow-desktop/
 │   │   ├── annotate.tsx         # Image annotation editor
 │   │   ├── annotate-session.tsx # AI-assisted session review and annotation
 │   │   ├── session-hud.tsx      # Live session capture HUD (elapsed time, screenshot/event counts)
-│   │   ├── area-capture.tsx / area-selector.tsx   # Area screenshot capture
-│   │   ├── window-capture.tsx   # Window screenshot capture
-│   │   └── annotate-recording.tsx, recording-*.tsx, window-picker.tsx
-│   │       # Legacy video-recording UI — disabled, all stubbed to `return null`
+│   │   ├── area-capture.tsx     # Area screenshot capture
+│   │   └── window-capture.tsx   # Window screenshot capture
 │   ├── components/
 │   │   ├── layout/              # AppShell, PageContent, PageHeader, Section, CenteredLayout
 │   │   ├── ui/                  # Button, Card, Dialog, Select, Avatar, ProfileDropdown, WorkspaceSwitcher, …
-│   │   ├── settings/            # AccountSection, GitHubConnectorManager, WorkspacesSection, …
-│   │   └── WindowPickerModal.tsx  # Legacy video-recording source picker — disabled
+│   │   └── settings/            # AccountSection, GitHubConnectorManager, WorkspacesSection, …
 │   ├── hooks/
 │   │   ├── useNetworkStatus.ts  # navigator.onLine → Zustand
 │   │   └── useSyncQueue.ts      # Offline-aware sync queue
@@ -208,21 +201,17 @@ Secrets are written to `resources/app-bootstrap.json` by CI, read by `secure-con
 
 ### Release Artifacts
 
-| Platform            | Files                        |
-| ------------------- | ---------------------------- |
-| macOS (x64 + arm64) | `.dmg`, `.zip`               |
-| Windows (x64)       | NSIS `.exe`, portable `.exe` |
-| Linux (x64)         | `.AppImage`, `.deb`, `.rpm`  |
+| Platform                           | Files                        |
+| ---------------------------------- | ---------------------------- |
+| macOS (arm64 only — Apple Silicon) | `.dmg`, `.zip`               |
+| Windows (x64)                      | NSIS `.exe`, portable `.exe` |
+| Linux (x64)                        | `.AppImage`, `.deb`, `.rpm`  |
 
 ---
 
 ## Troubleshooting
 
 **Screen Recording permission denied (macOS)** — Go to System Settings → Privacy & Security → Screen Recording, enable SnapFlow, then **restart the app** (Electron requires a full restart after this permission is granted).
-
-**`navigator.mediaDevices` undefined in recording window** — Recording windows must load via `file://`. Use `loadFile('blank.html')`, never `loadURL('data:...')`.
-
-**`desktopCapturer` returns empty thumbnails on macOS** — Call it from a hidden BrowserWindow renderer via `captureFrameViaRenderer()`, not from the main process.
 
 **Invite email not received** — Verify `SUPABASE_SERVICE_ROLE_KEY` is set. Without it, invites fall back to OTP/magic-link. Check Supabase Dashboard → Authentication → Logs.
 

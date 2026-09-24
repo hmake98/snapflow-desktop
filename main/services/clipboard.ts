@@ -20,14 +20,12 @@ export interface Snap {
 /**
  * ClipboardService generates and copies bug report text to the system clipboard.
  *
- * Unsynced snaps: title + description + embedded image (screenshots) or local path (recordings)
+ * Unsynced snaps: title + description + embedded screenshot image
  * Synced snaps:   title + description + cloud URL + GitHub/Zoho links
  */
 export class ClipboardService {
   generateBugMessage(snap: Snap): string {
     const lines: string[] = [];
-    const isRecording = snap.type === "recording";
-    const mediaLabel = isRecording ? "Recording" : "Screenshot";
 
     if (snap.title) {
       lines.push(`Bug: ${snap.title}`);
@@ -42,7 +40,7 @@ export class ClipboardService {
     // Cloud media URL
     if (snap.cloudFileUrl) {
       lines.push("");
-      lines.push(`${mediaLabel}:`);
+      lines.push("Screenshot:");
       lines.push(snap.cloudFileUrl);
     }
 
@@ -103,7 +101,7 @@ export class ClipboardService {
     // Always try to embed the screenshot image directly in clipboard.
     // This works for unsynced snaps (local file) as well as synced ones.
     // Attachment takes priority — include image + text + html formats.
-    if (snap.type !== "recording" && snap.filePath) {
+    if (snap.filePath) {
       try {
         if (fs.existsSync(snap.filePath)) {
           const image = nativeImage.createFromPath(snap.filePath);

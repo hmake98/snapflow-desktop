@@ -8,7 +8,7 @@ Domain vocabulary. Use these terms precisely — confusion here causes wrong-fil
 | **Workspace** | A project space inside a tenant. Snaps and connectors are scoped here. Table: `workspaces`. |
 | **Workspace member** | A user attached to a workspace with a role. Table: `workspace_members`. |
 | **Role** | `owner                                                                                                                                       | admin     | member`. Simplified from the earlier 6-role model (2026-05). |
-| **Snap** | A capture: screenshot or recording. The canonical term in the current code. Table: `snaps`. Local store: `snapflow-issues.json`. |
+| **Snap** | A capture: a screenshot (optionally with attached session data). The canonical term in the current code. Table: `snaps`. Local store: `snapflow-issues.json`. |
 | **Issue** | Legacy term for Snap. Still appears in IPC channels (`issue:list`, `issue:update`) and the legacy `IssueService` class. Same data as a Snap. |
 | **Session** (debug-collector) | A recorded debugging session: timeline of events, snapshots, screenshots. Distinct from "auth session." |
 | **Session** (auth) | Supabase Auth session. `authService.getSession()` is async. |
@@ -18,10 +18,10 @@ Domain vocabulary. Use these terms precisely — confusion here causes wrong-fil
 | **Pending invite** | Row in `pending_invites` representing an invitation that has not yet been accepted. Supports multiple simultaneous invites per email. |
 | **Active workspace** | The currently selected workspace in the renderer. Stored in Zustand (`activeWorkspace`). Most renderer queries scope to it. |
 | **Capture** | Verb: taking a screenshot. Noun: the resulting image. |
-| **Recording** | A screen recording (mp4 via ffmpeg). State machine: `idle                                                                                    | selecting | recording`. |
-| **Source** | A recording source — a specific window or screen the user picked to record. Default source can be persisted. |
 | **Collector** | The debug-collector subsystem (`main/services/debug-collector/`). Captures session timelines for bug reports. |
-| **Overlay** | A frameless BrowserWindow used for area selection, recording HUD, or session HUD. See `main/services/overlay.ts`. |
+| **Overlay** | A frameless BrowserWindow used for area selection or the session HUD. |
+
+Note: screen video recording (ffmpeg-based, a distinct capture source/state-machine) was removed from the codebase (2026-09) — SnapFlow captures screenshots and event-tracked sessions only.
 
 ## Common confusions
 
