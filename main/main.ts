@@ -930,6 +930,14 @@ async function handleScreenshotCapture(
     mainWindow?.focus();
   } catch (error) {
     log.error("[Tray] Failed to capture screenshot:", error);
+    restoreMainWindowAfterCapture();
+    mainWindow?.focus();
+    dialog.showErrorBox(
+      "Screenshot Error",
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to capture screenshot. Please try again."
+    );
   }
 }
 
