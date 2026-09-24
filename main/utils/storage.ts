@@ -124,38 +124,11 @@ export class StorageManager {
   }
 
   /**
-   * Get path for a recording file
-   */
-  getRecordingPath(issueId: string): string {
-    const dirPath = this.getCapturePath(issueId);
-    return path.join(dirPath, "recording.webm");
-  }
-
-  /**
    * Get path for a thumbnail
    */
   getThumbnailPath(issueId: string): string {
     const dirPath = this.getCapturePath(issueId);
-    // For recordings, use recording_thumbnail.png; for screenshots, use thumbnail.png
-    const fileName = issueId.startsWith("rec_")
-      ? "recording_thumbnail.png"
-      : "thumbnail.png";
-    return path.join(dirPath, fileName);
-  }
-
-  /**
-   * Save a file with a specific extension
-   */
-  async saveFile(
-    issueId: string,
-    data: Buffer,
-    extension: string
-  ): Promise<string> {
-    const dirPath = await this.createIssueDirectory(issueId);
-    const fileName = `recording.${extension}`;
-    const filePath = path.join(dirPath, fileName);
-    await fs.writeFile(filePath, data);
-    return filePath;
+    return path.join(dirPath, "thumbnail.png");
   }
 
   /**
@@ -163,11 +136,7 @@ export class StorageManager {
    */
   async saveThumbnail(issueId: string, data: Buffer): Promise<string> {
     const dirPath = await this.createIssueDirectory(issueId);
-    // For recordings, use recording_thumbnail.png; for screenshots, use thumbnail.png
-    const fileName = issueId.startsWith("rec_")
-      ? "recording_thumbnail.png"
-      : "thumbnail.png";
-    const filePath = path.join(dirPath, fileName);
+    const filePath = path.join(dirPath, "thumbnail.png");
     await fs.writeFile(filePath, data);
     return filePath;
   }

@@ -4,7 +4,7 @@ This document contains guidelines for Codex when working on this Electron + Next
 
 ## Project Overview
 
-**SnapFlow Desktop** is a screenshot capture and screen recording tool with team collaboration, multi-tenant workspaces, and sync to GitHub and Zoho Projects.
+**SnapFlow Desktop** is a screenshot capture and session capture tool with team collaboration, multi-tenant workspaces, and sync to GitHub and Zoho Projects.
 
 - **Stack**: Electron + Next.js + TypeScript + Tailwind CSS (Nextron framework)
 - **Database**: Supabase (PostgreSQL + Auth + Storage)
@@ -142,14 +142,9 @@ const result = await window.api.doSomething(param);
 ### Handling macOS Permissions
 
 ```typescript
-// Always clear cache before checking
+// Always clear cache before checking (capture:check-permission IPC handler)
 captureService.clearPermissionCache();
 const hasPermission = await captureService.checkScreenRecordingPermission();
-
-// If not granted, use requestScreenRecordingPermission()
-if (!hasPermission && process.platform === "darwin") {
-  await requestScreenRecordingPermission(mode, screenId);
-}
 ```
 
 ## Database Schema (Key Tables)
@@ -160,7 +155,7 @@ workspaces           — project spaces within a tenant
 workspace_members    — user ↔ workspace with role
 pending_invites      — email + workspace_id + role, accepted_at nullable (multi-invite tracking)
 onboarding_progress  — current_step + is_complete per user
-snaps                — captures (screenshots/recordings) scoped to workspace
+snaps                — captures (screenshots) scoped to workspace
 connectors           — GitHub/Zoho connector configs per workspace
 sync_history         — audit log of cloud sync operations
 ```
@@ -175,12 +170,11 @@ main/
   preload.ts              # IPC bridge (window.api)
   services/               # Business logic
     auth.ts               # Supabase auth (getSession is async)
-    capture.ts            # Screenshot + recording
+    capture.ts            # Screenshot capture
     connectors.ts         # Connector CRUD
     github.ts             # GitHub OAuth & API
     issues.ts             # Snap/issue CRUD
     onboarding.ts         # Onboarding progress
-    recorder.ts           # Screen recording
     sync.ts               # Cloud sync
     tenant.ts             # Tenant management
     workspace.ts          # Workspace + invite + pending_invites
@@ -219,7 +213,6 @@ supabase/
   config.toml             # Supabase CLI config (project_id, redirect URLs, template paths)
 
 resources/
-  blank.html              # Required for hidden recording window (data: URLs lack mediaDevices)
 ```
 
 ## Debugging Tips
@@ -250,8 +243,6 @@ npm run build:pack   # Full production build with installers
 - **Don't** spam IPC calls — batch requests when possible
 - **Cache** permission checks (60-second cache in captureService)
 - **Debounce** sync operations (prevent concurrent syncs)
-- `desktopCapturer.getSources()` returns empty thumbnails from main process on macOS — use hidden BrowserWindow + `getUserMedia` via `captureFrameViaRenderer()` instead
-- All hidden windows must use `loadFile(blank.html)`, never `loadURL('data:...')` — data URLs are not secure contexts and lack `navigator.mediaDevices`
 
 ## Security Notes
 

@@ -48,13 +48,10 @@ One recipe per common task. Each recipe lists the exact files to touch and the o
 3. Use `window.api.*` for any main-process call. Never import from `main/`.
 4. If the page needs a custom window (overlay, picker), open it from `main/background.ts` via `BrowserWindow` and load by file path (Nextron: routes are static-exported).
 
-## Debug a recording issue
+## Debug a capture permission issue
 
 1. Confirm macOS permission: `capture:check-permission` (cache cleared on app activation).
-2. Check `main/services/recorder.ts` for the current state machine value.
-3. Recording uses a **hidden BrowserWindow + `getUserMedia`**. The hidden window must `loadFile(blank.html)` — never `loadURL("data:...")`.
-4. `ffmpeg-static` path resolution: `__dirname` is `app/` at runtime, not `app/services/`.
-5. Logs: `~/Library/Logs/SnapFlow/` (macOS) or `%APPDATA%/SnapFlow/logs/` (Windows). **Excerpt** the relevant lines (last error stack + 20 lines context) — do not paste whole log files.
+2. Logs: `~/Library/Logs/SnapFlow/` (macOS) or `%APPDATA%/SnapFlow/logs/` (Windows). **Excerpt** the relevant lines (last error stack + 20 lines context) — do not paste whole log files.
 
 ## Trace an invite / join
 

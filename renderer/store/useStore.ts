@@ -68,12 +68,6 @@ interface AppState {
   removeFromSyncQueue: (id: string) => void;
   clearSyncQueue: () => void;
   processSyncQueue: () => void;
-
-  // Recording picker state — commented out
-  // pickerPayload: ShowPickerPayload | null;
-  // showRecordingPicker: boolean;
-  // setPickerPayload: (payload: ShowPickerPayload | null) => void;
-  // setShowRecordingPicker: (show: boolean) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -171,10 +165,4 @@ export const useStore = create<AppState>((set) => ({
     // This is a no-op placeholder; the hook subscribes to isOnline changes
     // and processes the queue. Kept here so useNetworkStatus can call it.
   },
-
-  // Recording picker state — commented out
-  // pickerPayload: null,
-  // showRecordingPicker: false,
-  // setPickerPayload: (pickerPayload) => set({ pickerPayload }),
-  // setShowRecordingPicker: (showRecordingPicker) => set({ showRecordingPicker }),
 }));

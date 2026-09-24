@@ -93,19 +93,6 @@
 - `onboarding:get-status`
 - `onboarding:set-step`
 
-### `recording:*` — Screen recording (`main/services/recorder.ts`, `window-picker.ts`, `capture.ts`)
-
-- `recording:area-selected`
-- `recording:cancel`
-- `recording:clear-default-source`
-- `recording:get-default-source`
-- `recording:get-pending`
-- `recording:get-sources`
-- `recording:get-sources-with-default`
-- `recording:set-default-source`
-- `recording:start`
-- `recording:stop`
-
 ### `session:*` — Debug-collector session control (`main/services/debug-collector/`)
 
 - `session:get-pending`
