@@ -42,6 +42,7 @@ const {
   shell,
   screen,
   globalShortcut,
+  systemPreferences,
 } = electron;
 
 // Catch any genuinely unhandled promise rejections so they don't crash the app.
@@ -92,6 +93,8 @@ let tray: typeof Tray.prototype | null = null;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 let isQuitting = false;
 let pendingScreenshot: { dataUrl: string; mode: string } | null = null;
+// Only nag once per app run about missing Accessibility permission.
+let accessibilityWarningShown = false;
 let sessionHudWindow: typeof BrowserWindow.prototype | null = null;
 let sessionStatusInterval: ReturnType<typeof setInterval> | null = null;
 let pendingSession: {
@@ -1003,6 +1006,19 @@ function handleCaptureSessionToggle() {
 
       closeSessionHudWindow();
 
+      // Nothing to review — skip the review screen entirely instead of
+      // sending the user to an empty annotate-session page.
+      if (session.screenshots.length === 0) {
+        log.info(
+          "[Session] Session ended with no snaps captured; skipping review screen"
+        );
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("collector:session-stopped", session);
+        }
+        updateTrayMenu();
+        return;
+      }
+
       pendingSession = {
         id: session.id,
         start_time: session.start_time,
@@ -1044,6 +1060,38 @@ function handleCaptureSessionToggle() {
       createSessionHudWindow().catch((err) => {
         log.error("[Session] Failed to create HUD window:", err);
       });
+
+      // Click/keystroke tracking (uiohook-napi) needs macOS Accessibility
+      // permission. Screenshots still work without it — just warn once per
+      // app run instead of silently dropping event tracking.
+      if (
+        process.platform === "darwin" &&
+        !accessibilityWarningShown &&
+        !systemPreferences.isTrustedAccessibilityClient(false)
+      ) {
+        accessibilityWarningShown = true;
+        dialog
+          .showMessageBox({
+            type: "warning",
+            title: "Accessibility Permission Needed",
+            message: "Click and keystroke tracking is unavailable",
+            detail:
+              "Grant SnapFlow Accessibility access in System Settings to record clicks and keystrokes during a session. Screenshots will still be captured either way.",
+            buttons: ["Open System Settings", "Continue Without"],
+            defaultId: 0,
+            cancelId: 1,
+          })
+          .then(({ response }) => {
+            if (response === 0) {
+              shell.openExternal(
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+              );
+            }
+          })
+          .catch((err) => {
+            log.error("[Session] Failed to show accessibility dialog:", err);
+          });
+      }
     } catch (err) {
       log.error("[Session] Failed to start capture session:", err);
     }
