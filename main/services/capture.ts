@@ -5,6 +5,7 @@ import {
   clipboard,
   DesktopCapturerSource,
   nativeImage,
+  systemPreferences,
 } from "electron";
 import log from "electron-log";
 import { storageManager } from "../utils/storage";
@@ -34,20 +35,26 @@ export class CaptureService extends EventEmitter {
   }
 
   /**
-   * Clear the permission cache (no-op, kept for compatibility)
-   * Windows and Linux don't require screen recording permission
+   * Clear the permission cache (no-op).
+   * `systemPreferences.getMediaAccessStatus` always queries the OS live —
+   * there is no Electron-side cache to clear. Kept for callers that want to
+   * force a fresh check before `checkScreenRecordingPermission()`.
    */
   clearPermissionCache(): void {
-    // No-op - Windows and Linux don't have permission model
+    // No-op - nothing is cached; see checkScreenRecordingPermission().
   }
 
   /**
-   * Check if the app can capture screen (always true for Windows/Linux)
-   * Windows and Linux don't require explicit screen recording permission
+   * Check whether the app can capture the screen.
+   * Windows and Linux don't have a screen-capture permission model.
+   * macOS requires the "Screen Recording" permission — granted via
+   * System Settings, and only takes effect after an app restart.
    */
   async checkScreenRecordingPermission(): Promise<boolean> {
-    // Windows and Linux always allow screen capture without permission
-    return true;
+    if (process.platform !== "darwin") {
+      return true;
+    }
+    return systemPreferences.getMediaAccessStatus("screen") === "granted";
   }
 
   /**
@@ -178,32 +185,25 @@ export class CaptureService extends EventEmitter {
 
       // Handle region capture
       if (options.mode === "region" && options.bounds) {
-        // The bounds are in physical pixels relative to the overlay window origin.
-        // Convert back to logical screen coordinates so we can find the display.
+        // The area-capture overlay is created one window per display (see
+        // createAreaCaptureOverlay in main.ts), and originOffset is set to
+        // that exact display's bounds.x/y. The renderer then scales the
+        // selection by *its own* window.devicePixelRatio — which always
+        // matches the display that window sits on — so bounds are already
+        // physical pixels relative to that display's own origin.
+        //
+        // That means the target display is known exactly via originOffset;
+        // no guessing from a scale-converted selection centroid is needed
+        // (a "primary display's scaleFactor as best guess" here would pick
+        // the wrong display, or the right display but wrong crop rect, on a
+        // mixed-DPI multi-monitor setup, e.g. Retina main + external 1x).
         const originX = options.originOffset?.x ?? 0;
         const originY = options.originOffset?.y ?? 0;
 
-        // Identify which display the centre of the selection falls on.
         const allDisplays = screen.getAllDisplays();
-
-        // Selection centre in logical screen coordinates (undo scale + origin)
-        // We use the primary display's scale factor as a best-guess for the
-        // overlay's devicePixelRatio; the renderer sends physical pixels.
-        const primaryScale = screen.getPrimaryDisplay().scaleFactor || 1;
-        const selCentreScreenX =
-          originX +
-          (options.bounds.x + options.bounds.width / 2) / primaryScale;
-        const selCentreScreenY =
-          originY +
-          (options.bounds.y + options.bounds.height / 2) / primaryScale;
-
         const targetDisplay =
           allDisplays.find(
-            (d) =>
-              selCentreScreenX >= d.bounds.x &&
-              selCentreScreenX < d.bounds.x + d.bounds.width &&
-              selCentreScreenY >= d.bounds.y &&
-              selCentreScreenY < d.bounds.y + d.bounds.height
+            (d) => d.bounds.x === originX && d.bounds.y === originY
           ) ?? screen.getPrimaryDisplay();
 
         const scaleFactor = targetDisplay.scaleFactor || 1;
@@ -227,15 +227,11 @@ export class CaptureService extends EventEmitter {
           throw new Error("No source found for region capture");
         }
 
-        // Convert selection bounds to physical pixels relative to the target display
-        const displayOriginPhysX =
-          (targetDisplay.bounds.x - originX) * scaleFactor;
-        const displayOriginPhysY =
-          (targetDisplay.bounds.y - originY) * scaleFactor;
-
+        // bounds are already physical pixels relative to the target
+        // display's own origin — no further offset/scale conversion needed.
         const cropRect = {
-          x: Math.max(0, Math.floor(options.bounds.x - displayOriginPhysX)),
-          y: Math.max(0, Math.floor(options.bounds.y - displayOriginPhysY)),
+          x: Math.max(0, Math.floor(options.bounds.x)),
+          y: Math.max(0, Math.floor(options.bounds.y)),
           width: Math.floor(options.bounds.width),
           height: Math.floor(options.bounds.height),
         };
