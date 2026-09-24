@@ -64,12 +64,10 @@ mac:
   target:
     - target: dmg
       arch:
-        - x64
         - arm64
     # zip is required by update-electron-app / electron-updater for delta updates
     - target: zip
       arch:
-        - x64
         - arm64
 
 dmg:
