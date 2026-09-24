@@ -201,11 +201,11 @@ Secrets are written to `resources/app-bootstrap.json` by CI, read by `secure-con
 
 ### Release Artifacts
 
-| Platform            | Files                        |
-| ------------------- | ---------------------------- |
-| macOS (x64 + arm64) | `.dmg`, `.zip`               |
-| Windows (x64)       | NSIS `.exe`, portable `.exe` |
-| Linux (x64)         | `.AppImage`, `.deb`, `.rpm`  |
+| Platform                           | Files                        |
+| ---------------------------------- | ---------------------------- |
+| macOS (arm64 only — Apple Silicon) | `.dmg`, `.zip`               |
+| Windows (x64)                      | NSIS `.exe`, portable `.exe` |
+| Linux (x64)                        | `.AppImage`, `.deb`, `.rpm`  |
 
 ---
 
