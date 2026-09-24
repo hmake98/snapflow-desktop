@@ -311,8 +311,8 @@ async function createMainWindow() {
           ...details.responseHeaders,
           "Content-Security-Policy": [
             isProd
-              ? "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://lh3.googleusercontent.com https://*.supabase.co; font-src 'self' data:; connect-src 'self'; media-src 'self' snapflow: blob:"
-              : "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://lh3.googleusercontent.com https://*.supabase.co; font-src 'self' data:; connect-src 'self' ws: http://localhost:*; media-src 'self' snapflow: blob:",
+              ? "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://lh3.googleusercontent.com https://*.supabase.co https://avatars.githubusercontent.com; font-src 'self' data:; connect-src 'self'; media-src 'self' snapflow: blob:"
+              : "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://lh3.googleusercontent.com https://*.supabase.co https://avatars.githubusercontent.com; font-src 'self' data:; connect-src 'self' ws: http://localhost:*; media-src 'self' snapflow: blob:",
           ],
         },
       });
