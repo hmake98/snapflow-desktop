@@ -912,7 +912,7 @@ export class SyncService {
             id: cloudIssue.id,
             title: cloudIssue.title,
             description: cloudIssue.description,
-            type: cloudIssue.type as "screenshot" | "recording",
+            type: cloudIssue.type as "screenshot",
             timestamp: cloudIssue.timestamp,
             filePath: localFilePath,
             thumbnailPath: localThumbnailPath,

@@ -1,12 +1,5 @@
 import Store from "electron-store";
 
-export interface RecordingSource {
-  id: string;
-  name: string;
-  type: "screen" | "window";
-  displayBounds?: { x: number; y: number; width: number; height: number };
-}
-
 export type HomeViewMode = "grid" | "list";
 export type HomeSortBy = "date" | "name";
 export type HomeSortOrder = "asc" | "desc";
@@ -32,49 +25,17 @@ const DEFAULT_HOME_PREFS: HomeScreenPrefs = {
 };
 
 interface SettingsStoreSchema {
-  defaultRecordingSource: RecordingSource | null;
   defaultCaptureScreenId: number | null;
   homeScreenPrefs: HomeScreenPrefs;
 }
 
-const recordingSettingsStore = new Store<SettingsStoreSchema>({
+const settingsStore = new Store<SettingsStoreSchema>({
   name: "snapflow-recording-settings",
   defaults: {
-    defaultRecordingSource: null,
     defaultCaptureScreenId: null,
     homeScreenPrefs: DEFAULT_HOME_PREFS,
   },
 });
-
-/**
- * RecordingSettingsService persists recording-related settings.
- */
-export class RecordingSettingsService {
-  /**
-   * Get the default recording source (if set)
-   */
-  getDefaultSource(): RecordingSource | null {
-    return recordingSettingsStore.get(
-      "defaultRecordingSource"
-    ) as RecordingSource | null;
-  }
-
-  /**
-   * Set the default recording source
-   */
-  setDefaultSource(source: RecordingSource): void {
-    recordingSettingsStore.set("defaultRecordingSource", source);
-  }
-
-  /**
-   * Clear the default recording source
-   */
-  clearDefaultSource(): void {
-    recordingSettingsStore.set("defaultRecordingSource", null);
-  }
-}
-
-export const recordingSettingsService = new RecordingSettingsService();
 
 // ---------------------------------------------------------------------------
 // Default capture screen preference
@@ -82,16 +43,16 @@ export const recordingSettingsService = new RecordingSettingsService();
 
 export const captureScreenSettings = {
   getDefaultScreenId(): number | null {
-    const id = recordingSettingsStore.get("defaultCaptureScreenId");
+    const id = settingsStore.get("defaultCaptureScreenId");
     return typeof id === "number" ? id : null;
   },
 
   setDefaultScreenId(displayId: number): void {
-    recordingSettingsStore.set("defaultCaptureScreenId", displayId);
+    settingsStore.set("defaultCaptureScreenId", displayId);
   },
 
   clearDefaultScreenId(): void {
-    recordingSettingsStore.set("defaultCaptureScreenId", null);
+    settingsStore.set("defaultCaptureScreenId", null);
   },
 };
 
@@ -101,7 +62,7 @@ export const captureScreenSettings = {
 
 export const homeScreenSettings = {
   get(): HomeScreenPrefs {
-    const stored = recordingSettingsStore.get("homeScreenPrefs") as
+    const stored = settingsStore.get("homeScreenPrefs") as
       Partial<HomeScreenPrefs> | undefined;
     if (!stored) return { ...DEFAULT_HOME_PREFS };
     return { ...DEFAULT_HOME_PREFS, ...stored };
@@ -109,7 +70,7 @@ export const homeScreenSettings = {
 
   update(patch: Partial<HomeScreenPrefs>): HomeScreenPrefs {
     const next = { ...this.get(), ...patch };
-    recordingSettingsStore.set("homeScreenPrefs", next);
+    settingsStore.set("homeScreenPrefs", next);
     return next;
   },
 };

@@ -24,7 +24,7 @@ interface Snap {
   id: string;
   title: string;
   description?: string;
-  type: "screenshot" | "recording";
+  type: "screenshot";
   timestamp: string;
   filePath: string;
   thumbnailPath?: string;
@@ -89,7 +89,7 @@ export class SnapService {
   async createSnap(
     userId: string,
     title: string,
-    type: "screenshot" | "recording",
+    type: "screenshot",
     filePath: string,
     description?: string,
     thumbnailPath?: string,
@@ -243,7 +243,7 @@ export class IssueService extends SnapService {
   async createIssue(
     userId: string,
     title: string,
-    type: "screenshot" | "recording",
+    type: "screenshot",
     filePath: string,
     description?: string,
     thumbnailPath?: string,

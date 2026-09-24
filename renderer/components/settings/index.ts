@@ -1,7 +1,6 @@
 export * from "./AccountSection";
 export * from "./AiSection";
 export * from "./DisplaysSection";
-export * from "./RecordingSection";
 export * from "./GitHubConnectorManager";
 export * from "./ZohoConnectorManager";
 export * from "./UpdatesSection";

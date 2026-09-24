@@ -4,11 +4,9 @@ import { useRouter } from "next/router";
 import { TooltipProvider } from "../components/ui/Tooltip";
 import { SplashScreen } from "../components/ui/SplashScreen";
 import { ToastHost } from "../components/ui/Toast";
-// import { WindowPickerModal } from "../components/WindowPickerModal";
 import { useStore } from "../store/useStore";
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
 import type { UserRole } from "../types";
-// import type { ShowPickerPayload } from "../types";
 
 import "../styles/globals.css";
 
@@ -19,26 +17,13 @@ import "../styles/globals.css";
 const OVERLAY_ROUTES = [
   "/area-capture",
   "/window-capture",
-  "/recording-area-selector",
-  "/recording-control",
-  "/recording-overlay",
   "/session-hud",
-  "/window-picker",
   "/auth",
   "/500",
 ];
 
 // Routes that are utility/overlay windows — no traffic light bar on these.
-const NO_TITLEBAR_ROUTES = [
-  "/area-capture",
-  "/window-capture",
-  "/area-selector",
-  "/recording-area-selector",
-  "/recording-control",
-  "/recording-overlay",
-  "/session-hud",
-  "/window-picker",
-];
+const NO_TITLEBAR_ROUTES = ["/area-capture", "/window-capture", "/session-hud"];
 
 function MyApp({ Component, pageProps }: AppProps) {
   const router = useRouter();
@@ -51,12 +36,6 @@ function MyApp({ Component, pageProps }: AppProps) {
   const isOverlay = OVERLAY_ROUTES.some((r) => router.pathname.includes(r));
   const [authChecked, setAuthChecked] = React.useState(isOverlay);
   const [hasInitialized, setHasInitialized] = React.useState(isOverlay);
-  // const {
-  //   setPickerPayload,
-  //   setShowRecordingPicker,
-  //   pickerPayload,
-  //   showRecordingPicker,
-  // } = useStore();
   const { setUser, setActiveWorkspace, setCurrentUserRole, resetStore } =
     useStore();
 
@@ -97,11 +76,7 @@ function MyApp({ Component, pageProps }: AppProps) {
         "/500",
         "/area-capture",
         "/window-capture",
-        "/recording-area-selector",
-        "/recording-control",
-        "/recording-overlay",
         "/session-hud",
-        "/window-picker",
       ];
       const semiProtectedRoutes = ["/join-workspace"]; // Auth required, but skip onboarding check
 
@@ -232,34 +207,6 @@ function MyApp({ Component, pageProps }: AppProps) {
       {!authChecked ? <SplashScreen /> : <Component {...pageProps} />}
       {/* In-app toast host — replaces native desktop notifications */}
       {!isOverlay && <ToastHost />}
-      {/* Recording picker modal — commented out
-      <WindowPickerModal
-        isOpen={showRecordingPicker}
-        initialPayload={pickerPayload}
-        onSelect={async (source, setAsDefault) => {
-          const result = await window.api.startRecordingWithSource({
-            sourceId: source.id,
-            sourceName: source.name,
-            displayBounds: source.displayBounds || null,
-            setAsDefault,
-          });
-          if (result.success) {
-            setShowRecordingPicker(false);
-            setPickerPayload(null);
-            window.api.showNotification(
-              "Recording Started",
-              "Click the tray icon to stop recording"
-            );
-          }
-          return result;
-        }}
-        onCancel={() => {
-          setShowRecordingPicker(false);
-          setPickerPayload(null);
-          window.api.cancelRecording();
-        }}
-      />
-      */}
     </TooltipProvider>
   );
 }
