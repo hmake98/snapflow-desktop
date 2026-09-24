@@ -38,7 +38,7 @@ export class UpdaterService {
         );
         return {
           provider: "github",
-          owner: "harsh-simform",
+          owner: "hmake98",
           repo: "snapflow-desktop",
         };
       }
@@ -60,7 +60,7 @@ export class UpdaterService {
       // Fallback to default
       return {
         provider: "github",
-        owner: "harsh-simform",
+        owner: "hmake98",
         repo: "snapflow-desktop",
       };
     } catch (error) {
@@ -68,7 +68,7 @@ export class UpdaterService {
       // Return default config
       return {
         provider: "github",
-        owner: "harsh-simform",
+        owner: "hmake98",
         repo: "snapflow-desktop",
       };
     }
@@ -150,7 +150,7 @@ export class UpdaterService {
       // For macOS: show notification with download link instead of auto-downloading
       if (isMac) {
         const downloadUrl =
-          "https://github.com/harsh-simform/snapflow-desktop/releases/latest";
+          "https://github.com/hmake98/snapflow-desktop/releases/latest";
         this.sendStatusToWindow("update-available", {
           version: info.version,
           releaseDate: info.releaseDate,
@@ -216,7 +216,7 @@ export class UpdaterService {
       ) {
         isSignatureError = true;
         downloadUrl =
-          "https://github.com/harsh-simform/snapflow-desktop/releases/latest";
+          "https://github.com/hmake98/snapflow-desktop/releases/latest";
 
         // For macOS: show download dialog instead of failing
         if (process.platform === "darwin" && this.updateInfo) {

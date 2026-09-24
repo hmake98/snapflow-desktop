@@ -10,24 +10,6 @@
  */
 export type UserRole = "owner" | "admin" | "member";
 
-export interface RecordingSource {
-  id: string;
-  name: string;
-  type: "screen" | "window";
-  thumbnail: string;
-  resolution?: string;
-  displayBounds?: { x: number; y: number; width: number; height: number };
-}
-
-export interface SourcesWithDefaultPayload {
-  sources: RecordingSource[];
-  validatedDefault: RecordingSource | null;
-  defaultWasInvalid: boolean;
-  invalidSourceName: string | null;
-}
-
-export type ShowPickerPayload = SourcesWithDefaultPayload;
-
 export interface User {
   id: string;
   name: string;
@@ -115,7 +97,7 @@ export interface Snap {
   createdBy: string;
   title: string;
   description?: string;
-  type: "screenshot" | "recording";
+  type: "screenshot";
   timestamp: string;
   filePath: string;
   thumbnailPath?: string;
@@ -181,25 +163,12 @@ export interface CaptureOptions {
   };
 }
 
-export interface RecordingOptions {
-  mode: "fullscreen" | "region";
-  bounds?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-  audioEnabled?: boolean;
-}
-
 export interface AppSettings {
   storagePath: string;
   defaultCaptureMode: "fullscreen" | "window" | "region";
-  defaultRecordingMode: "fullscreen" | "region";
   autoSync?: boolean;
   shortcuts: {
     captureScreenshot: string;
-    recordScreen: string;
     openApp: string;
   };
 }
@@ -252,18 +221,6 @@ export type IPCChannel =
   | "issue:update"
   | "issue:delete"
   | "capture:screenshot"
-  | "capture:start-recording"
-  | "capture:stop-recording"
-  | "recording:area-selected"
-  | "recording:start"
-  | "recording:stop"
-  | "recording:cancel"
-  | "recording:get-pending"
-  | "recording:get-sources"
-  | "recording:start-with-source"
-  | "recording:get-default-source"
-  | "recording:set-default-source"
-  | "recording:clear-default-source"
   | "clipboard:paste-bug"
   | "clipboard:copy-bug-data"
   | "connector:list"

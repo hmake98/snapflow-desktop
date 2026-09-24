@@ -469,7 +469,6 @@ export class ConnectorService {
       cloudFileUrl?: string;
       syncedTo?: Array<{ platform: string; externalId: string; url?: string }>;
       tags?: string[];
-      type?: "screenshot" | "recording";
       sessionData?: {
         duration: number;
         screenshotCount: number;
@@ -515,8 +514,6 @@ export class ConnectorService {
 
       if (issueNumber) {
         try {
-          const isRecording = issue.type === "recording";
-
           // For session snaps: embed all cloud screenshot URLs
           if (issue.sessionData?.cloudScreenshotUrls?.length) {
             body += `\n\n## Screenshots\n\n`;
@@ -524,9 +521,8 @@ export class ConnectorService {
               body += `**${i + 1}.** ![Screenshot ${i + 1}](${url})\n\n`;
             });
           } else {
-            // Single screenshot / recording fallback
             let mediaUrl = issue.cloudFileUrl;
-            if (!mediaUrl && issue.filePath && !isRecording) {
+            if (!mediaUrl && issue.filePath) {
               mediaUrl = await this.uploadScreenshotToGitHub(
                 connector,
                 issue.filePath,
@@ -534,11 +530,7 @@ export class ConnectorService {
               );
             }
             if (mediaUrl) {
-              if (isRecording) {
-                body += `\n\n## Recording\n\n[View Recording](${mediaUrl})`;
-              } else {
-                body += `\n\n## Screenshot\n\n![Screenshot](${mediaUrl})`;
-              }
+              body += `\n\n## Screenshot\n\n![Screenshot](${mediaUrl})`;
             }
           }
 
@@ -593,7 +585,6 @@ export class ConnectorService {
         const newIssueNumber = response.data.number;
         const issueUrl = response.data.html_url;
 
-        const isRecording = issue.type === "recording";
         let updatedBody = body;
 
         // For session snaps: embed all cloud screenshot URLs
@@ -603,9 +594,8 @@ export class ConnectorService {
             updatedBody += `**${i + 1}.** ![Screenshot ${i + 1}](${url})\n\n`;
           });
         } else {
-          // Single screenshot / recording fallback
           let mediaUrl = issue.cloudFileUrl;
-          if (!mediaUrl && issue.filePath && !isRecording) {
+          if (!mediaUrl && issue.filePath) {
             mediaUrl = await this.uploadScreenshotToGitHub(
               connector,
               issue.filePath,
@@ -613,9 +603,7 @@ export class ConnectorService {
             );
           }
           if (mediaUrl) {
-            updatedBody += isRecording
-              ? `\n\n## Recording\n\n[View Recording](${mediaUrl})`
-              : `\n\n## Screenshot\n\n![Screenshot](${mediaUrl})`;
+            updatedBody += `\n\n## Screenshot\n\n![Screenshot](${mediaUrl})`;
           }
         }
 
@@ -694,7 +682,6 @@ export class ConnectorService {
         connectorId?: string;
       }>;
       tags?: string[];
-      type?: "screenshot" | "recording";
       sessionData?: {
         duration: number;
         screenshotCount: number;

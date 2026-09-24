@@ -8,7 +8,7 @@ directories:
 
 publish:
   provider: github
-  owner: harsh-simform
+  owner: hmake98
   repo: snapflow-desktop
   private: false
 
@@ -17,8 +17,6 @@ asar: true
 asarUnpack:
   # uiohook-napi: native node addon, must run from disk
   - node_modules/uiohook-napi/**/*
-  # ffmpeg-static: native binary, execFile path resolution breaks inside asar
-  - node_modules/ffmpeg-static/**/*
 
 compression: maximum
 
@@ -43,10 +41,6 @@ extraResources:
     to: tray-icon.png
   - from: resources/tray-icon-white.png
     to: tray-icon-white.png
-  - from: resources/tray-icon-record-white.png
-    to: tray-icon-record-white.png
-  - from: resources/tray-icon-stop-white.png
-    to: tray-icon-stop-white.png
   - from: resources/icon.png
     to: icon.png
 
@@ -70,12 +64,10 @@ mac:
   target:
     - target: dmg
       arch:
-        - x64
         - arm64
     # zip is required by update-electron-app / electron-updater for delta updates
     - target: zip
       arch:
-        - x64
         - arm64
 
 dmg:
@@ -126,7 +118,7 @@ linux:
   category: Utility
   maintainer: SnapFlow Team <support@snapflow.app>
   vendor: SnapFlow Team
-  description: Screenshot and screen recording tool with team collaboration
+  description: Screenshot and session capture tool with team collaboration
   desktop:
     entry:
       StartupWMClass: SnapFlow
