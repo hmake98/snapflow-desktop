@@ -8,7 +8,7 @@ directories:
 
 publish:
   provider: github
-  owner: harsh-simform
+  owner: hmake98
   repo: snapflow-desktop
   private: false
 
