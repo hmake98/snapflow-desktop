@@ -1,5 +1,5 @@
 import { getSupabase } from "../utils/supabase";
-import { issueService } from "./issues";
+import { issueService, type Snap } from "./issues";
 import { tenantService } from "./tenant";
 import { workspaceService } from "./workspace";
 import fs from "fs/promises";
@@ -77,8 +77,7 @@ export class SyncService {
       return true;
     } catch (error) {
       log.error("[Sync] Error checking bucket:", error);
-      // Assume bucket exists if we get an unexpected error
-      return true;
+      return false;
     }
   }
 
@@ -556,6 +555,7 @@ export class SyncService {
             .select("id, cloud_file_url, cloud_thumbnail_url")
             .eq("id", issue.id)
             .eq("created_by", userId)
+            .eq("workspace_id", resolvedWorkspaceId)
             .single();
 
           // Build session_data with cloud URLs merged in (if this is a session snap)
@@ -603,7 +603,8 @@ export class SyncService {
               .from("snaps")
               .update(issueData)
               .eq("id", issue.id)
-              .eq("created_by", userId);
+              .eq("created_by", userId)
+              .eq("workspace_id", resolvedWorkspaceId);
 
             if (error) {
               log.error(
@@ -912,7 +913,7 @@ export class SyncService {
             id: cloudIssue.id,
             title: cloudIssue.title,
             description: cloudIssue.description,
-            type: cloudIssue.type as "screenshot",
+            type: cloudIssue.type as "screenshot" | "session",
             timestamp: cloudIssue.timestamp,
             filePath: localFilePath,
             thumbnailPath: localThumbnailPath,
@@ -929,25 +930,10 @@ export class SyncService {
             // Update existing local issue
             await issueService.updateIssue(cloudIssue.id, issueData);
           } else {
-            // Create new local issue with downloaded files
-            // We need to create the issue directly in the store
-            // Import Store to directly manipulate the issues
-            const Store = (await import("electron-store")).default;
-            const store = new Store<{ issues: Array<Record<string, unknown>> }>(
-              {
-                name: "snapflow-issues",
-                defaults: { issues: [] },
-              }
-            );
-
-            const issues = (store as any).get("issues");
-            issues.push(issueData);
-
-            (store as any).set("issues", issues);
-
-            // Save metadata to file system
-            const { storageManager } = await import("../utils/storage");
-            await storageManager.saveMetadata(cloudIssue.id, issueData);
+            // Create new local issue with downloaded files, keeping the
+            // cloud-assigned ID (must land in the same store issueService
+            // reads from, not a separate one).
+            await issueService.createSnapWithId(issueData as unknown as Snap);
           }
 
           result.syncedCount++;

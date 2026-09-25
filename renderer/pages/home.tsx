@@ -32,6 +32,11 @@ import { AppShell } from "../components/layout";
 import { useSyncQueue } from "../hooks/useSyncQueue";
 import type { Issue } from "../types";
 
+// A Snap is a Session if type says so, or (for rows created before the
+// type field was fixed to distinguish them) if sessionData is present.
+const isSessionSnap = (issue: Issue): boolean =>
+  issue.type === "session" || !!issue.sessionData;
+
 // ─── BugReport (mirrors main/services/ai.ts) ──────────────────────────────────
 
 interface BugReport {
@@ -424,6 +429,12 @@ export default function HomePage() {
         deleteIssue(issueToDelete);
         setDeleteDialogOpen(false);
         setIssueToDelete(null);
+        if (result.warnings?.length) {
+          window.api.showNotification(
+            "Deleted with warnings",
+            `Removed locally, but remote cleanup failed: ${result.warnings.join(", ")}`
+          );
+        }
       } else {
         window.api.showNotification(
           "Delete Failed",
@@ -547,11 +558,11 @@ export default function HomePage() {
 
   const filteredIssues = issues
     .filter((issue) => {
-      const isSession = !!(issue as any).sessionData;
+      const isSession = isSessionSnap(issue);
       const matchesFilter =
         filter === "all" ||
         (filter === "session" && isSession) ||
-        (filter === "screenshot" && !isSession && issue.type === "screenshot");
+        (filter === "screenshot" && !isSession);
 
       const hasGitHubSync = issue.syncedTo?.some(
         (s) => s.platform === "github"
@@ -1197,10 +1208,8 @@ export default function HomePage() {
             (() => {
               const typeCounts = {
                 all: issues.length,
-                screenshot: issues.filter(
-                  (i) => !(i as any).sessionData && i.type === "screenshot"
-                ).length,
-                session: issues.filter((i) => !!(i as any).sessionData).length,
+                screenshot: issues.filter((i) => !isSessionSnap(i)).length,
+                session: issues.filter((i) => isSessionSnap(i)).length,
               };
               const statusCounts = {
                 all: issues.length,
@@ -1517,7 +1526,7 @@ export default function HomePage() {
                 }
               >
                 {paginatedIssues.map((issue, index) => {
-                  const isSession = !!(issue as any).sessionData;
+                  const isSession = isSessionSnap(issue);
                   const typeMeta = isSession
                     ? {
                         label: "Session",
@@ -2308,7 +2317,7 @@ export default function HomePage() {
                         Type
                       </label>
                       {(() => {
-                        const isSession = !!(previewIssue as any).sessionData;
+                        const isSession = isSessionSnap(previewIssue);
                         const meta = isSession
                           ? {
                               label: "Session",

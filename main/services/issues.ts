@@ -20,11 +20,11 @@ interface SessionSnapData {
   }>;
 }
 
-interface Snap {
+export interface Snap {
   id: string;
   title: string;
   description?: string;
-  type: "screenshot";
+  type: "screenshot" | "session";
   timestamp: string;
   filePath: string;
   thumbnailPath?: string;
@@ -67,7 +67,7 @@ export class SnapService {
       id: generateIssueId(),
       title,
       description,
-      type: "screenshot",
+      type: "session",
       timestamp: new Date().toISOString(),
       filePath: firstScreenshot,
       thumbnailPath: firstScreenshot,
@@ -163,6 +163,18 @@ export class SnapService {
     await storageManager.saveMetadata(snapId, updatedSnap);
 
     return updatedSnap;
+  }
+
+  /**
+   * Insert a snap that already has its final ID (e.g. pulled down from the
+   * cloud during sync), bypassing local ID generation.
+   */
+  async createSnapWithId(snap: Snap): Promise<Snap> {
+    const snaps = (store as any).get("snaps");
+    snaps.push(snap);
+    (store as any).set("snaps", snaps);
+    await storageManager.saveMetadata(snap.id, snap);
+    return snap;
   }
 
   async deleteSnap(snapId: string): Promise<void> {

@@ -97,7 +97,7 @@ export interface Snap {
   createdBy: string;
   title: string;
   description?: string;
-  type: "screenshot";
+  type: "screenshot" | "session";
   timestamp: string;
   filePath: string;
   thumbnailPath?: string;
@@ -241,9 +241,6 @@ export type IPCChannel =
   | "sync:from-cloud"
   | "sync:full"
   | "sync:get-history"
-  | "db:get-config"
-  | "db:set-config"
-  | "db:test-connection"
   | "settings:get"
   | "settings:update"
   | "app:quit"

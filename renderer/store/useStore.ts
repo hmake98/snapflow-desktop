@@ -67,7 +67,6 @@ interface AppState {
   addToSyncQueue: (item: Omit<QueuedSync, "id" | "addedAt">) => void;
   removeFromSyncQueue: (id: string) => void;
   clearSyncQueue: () => void;
-  processSyncQueue: () => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -160,9 +159,4 @@ export const useStore = create<AppState>((set) => ({
       syncQueue: state.syncQueue.filter((q) => q.id !== id),
     })),
   clearSyncQueue: () => set({ syncQueue: [] }),
-  processSyncQueue: () => {
-    // Actual processing is handled by the useSyncQueue hook in home.tsx
-    // This is a no-op placeholder; the hook subscribes to isOnline changes
-    // and processes the queue. Kept here so useNetworkStatus can call it.
-  },
 }));

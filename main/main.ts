@@ -2621,6 +2621,7 @@ function setupIPCHandlers() {
       }
 
       // Delete from external platforms
+      const platformWarnings: string[] = [];
       if (issue.syncedTo && issue.syncedTo.length > 0) {
         for (const sync of issue.syncedTo) {
           try {
@@ -2646,13 +2647,17 @@ function setupIPCHandlers() {
               }
             }
           } catch (platformError) {
-            // Log error but continue with deletion
-            log.warn(
-              `[Delete] Failed to delete from ${sync.platform}:`,
+            // Local deletion still proceeds; surface the partial failure
+            // to the caller instead of silently dropping it.
+            const message =
               platformError instanceof Error
                 ? platformError.message
-                : String(platformError)
+                : String(platformError);
+            log.warn(
+              `[Delete] Failed to delete from ${sync.platform}:`,
+              message
             );
+            platformWarnings.push(`${sync.platform}: ${message}`);
           }
         }
       }
@@ -2663,7 +2668,10 @@ function setupIPCHandlers() {
       // Delete locally
       await issueService.deleteIssue(issueId);
 
-      return { success: true };
+      return {
+        success: true,
+        warnings: platformWarnings.length > 0 ? platformWarnings : undefined,
+      };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "An unexpected error occurred";
@@ -3702,11 +3710,6 @@ function setupIPCHandlers() {
       };
     }
   });
-
-  // Native notifications were replaced by an in-app toast (see ToastHost in
-  // _app.tsx). The renderer's `window.api.showNotification` now dispatches a
-  // CustomEvent directly. Keep this handler as a no-op for any stragglers.
-  ipcMain.handle("util:show-notification", () => ({ success: true }));
 
   // Window control handlers
   ipcMain.handle("window:close", () => {

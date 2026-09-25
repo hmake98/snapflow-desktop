@@ -7,20 +7,13 @@ import { useStore } from "../store/useStore";
  */
 export function useNetworkStatus() {
   const setIsOnline = useStore((s) => s.setIsOnline);
-  const processSyncQueue = useStore((s) => s.processSyncQueue);
 
   useEffect(() => {
     // Set initial value
     setIsOnline(navigator.onLine);
 
-    const handleOnline = () => {
-      setIsOnline(true);
-      processSyncQueue();
-    };
-
-    const handleOffline = () => {
-      setIsOnline(false);
-    };
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
@@ -29,5 +22,5 @@ export function useNetworkStatus() {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, [setIsOnline, processSyncQueue]);
+  }, [setIsOnline]);
 }

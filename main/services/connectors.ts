@@ -333,36 +333,18 @@ export class ConnectorService {
   }
 
   /**
-   * Validate Zoho connector (stub - placeholder for Zoho API validation)
+   * Validate Zoho connector by checking the token can actually list portals
    */
   async validateZohoConnector(
     accessToken: string,
     portalId: string
   ): Promise<boolean> {
-    try {
-      // Stub: In a real implementation, this would call Zoho API
-      // For now, just check that the token and portal ID are non-empty
-      if (!accessToken || !portalId) {
-        log.warn("[Connector Service] ✗ Missing Zoho token or portal ID");
-        return false;
-      }
-
-      // TODO: Call actual Zoho API to validate token
-      // const response = await axios.get(
-      //   `https://projectsapi.zoho.com/portal/${portalId}/projects`,
-      //   {
-      //     headers: {
-      //       'Authorization': `Zoho-oauthtoken ${accessToken}`
-      //     }
-      //   }
-      // );
-      // return response.status === 200;
-
-      return true;
-    } catch (error) {
-      log.error("[Connector Service] ✗ Zoho validation error:", error);
+    if (!accessToken || !portalId) {
+      log.warn("[Connector Service] ✗ Missing Zoho token or portal ID");
       return false;
     }
+
+    return zohoService.validateToken(accessToken);
   }
 
   /**

@@ -243,11 +243,6 @@ const api = {
   getAutoSync: () => ipcRenderer.invoke("settings:get-auto-sync"),
   setAutoSync: (enabled: boolean) =>
     ipcRenderer.invoke("settings:set-auto-sync", { enabled }),
-  // Database methods
-  getDatabaseConfig: () => ipcRenderer.invoke("db:get-config"),
-  setDatabaseConfig: (url: string) =>
-    ipcRenderer.invoke("db:set-config", { url }),
-  testDatabaseConnection: () => ipcRenderer.invoke("db:test-connection"),
 
   // File access
   readImageFile: (filePath: string) =>
