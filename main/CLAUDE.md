@@ -76,16 +76,16 @@ Nextron bundles `main.ts` into `app/main.js` (per `package.json` `"main": "app/m
 
 Different GitHub OAuth Apps, different credentials, different code paths:
 
-|                   | **Login** ("Sign in with GitHub")                                      | **Sync connector** (push snaps as GitHub issues)    |
-| ----------------- | ---------------------------------------------------------------------- | --------------------------------------------------- |
-| Purpose           | Auth provider (via Supabase Auth)                                      | Per-workspace connector, like Zoho                  |
-| Code              | `services/auth.ts` `githubSignIn()`                                    | `services/github.ts`, `services/connectors.ts`      |
-| Credentials       | Supabase Dashboard → Auth → Providers → GitHub (not `.env`)            | `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` in `.env` |
-| Callback URL      | `https://<project-ref>.supabase.co/auth/v1/callback`                   | `http://localhost:3000/auth/github/callback`        |
-| App-side redirect | `snapflow://auth/callback` deep link → `main.ts` `handleOAuthCallback` | Same deep-link scheme for token exchange            |
-| Token stored      | Supabase session                                                       | Per-workspace `connectors` table row                |
+|                   | **Login** ("Sign in with GitHub")                                      | **Sync connector** (push snaps as GitHub issues)                                                                                 |
+| ----------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Purpose           | Auth provider (via Supabase Auth)                                      | Per-workspace connector, like Zoho                                                                                               |
+| Code              | `services/auth.ts` `githubSignIn()`                                    | `services/github.ts`, `services/connectors.ts`                                                                                   |
+| Credentials       | Supabase Dashboard → Auth → Providers → GitHub                         | `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`, seeded into the OS keychain via `npm run seed-secrets` (see `utils/secure-config.ts`) |
+| Callback URL      | `https://<project-ref>.supabase.co/auth/v1/callback`                   | `http://localhost:3000/auth/github/callback`                                                                                     |
+| App-side redirect | `snapflow://auth/callback` deep link → `main.ts` `handleOAuthCallback` | Same deep-link scheme for token exchange                                                                                         |
+| Token stored      | Supabase session                                                       | Per-workspace `connectors` table row                                                                                             |
 
-If GitHub login stops working, check the Supabase Dashboard, not `.env` — `.env` credentials are for the sync connector only.
+If GitHub login stops working, check the Supabase Dashboard, not the keychain-seeded credentials — those are for the sync connector only. Neither is ever read from a plaintext file, in dev or prod.
 
 ## Invite / join flow
 

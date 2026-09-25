@@ -180,7 +180,7 @@ function createSupabaseClient(): SupabaseClient | null {
   if (!supabaseUrl || !supabaseAnonKey) {
     log.warn(
       "[Supabase] ⚠️  SUPABASE_URL / SUPABASE_ANON_KEY not set — " +
-        "Supabase features will be unavailable. Check your .env file."
+        'Supabase features will be unavailable. Run "npm run seed-secrets".'
     );
     return null;
   }

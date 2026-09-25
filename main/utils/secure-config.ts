@@ -5,10 +5,18 @@
  * (OS Keychain on macOS, DPAPI on Windows, libsecret on Linux).
  *
  * Flow:
- *   1. On first launch: read plaintext bootstrap JSON → encrypt via safeStorage
- *      → store in electron-store → delete bootstrap file
- *   2. On subsequent launches: decrypt from electron-store
- *   3. On Linux without keyring: fallback to AES-256-GCM with machine-derived key
+ *   Prod, first launch: read plaintext bootstrap JSON (CI-generated,
+ *     gitignored, never committed) → encrypt via safeStorage → store in
+ *     electron-store → delete bootstrap file.
+ *   Dev, first run: no bootstrap file exists. Run `npm run seed-secrets`
+ *     once — it prompts on the terminal and encrypts straight into
+ *     electron-store. No file is read or written either way.
+ *   Every subsequent launch (dev or prod): decrypt from electron-store.
+ *   Linux without a keyring: fall back to AES-256-GCM with a machine-derived
+ *     key.
+ *
+ * There is no plaintext-file fallback anymore, in dev or prod — secrets only
+ * ever exist on disk encrypted, inside electron-store.
  *
  * Bootstrap file is never bundled into .asar; it sits outside in extraResources
  * and is deleted after first successful encryption.
@@ -17,10 +25,10 @@
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import readline from "readline";
 import { safeStorage, app } from "electron";
 import Store from "electron-store";
 import log from "electron-log";
-import dotenv from "dotenv";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,7 +39,7 @@ interface SecureConfigStore {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 // All keys that must be present in both bootstrap and store.
-const SECRET_KEYS = [
+export const SECRET_KEYS = [
   "SUPABASE_URL",
   "SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
@@ -41,6 +49,10 @@ const SECRET_KEYS = [
   "ZOHO_CLIENT_SECRET",
   "NODE_ENV",
 ] as const;
+
+// Keys an operator actually types in during `seedInteractive()` — NODE_ENV is
+// derived from the running process, never prompted for.
+const PROMPTED_SECRET_KEYS = SECRET_KEYS.filter((k) => k !== "NODE_ENV");
 
 // Static salt — not secret, just entropy for Linux key derivation.
 // Change this value to invalidate all previously derived keys on Linux.
@@ -237,86 +249,83 @@ class SecureConfig {
     try {
       bootstrapSecrets = readBootstrapFile();
     } catch (err) {
+      // No bootstrap file (normal in local dev) and nothing usable in the
+      // encrypted store yet. There is no file-based fallback anymore —
+      // secrets never live in a plaintext file, locally or otherwise.
       log.warn(
-        "[SecureConfig] Bootstrap file failed, trying .env fallback:",
+        "[SecureConfig] No bootstrap file and no secrets in encrypted store:",
         err
       );
-
-      // Fallback: try loading from .env file (for local development/testing)
-      try {
-        // Try multiple possible .env locations
-        const possiblePaths = [
-          path.join(process.cwd(), ".env"),
-          path.join(__dirname, "../../.env"), // relative to this file in dev
-          path.join(app.getAppPath(), ".env"), // if bundled in app folder
-          path.join(app.getAppPath(), "../.env"), // parent of app
-          path.join(process.resourcesPath, ".env"), // electron extraResources
-          path.join(process.resourcesPath, "../.env"), // parent of resources
-        ];
-
-        let loaded = false;
-        for (const envPath of possiblePaths) {
-          if (fs.existsSync(envPath)) {
-            const result = dotenv.config({ path: envPath });
-            if (!result.error) {
-              loaded = true;
-              break;
-            } else {
-              log.warn(
-                `[SecureConfig] Failed to parse .env at ${envPath}:`,
-                result.error
-              );
-            }
-          }
-        }
-
-        if (!loaded) {
-          log.warn("[SecureConfig] Could not find .env file in any location");
-          return;
-        }
-
-        // Create record from env vars for fallback
-        bootstrapSecrets = {
-          SUPABASE_URL: process.env.SUPABASE_URL || "",
-          SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || "",
-          SUPABASE_SERVICE_ROLE_KEY:
-            process.env.SUPABASE_SERVICE_ROLE_KEY || "",
-          GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID || "",
-          GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET || "",
-          ZOHO_CLIENT_ID: process.env.ZOHO_CLIENT_ID || "",
-          ZOHO_CLIENT_SECRET: process.env.ZOHO_CLIENT_SECRET || "",
-          NODE_ENV: process.env.NODE_ENV || "production",
-        };
-
-        // Validate that we actually got the required secrets
-        if (
-          !bootstrapSecrets.SUPABASE_URL ||
-          !bootstrapSecrets.SUPABASE_ANON_KEY
-        ) {
-          log.error(
-            "[SecureConfig] .env file missing required SUPABASE variables"
-          );
-          log.error(
-            `[SecureConfig] SUPABASE_URL: ${bootstrapSecrets.SUPABASE_URL}`
-          );
-          log.error(
-            `[SecureConfig] SUPABASE_ANON_KEY: ${bootstrapSecrets.SUPABASE_ANON_KEY}`
-          );
-          return;
-        }
-      } catch (fallbackErr) {
-        log.error("[SecureConfig] .env fallback also failed:", fallbackErr);
-        log.error(
-          "[SecureConfig] Supabase and OAuth features will be unavailable"
-        );
-        return;
-      }
+      log.warn(
+        '[SecureConfig] Run "npm run seed-secrets" once to store credentials in the OS keychain.'
+      );
+      log.warn(
+        "[SecureConfig] Supabase and OAuth features will be unavailable until then."
+      );
+      return;
     }
 
     encryptAndStore(bootstrapSecrets);
     deleteBootstrapFile();
     applyToEnv(bootstrapSecrets);
   }
+
+  /**
+   * One-time interactive setup for local development.
+   * Prompts for each secret on the terminal (masked input), encrypts them via
+   * safeStorage (OS keychain), and writes them straight to electron-store —
+   * no plaintext file is ever created. Run via `npm run seed-secrets`.
+   */
+  async seedInteractive(): Promise<void> {
+    console.log("\nSnapFlow secure config — one-time local secret setup");
+    console.log(
+      "Values are encrypted via the OS keychain and never written to disk in plaintext.\n"
+    );
+
+    const secrets: Record<string, string> = {
+      NODE_ENV: process.env.NODE_ENV || "development",
+    };
+
+    for (const key of PROMPTED_SECRET_KEYS) {
+      secrets[key] = await promptMasked(`${key}: `);
+    }
+
+    encryptAndStore(secrets);
+    console.log(
+      "\nStored. You can delete any local .env file now — it is no longer read."
+    );
+  }
+}
+
+/**
+ * Prompts on stdin with the typed characters masked as `*`.
+ * Standard readline trick: the first _writeToOutput call is the prompt text
+ * itself (left as-is), every call after that is a keystroke echo (masked).
+ */
+function promptMasked(query: string): Promise<string> {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+      terminal: true,
+    });
+    let promptWritten = false;
+    (rl as unknown as { _writeToOutput: (s: string) => void })._writeToOutput =
+      (stringToWrite: string) => {
+        if (!promptWritten) {
+          process.stdout.write(stringToWrite);
+          promptWritten = true;
+          return;
+        }
+        process.stdout.write("*".repeat(stringToWrite.length));
+      };
+
+    rl.question(query, (answer) => {
+      rl.close();
+      process.stdout.write("\n");
+      resolve(answer);
+    });
+  });
 }
 
 export const secureConfig = new SecureConfig();

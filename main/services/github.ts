@@ -1,8 +1,9 @@
 /**
  * GitHub Sync Connector — NOT the "Sign in with GitHub" login flow.
  *
- * This is a separate GitHub OAuth App (GITHUB_CLIENT_ID/SECRET in .env) used
- * per-workspace to push snaps as GitHub issues. Login via GitHub is a
+ * This is a separate GitHub OAuth App (GITHUB_CLIENT_ID/SECRET, seeded into
+ * the OS keychain via `npm run seed-secrets` — see utils/secure-config.ts)
+ * used per-workspace to push snaps as GitHub issues. Login via GitHub is a
  * different OAuth App configured in the Supabase Dashboard and handled by
  * `authService.githubSignIn()` in auth.ts — the two do not share credentials
  * or tokens.

@@ -1,4 +1,3 @@
-import dotenv from "dotenv";
 import path from "path";
 import electron from "electron";
 import serve from "electron-serve";
@@ -52,21 +51,11 @@ process.on("unhandledRejection", (reason: unknown) => {
 // Determine if we're in production
 const isProd = process.env.NODE_ENV === "production";
 
-// Load environment variables
-// Development: load from .env in project root (dotenv auto-resolves to cwd)
-// Production: load from resources/.env — placed there by electron-builder extraResources
-if (!isProd) {
-  dotenv.config();
-} else {
-  // process.resourcesPath is the correct location for extraResources in packaged apps.
-  // __dirname points inside app.asar and cannot be used to reach extraResources.
-  const envPath = path.join(process.resourcesPath, ".env");
-  if (fs.existsSync(envPath)) {
-    dotenv.config({ path: envPath });
-  } else {
-    log.warn("[Startup] .env not found at resources path:", envPath);
-  }
-}
+// Secrets (Supabase/GitHub/Zoho credentials) are never loaded from a
+// plaintext file, in dev or prod. secureConfig.initialize() (called after
+// app.whenReady() below) reads them from the OS keychain — see
+// utils/secure-config.ts. Local dev seeds that keychain once via
+// `npm run seed-secrets`.
 
 // Register custom protocol scheme before app is ready (if available)
 if (protocol && protocol.registerSchemesAsPrivileged) {
@@ -1356,12 +1345,19 @@ if (app && app.requestSingleInstanceLock) {
     (async () => {
       await app.whenReady();
 
-      // Initialize secure config (must run after app.whenReady() — electron.safeStorage requires app ready)
-      // Production: loads encrypted secrets from store (or bootstraps from JSON on first launch)
-      // Development: no-op (env vars loaded via dotenv from project root)
-      if (isProd) {
-        await secureConfig.initialize();
+      // One-time local setup: `npm run seed-secrets` launches with this flag
+      // to prompt for credentials and encrypt them into the OS keychain, then
+      // exit — no window, no IPC handlers, no plaintext file ever written.
+      if (process.argv.includes("--seed-secrets")) {
+        await secureConfig.seedInteractive();
+        app.quit();
+        return;
       }
+
+      // Loads encrypted secrets from the OS keychain (or bootstraps from the
+      // CI-provided JSON on first launch in prod). Same path for dev and
+      // prod — see utils/secure-config.ts.
+      await secureConfig.initialize();
 
       // Register custom protocol for local file access.
       // IMPORTANT: OAuth deep-link callbacks arrive as snapflow://auth/callback?code=...
