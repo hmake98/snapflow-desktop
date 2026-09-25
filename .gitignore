@@ -14,8 +14,14 @@ next-env.d.ts
 # build
 /app
 dist
-.env
 /app/generated/prisma
+
+# env files (keep template tracked)
+.env*
+!.env.example
 
 # macOS
 .DS_Store
+
+# generated at build time, contains live credentials
+resources/app-bootstrap.json

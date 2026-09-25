@@ -1,6 +1,6 @@
-# IPC map — `main/background.ts`
+# IPC map — `main/main.ts`
 
-99 IPC channels across 21 namespaces. **Use this instead of reading `background.ts` (4,959 lines).** Once you find the channel by name, `grep -n "namespace:action" main/background.ts` lands you on the exact handler.
+113 IPC channels across 21 namespaces (renamed from `background.ts`; verify this count against `grep -c 'ipcMain\.handle(' main/main.ts` if it's been a while — it drifts as features land). **Use this instead of reading `main.ts`.** Once you find the channel by name, `grep -n "namespace:action" main/main.ts` lands you on the exact handler.
 
 ## Conventions
 
@@ -13,6 +13,9 @@
 ### `ai:*` — AI provider config (`main/services/ai.ts`)
 
 - `ai:clear-key`
+- `ai:generate-description`
+- `ai:generate-description-from-snap`
+- `ai:generate-screenshot-description`
 - `ai:get-active-provider`
 - `ai:get-all-status`
 - `ai:get-key`
@@ -20,9 +23,10 @@
 - `ai:set-active-provider`
 - `ai:set-key`
 
-### `app:*` — Window lifecycle (`main/background.ts` directly)
+### `app:*` — Window lifecycle + external links (`main/main.ts` directly)
 
 - `app:hide-window`
+- `app:open-external-url`
 - `app:quit`
 - `app:show-window`
 
@@ -39,12 +43,15 @@
 - `capture:get-pending`
 - `capture:get-windows`
 - `capture:save`
+- `capture:screenshot`
 - `capture:select-window`
 - `capture:selected-region`
+- `capture:set-default-screen`
 - `capture:specific-screen`
 
 ### `clipboard:*` — Paste as bug (`main/services/clipboard.ts`)
 
+- `clipboard:copy-bug-data`
 - `clipboard:paste-bug`
 
 ### `collector:*` — Debug-session collector (`main/services/debug-collector/`)
@@ -58,18 +65,22 @@
 
 ### `connector:*` — GitHub + Zoho connector config (`main/services/connectors.ts`, `github.ts`, `zoho.ts`)
 
+- `connector:add`
 - `connector:delete`
 - `connector:get-github-repos`
 - `connector:get-github-token`
 - `connector:get-github-user`
 - `connector:get-zoho-portals`
+- `connector:get-zoho-projects`
 - `connector:get-zoho-token`
 - `connector:github-signin`
 - `connector:list`
 - `connector:update`
+- `connector:validate-github`
+- `connector:validate-zoho`
 - `connector:zoho-signin`
 
-### `debug:*` — Internal diagnostics (`main/background.ts`)
+### `debug:*` — Internal diagnostics (`main/main.ts`)
 
 - `debug:test-capture`
 
@@ -80,9 +91,11 @@
 ### `home-prefs:*` — Home page UI prefs (`main/services/settings.ts`)
 
 - `home-prefs:get`
+- `home-prefs:set`
 
 ### `issue:*` — Snap/issue CRUD (`main/services/issues.ts`)
 
+- `issue:create`
 - `issue:delete`
 - `issue:list`
 - `issue:update`
@@ -97,12 +110,14 @@
 
 - `session:get-pending`
 - `session:is-initialized`
+- `session:save-snap`
 - `session:stop`
 - `session:take-screenshot`
 
 ### `settings:*` — Auto-sync toggle (`main/services/settings.ts`)
 
 - `settings:get-auto-sync`
+- `settings:set-auto-sync`
 
 ### `sync:*` — Cloud sync (`main/services/sync.ts`)
 
@@ -110,12 +125,14 @@
 - `sync:full`
 - `sync:get-history`
 - `sync:issue`
+- `sync:issue-zoho`
 - `sync:to-cloud`
 
 ### `tenant:*` — Tenants (`main/services/tenant.ts`)
 
 - `tenant:create`
 - `tenant:get`
+- `tenant:update`
 
 ### `update:*` — Auto-update (`main/services/updater.ts`)
 
@@ -131,15 +148,20 @@
 - `user:get`
 - `user:get-session-expiry`
 - `user:github-signin`
-- `user:google-signin`
+- `user:is-session-expiring-soon`
 - `user:login`
 - `user:logout`
 - `user:remove-avatar`
+- `user:update`
+- `user:upload-avatar`
+
+No `user:google-signin` channel exists — Google login isn't wired into the app despite CSP/deep-link leftovers; see `main/CLAUDE.md` § Auth + session.
 
 ### `util:*` — Misc
 
 - `util:open-external`
-- `util:show-notification`
+
+(`util:show-notification` was removed — native notifications were replaced by an in-app `CustomEvent` toast that never goes through IPC. See `preload.ts` `showNotification`.)
 
 ### `window:*` — BrowserWindow controls
 
@@ -148,9 +170,9 @@
 - `window:maximize`
 - `window:minimize`
 
-### `workspace:*` and `workspace-member:*` — Workspaces and members (`main/services/workspace.ts`)
+### `workspace:*` — Workspaces (`main/services/workspace.ts`)
 
-- `workspace-member:list`
+- `workspace:create`
 - `workspace:delete`
 - `workspace:get-active`
 - `workspace:get-info`
@@ -158,11 +180,24 @@
 - `workspace:join`
 - `workspace:list`
 - `workspace:set-active`
+- `workspace:update`
+
+### `workspace-member:*` — Workspace members + invites (`main/services/workspace.ts`)
+
+- `workspace-member:invite`
+- `workspace-member:list`
+- `workspace-member:list-with-users`
+- `workspace-member:remove`
+- `workspace-member:update-role`
 
 ## Finding a handler quickly
 
 ```bash
-grep -n 'ipcMain.handle("namespace:action"' main/background.ts
+grep -n 'ipcMain.handle("namespace:action"' main/main.ts
 ```
 
-Returns the exact line. Then `Read` a small range around it.
+Returns the exact line for single-line handler declarations. Some handlers wrap the channel name onto its own line — if the direct grep misses, drop the trailing `"` and search just the channel name instead:
+
+```bash
+grep -n '"namespace:action"' main/main.ts
+```
