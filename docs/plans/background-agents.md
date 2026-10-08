@@ -73,6 +73,8 @@ Per Workspace, N rows:
 | `default_branch`  |                                                                 |
 | `contract_path`   | Optional: OpenAPI / GraphQL schema / shared-types file          |
 | `installation_id` | GitHub App installation                                         |
+| `runner`          | `claude-code` (v1 default). Others later.                       |
+| `runner_status`   | `not_installed` \| `workflow_pr_open` \| `ready` \| `error`     |
 
 Auth: **GitHub App installation** per repo, not PATs. Least privilege (contents read, issues, pull requests, actions dispatch). Credentials stay out of the renderer; follow the existing OS-keychain pattern (recent commit `bcab32d`) for anything stored locally, and `getSupabaseAdmin()` for service-role access server-side.
 
@@ -124,12 +126,41 @@ Plan is shown in the renderer before anything is dispatched. User can approve, r
 
 ### Dispatch (v1: orchestrate, don't run)
 
+The default runner is the **Claude Code GitHub Action**, running in each Linked Repo's own CI with the **customer's own Anthropic API key** (bring your own key). See "BYOK with Claude Code" below.
+
 For each approved repo:
 
 - Create or update a GitHub issue in that repo containing: the Snap content and capture links, the repo-specific part of the plan, and the **contract slice** of the other involved repos (API shapes, types).
-- Trigger that repo's configured runner (Claude Code GitHub Action, Copilot coding agent, or `workflow_dispatch` on a workflow the customer owns).
+- Trigger the runner by mentioning `@claude` in the issue, or via `workflow_dispatch` on the workflow installed in that repo.
 
 The fixer sees only its own repo plus the contract slice. Sufficient for most bugs; insufficient for atomic cross-repo refactors (non-goal v1).
+
+### BYOK with Claude Code
+
+**Decision:** the key lives in the customer's GitHub, never with SnapFlow.
+
+| Concern          | Where it lives                                                                                                        |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Anthropic key    | GitHub Actions secret `ANTHROPIC_API_KEY` in each Linked Repo (or an org-level secret shared across repos)            |
+| Workflow file    | `.github/workflows/snapflow-agent.yml` in each Linked Repo, added by a PR that SnapFlow opens and the customer merges |
+| Billing          | The customer's Anthropic account, directly                                                                            |
+| SnapFlow storage | Nothing. No key, no key hash, no copy.                                                                                |
+
+Triage is separate: it uses the user's own provider key already stored locally by `main/services/ai.ts` (Anthropic is one of the supported providers), so it is also BYOK with no new storage.
+
+**Setup flow ("Set up Claude Code" per Linked Repo):**
+
+1. SnapFlow opens a PR adding `snapflow-agent.yml` (triggers on `@claude` issue mentions and `workflow_dispatch`; minimal permissions: `contents`, `pull-requests`, `issues` write).
+2. The customer merges it and adds the `ANTHROPIC_API_KEY` secret in GitHub. SnapFlow shows a link to the repo's secrets page and a short instruction. It cannot add or read the secret.
+3. SnapFlow sets `runner_status = ready` after a **test dispatch** succeeds (a no-op run that checks the workflow starts and the key authenticates). A failed run shows `error` with the run link.
+
+Constraints and consequences:
+
+- The key must be an Anthropic API key. Do not use a claude.ai subscription login for a third-party product; check Anthropic's current terms before shipping.
+- SnapFlow cannot see key validity, spend, or rate limits. The only signal is the Action run result, surfaced on the Agent Run.
+- Customers own spend controls. Document recommended limits (API key spend cap, workflow timeout, `max-turns`).
+- Prompt-injection surface is the Action's, not ours: restrict who can trigger it (collaborators only) and keep its token scoped to that repo.
+- A hosted runner using the Claude Agent SDK would need server-side key custody. That is a later option, not v1 (see Non-goals), and needs an ADR before it starts.
 
 ### PR tracking
 
@@ -151,6 +182,8 @@ Migrations go under `supabase/migrations/` per `supabase/CLAUDE.md`. Triage and 
 New channel namespace `agent:*` (do not reuse legacy `issue:*`):
 
 - `agent:linkRepo`, `agent:unlinkRepo`, `agent:listRepos`
+- `agent:setupRunner` (linkedRepoId) → opens the workflow PR
+- `agent:checkRunner` (linkedRepoId) → test dispatch, updates `runner_status`
 - `agent:refreshIndex`
 - `agent:triage` (snapId) → Triage Plan
 - `agent:approve` (runId, edited plan) → dispatch
@@ -158,10 +191,10 @@ New channel namespace `agent:*` (do not reuse legacy `issue:*`):
 
 ## Phases
 
-1. **Linked Repos** — GitHub App, `linked_repos`, settings UI. Standalone value: Workspace knows its repos.
+1. **Linked Repos** — GitHub App, `linked_repos`, settings UI. Standalone value: Workspace knows its repos. Includes the "Set up Claude Code" flow and runner check, so repos are dispatch-ready before triage ships.
 2. **Repo Index** — builder, cache, webhook refresh.
 3. **Triage + approval UI** — useful even with no fixer ("which repo owns this bug?").
-4. **Dispatch + PR tracking** — per-repo runner trigger, cross-linked PRs, status on the Snap.
+4. **Dispatch + PR tracking** — per-repo Claude Code trigger, cross-linked PRs, status on the Snap.
 5. **Later, only if used**: auto-pickup rules (label, severity, confidence threshold), hosted multi-repo runner, atomic cross-repo changes.
 
 Phases 1–3 carry little risk and can ship independently.
@@ -176,7 +209,8 @@ Phases 1–3 carry little risk and can ship independently.
 | Token/credential exposure                                   | GitHub App, short-lived installation tokens; nothing in renderer or logs                                                                       |
 | Junk PRs from vague Snaps                                   | Triage can return `noCodeChange`; require minimum description/context before offering "Send to agent"                                          |
 | Partial failure (one repo's PR red)                         | Per-repo status on the run; ordering and `dependsOn` visible; no auto-merge                                                                    |
-| Cost surprise                                               | v1 uses customer's own runner/API key; triage is one call per run, capped input via Repo Index                                                 |
+| Cost surprise                                               | Customer's own Anthropic key per repo (BYOK); triage is one call per run with capped input via Repo Index; document spend caps and `max-turns` |
+| Customer forgets or misconfigures the key                   | Test dispatch gates `runner_status = ready`; "Send to agent" is disabled for repos that are not ready                                          |
 
 ## Hard cases deferred
 
@@ -189,7 +223,7 @@ Phases 1–3 carry little risk and can ship independently.
 
 1. Separate `linked_repos` table vs. extending the GitHub Connector?
 2. Where does triage run: Electron main process (user's machine, only while app is open) or a server-side function (works when closed)? v1 is fine in main; auto-pickup requires server-side.
-3. Which runner is the default dispatch target, and how does a Workspace configure it?
+3. ~~Which runner is the default dispatch target?~~ Resolved: Claude Code Action with the customer's own key (see "BYOK with Claude Code"). Still open: org-level vs per-repo secret guidance, and whether other runners are offered later.
 4. Who may trigger an Agent Run: any `member`, or `admin`/`owner` only?
 5. Does Zoho-only Workspace get anything from this, or is it GitHub-only?
 6. Do we need an ADR for "orchestrate existing runners rather than host our own"? Probably yes before phase 4.
@@ -203,3 +237,6 @@ Per repo non-negotiables, confirm against source before relying on any of these:
 - That the Session timeline actually records network calls (not just events and screenshots) in `main/services/debug-collector/`.
 - How Snap → GitHub issue Sync stores the issue URL (needed to link PRs back).
 - Existing IPC registration pattern in `main/CLAUDE.md` before adding `agent:*`.
+- Current `anthropics/claude-code-action` inputs, trigger events, required permissions, and whether a `workflow_dispatch` test run is practical.
+- Anthropic's current terms on API keys vs. subscription logins in third-party products.
+- That the GitHub App can open a PR adding a workflow file (needs `workflows` permission, which is a sensitive scope; confirm it is acceptable or fall back to showing the file for the customer to commit).
