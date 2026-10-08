@@ -45,14 +45,15 @@ export const SECRET_KEYS = [
   "SUPABASE_SERVICE_ROLE_KEY",
   "GITHUB_CLIENT_ID",
   "GITHUB_CLIENT_SECRET",
-  "ZOHO_CLIENT_ID",
-  "ZOHO_CLIENT_SECRET",
-  "NODE_ENV",
 ] as const;
 
-// Keys an operator actually types in during `seedInteractive()` — NODE_ENV is
-// derived from the running process, never prompted for.
-const PROMPTED_SECRET_KEYS = SECRET_KEYS.filter((k) => k !== "NODE_ENV");
+// Features that degrade gracefully when absent (Zoho sync is disabled in the UI).
+export const OPTIONAL_SECRET_KEYS = [
+  "ZOHO_CLIENT_ID",
+  "ZOHO_CLIENT_SECRET",
+] as const;
+
+const ALL_KEYS = [...SECRET_KEYS, ...OPTIONAL_SECRET_KEYS];
 
 // Static salt — not secret, just entropy for Linux key derivation.
 // Change this value to invalidate all previously derived keys on Linux.
@@ -145,11 +146,32 @@ function tryLoadFromStore(): Record<string, string> | null {
       if (!stored) return null;
       result[key] = decryptValue(stored as string);
     }
+    for (const key of OPTIONAL_SECRET_KEYS) {
+      const stored = (secureStore as any).get(key);
+      if (stored) result[key] = decryptValue(stored as string);
+    }
     return result;
   } catch (err) {
     log.warn("[SecureConfig] Failed to decrypt from store:", err);
     return null;
   }
+}
+
+/**
+ * Dev-only: parse the project-root `.env` (no dotenv dependency). Lets local
+ * dev work without running `seed-secrets` first; values are then encrypted
+ * into the store like any other source.
+ */
+function readDevEnvFile(): Record<string, string> | null {
+  const envPath = path.join(process.cwd(), ".env");
+  if (!fs.existsSync(envPath)) return null;
+  const out: Record<string, string> = {};
+  for (const line of fs.readFileSync(envPath, "utf-8").split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
+    if (!m) continue;
+    out[m[1]] = m[2].replace(/^(['"])(.*)\1$/, "$2");
+  }
+  return out;
 }
 
 /**
@@ -187,10 +209,14 @@ function readBootstrapFile(): Record<string, string> {
  * Encrypt all bootstrap secrets and persist to electron-store.
  */
 function encryptAndStore(secrets: Record<string, string>): void {
-  for (const key of SECRET_KEYS) {
+  for (const key of ALL_KEYS) {
     const value = secrets[key];
-    if (value === undefined) {
-      log.warn(`[SecureConfig] Bootstrap missing key: ${key}`);
+    if (!value) {
+      if ((OPTIONAL_SECRET_KEYS as readonly string[]).includes(key)) {
+        (secureStore as any).delete(key);
+      } else {
+        log.warn(`[SecureConfig] Bootstrap missing key: ${key}`);
+      }
       continue;
     }
     (secureStore as any).set(key, encryptValue(value));
@@ -217,9 +243,32 @@ function deleteBootstrapFile(): void {
  * Apply a secrets record to process.env.
  */
 function applyToEnv(secrets: Record<string, string>): void {
-  for (const [key, value] of Object.entries(secrets)) {
-    process.env[key] = value;
+  for (const key of ALL_KEYS) {
+    const value = secrets[key];
+    if (value) process.env[key] = value;
   }
+}
+
+export interface EnvStatus {
+  source: "keychain" | "bootstrap" | "dev-env-file" | "none";
+  nodeEnv: string;
+  loaded: Record<string, boolean>;
+  missing: string[];
+  missingOptional: string[];
+}
+
+let envSource: EnvStatus["source"] = "none";
+
+export function getEnvStatus(): EnvStatus {
+  const loaded: Record<string, boolean> = {};
+  for (const key of ALL_KEYS) loaded[key] = !!process.env[key];
+  return {
+    source: envSource,
+    nodeEnv: process.env.NODE_ENV ?? "(unset)",
+    loaded,
+    missing: SECRET_KEYS.filter((k) => !loaded[k]),
+    missingOptional: OPTIONAL_SECRET_KEYS.filter((k) => !loaded[k]),
+  };
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -234,12 +283,23 @@ class SecureConfig {
    *   3. If store load fails → read bootstrap file → encrypt → store → delete bootstrap → apply to process.env.
    */
   async initialize(): Promise<void> {
+    // Dev: a project .env is the source of truth and overrides (and refreshes)
+    // whatever an earlier seed left in the keychain, so edits take effect.
+    const devEnv = app.isPackaged ? null : readDevEnvFile();
+    if (devEnv && ALL_KEYS.some((k) => devEnv[k])) {
+      encryptAndStore(devEnv);
+      applyToEnv(devEnv);
+      envSource = "dev-env-file";
+      return;
+    }
+
     // Fast path: all secrets are already encrypted in store.
     const fromStore = tryLoadFromStore();
     if (fromStore) {
       // Delete bootstrap if it somehow still exists (e.g., update shipped a new one).
       deleteBootstrapFile();
       applyToEnv(fromStore);
+      envSource = "keychain";
       return;
     }
 
@@ -249,6 +309,14 @@ class SecureConfig {
     try {
       bootstrapSecrets = readBootstrapFile();
     } catch (err) {
+      const devEnv = app.isPackaged ? null : readDevEnvFile();
+      if (devEnv) {
+        encryptAndStore(devEnv);
+        applyToEnv(devEnv);
+        envSource = "dev-env-file";
+        log.info("[SecureConfig] Imported dev .env into the OS keychain");
+        return;
+      }
       // No bootstrap file (normal in local dev) and nothing usable in the
       // encrypted store yet. There is no file-based fallback anymore —
       // secrets never live in a plaintext file, locally or otherwise.
@@ -268,6 +336,7 @@ class SecureConfig {
     encryptAndStore(bootstrapSecrets);
     deleteBootstrapFile();
     applyToEnv(bootstrapSecrets);
+    envSource = "bootstrap";
   }
 
   /**
@@ -282,12 +351,15 @@ class SecureConfig {
       "Values are encrypted via the OS keychain and never written to disk in plaintext.\n"
     );
 
-    const secrets: Record<string, string> = {
-      NODE_ENV: process.env.NODE_ENV || "development",
-    };
+    const secrets: Record<string, string> = {};
 
-    for (const key of PROMPTED_SECRET_KEYS) {
-      secrets[key] = await promptMasked(`${key}: `);
+    for (const key of ALL_KEYS) {
+      const optional = (OPTIONAL_SECRET_KEYS as readonly string[]).includes(
+        key
+      );
+      secrets[key] = await promptMasked(
+        `${key}${optional ? " (optional, Enter to skip)" : ""}: `
+      );
     }
 
     encryptAndStore(secrets);

@@ -6,6 +6,8 @@ import { CenteredLayout, Section, FormRow } from "../components/layout";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
+import { useFeatureFlags } from "../hooks/useFeatureFlags";
+import { ZohoUnavailable } from "../components/ui/ZohoUnavailable";
 import { Skeleton } from "../components/ui/Skeleton";
 
 function slugify(text: string): string {
@@ -18,6 +20,7 @@ function slugify(text: string): string {
 }
 
 export default function OnboardingPage() {
+  const { zoho: zohoAvailable } = useFeatureFlags();
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -907,6 +910,17 @@ export default function OnboardingPage() {
                   <p className="text-caption">
                     {zohoSelectedPortalName} / {zohoSelectedProjectName}
                   </p>
+                ) : !zohoAvailable ? (
+                  <div className="space-y-3">
+                    <p className="text-caption">
+                      Sign in with Zoho to connect a project.
+                    </p>
+                    <ZohoUnavailable className="flex w-full">
+                      <Button variant="primary" size="sm" fullWidth disabled>
+                        Sign in with Zoho
+                      </Button>
+                    </ZohoUnavailable>
+                  </div>
                 ) : zohoOAuthStage === "idle" ? (
                   <div className="space-y-3">
                     <p className="text-caption">

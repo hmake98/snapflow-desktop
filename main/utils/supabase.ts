@@ -22,6 +22,7 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import Store from "electron-store";
 import log from "electron-log";
+import { net } from "electron";
 
 // ─── Global singleton (prevents duplicates during hot-reload) ────────────────
 declare global {
@@ -123,10 +124,16 @@ function buildFetchWithTimeout(timeoutMs: number) {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-      });
+      // net.fetch uses Chromium's network stack and the OS trust store, so it
+      // works behind TLS-inspecting corporate proxies where Node's fetch fails
+      // with UNABLE_TO_GET_ISSUER_CERT_LOCALLY.
+      const response = await net.fetch(
+        typeof url === "string" ? url : url.toString(),
+        {
+          ...options,
+          signal: controller.signal,
+        }
+      );
       return response;
     } catch (err) {
       if (
@@ -134,6 +141,14 @@ function buildFetchWithTimeout(timeoutMs: number) {
         (err instanceof Error &&
           (err.name === "AbortError" || err.name === "TimeoutError"))
       ) {
+        const cause = (err as { cause?: { code?: string; message?: string } })
+          .cause;
+        log.warn(
+          "[Supabase] fetch failed:",
+          typeof url === "string" ? new URL(url).host : "(request)",
+          err instanceof Error ? err.name : "",
+          cause?.code ?? cause?.message ?? (err as Error).message
+        );
         // Return a fake not-ok Response — bypasses the catch(e){console.error(e)}
         // block in Supabase's _handleRequest entirely.
         return networkErrorResponse;

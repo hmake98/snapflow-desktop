@@ -12,12 +12,15 @@ import {
 } from "../components/settings";
 import { AppShell, Section } from "../components/layout";
 import { Avatar } from "../components/ui/Avatar";
+import { useFeatureFlags } from "../hooks/useFeatureFlags";
+import { ZohoUnavailable } from "../components/ui/ZohoUnavailable";
 
 type Tab = "account" | "connectors" | "ai" | "general";
 
 export default function SettingsPage() {
   const router = useRouter();
   const { user: storeUser, resetStore } = useStore();
+  const { zoho: zohoAvailable } = useFeatureFlags();
   const [activeTab, setActiveTab] = useState<Tab>("account");
 
   useEffect(() => {
@@ -264,7 +267,15 @@ export default function SettingsPage() {
                       title="Zoho Projects"
                       description="Sync snaps as tasks to a Zoho project."
                     >
-                      <ZohoConnectorManager />
+                      {zohoAvailable ? (
+                        <ZohoConnectorManager />
+                      ) : (
+                        <ZohoUnavailable className="flex w-full">
+                          <p className="text-caption">
+                            Zoho Projects is not available.
+                          </p>
+                        </ZohoUnavailable>
+                      )}
                     </Section>
                   </>
                 )}

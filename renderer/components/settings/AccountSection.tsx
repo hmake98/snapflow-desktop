@@ -490,7 +490,7 @@ export const AccountSection: React.FC = () => {
                       <span
                         className={
                           mono
-                            ? "text-2xs font-mono text-gray-500 bg-gray-900/50 px-2 py-0.5 rounded truncate max-w-[240px]"
+                            ? "text-2xs font-mono text-gray-500 bg-gray-900/50 px-2 py-0.5 rounded break-all text-right select-all"
                             : "text-sm text-gray-200 text-right truncate"
                         }
                       >
