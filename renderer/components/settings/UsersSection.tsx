@@ -359,6 +359,9 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
         ) : (
           <div className="divide-y divide-gray-800">
             {filteredMembers.map((member) => {
+              const showRemoveSlot =
+                isAdmin &&
+                filteredMembers.some((m) => m.userId !== currentUserId);
               const isSelf = member.userId === currentUserId;
               const isUpdatingRole = updatingRoleId === member.userId;
               const isRemoving = removingId === member.userId;
@@ -398,7 +401,7 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
                   </span>
 
                   {/* Role */}
-                  <div className="flex-shrink-0">
+                  <div className="flex-shrink-0 w-24">
                     {isAdmin && !isSelf ? (
                       <div className="relative">
                         <select
@@ -410,7 +413,7 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
                               e.target.value as Exclude<UserRole, "owner">
                             )
                           }
-                          className={`h-7 pl-2.5 pr-6 text-2xs font-medium rounded-full border appearance-none cursor-pointer transition-all focus:outline-none focus:ring-1 focus:ring-blue-500/40 disabled:opacity-50 disabled:cursor-not-allowed ${ROLE_COLORS[member.role]} bg-transparent`}
+                          className={`w-full h-7 pl-2.5 pr-6 text-2xs font-medium rounded-full border appearance-none cursor-pointer transition-all focus:outline-none focus:ring-1 focus:ring-blue-500/40 disabled:opacity-50 disabled:cursor-not-allowed ${ROLE_COLORS[member.role]} bg-transparent`}
                         >
                           {WORKSPACE_ROLES.map((r) => (
                             <option
@@ -462,7 +465,7 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
                       </div>
                     ) : (
                       <span
-                        className={`inline-flex items-center h-7 px-2.5 text-2xs font-medium rounded-full border ${ROLE_COLORS[member.role]}`}
+                        className={`flex items-center justify-center h-7 px-2.5 text-2xs font-medium rounded-full border ${ROLE_COLORS[member.role]}`}
                       >
                         {ROLE_LABELS[member.role]}
                       </span>
@@ -470,58 +473,60 @@ export const UsersSection: React.FC<UsersSectionProps> = ({
                   </div>
 
                   {/* Remove */}
-                  <div className="flex-shrink-0 w-7">
-                    {isAdmin && !isSelf && (
-                      <button
-                        disabled={isRemoving}
-                        onClick={() =>
-                          setConfirmRemove({
-                            memberId: member.id,
-                            userId: member.userId,
-                            userName: member.user.name || member.user.email,
-                          })
-                        }
-                        className="w-7 h-7 rounded-md text-gray-600 hover:text-red-400 hover:bg-red-500/10 flex items-center justify-center transition-all disabled:opacity-40"
-                        title={`Remove ${member.user.name}`}
-                      >
-                        {isRemoving ? (
-                          <svg
-                            className="w-3.5 h-3.5 animate-spin"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                          >
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
+                  {showRemoveSlot && (
+                    <div className="flex-shrink-0 w-7">
+                      {isAdmin && !isSelf && (
+                        <button
+                          disabled={isRemoving}
+                          onClick={() =>
+                            setConfirmRemove({
+                              memberId: member.id,
+                              userId: member.userId,
+                              userName: member.user.name || member.user.email,
+                            })
+                          }
+                          className="w-7 h-7 rounded-md text-gray-600 hover:text-red-400 hover:bg-red-500/10 flex items-center justify-center transition-all disabled:opacity-40"
+                          title={`Remove ${member.user.name}`}
+                        >
+                          {isRemoving ? (
+                            <svg
+                              className="w-3.5 h-3.5 animate-spin"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                              />
+                            </svg>
+                          ) : (
+                            <svg
+                              className="w-3.5 h-3.5"
+                              fill="none"
                               stroke="currentColor"
-                              strokeWidth="4"
-                            />
-                            <path
-                              className="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                            />
-                          </svg>
-                        ) : (
-                          <svg
-                            className="w-3.5 h-3.5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                            />
-                          </svg>
-                        )}
-                      </button>
-                    )}
-                  </div>
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                              />
+                            </svg>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}

@@ -25,6 +25,7 @@
 
 ### `app:*` — Window lifecycle + external links (`main/main.ts` directly)
 
+- `app:feature-flags`
 - `app:hide-window`
 - `app:open-external-url`
 - `app:quit`

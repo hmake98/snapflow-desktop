@@ -355,6 +355,10 @@ class AuthService {
     return data.url;
   }
 
+  mapSessionUser(user: SupabaseUser): AuthUser {
+    return mapUser(user);
+  }
+
   /** Exchange the PKCE code from the deep-link callback for a live session. */
   async exchangeCodeForSession(callbackUrl: string) {
     const supabase = requireSupabase();

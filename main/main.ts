@@ -25,7 +25,7 @@ import { aiService, AiService } from "./services/ai";
 import { storageManager } from "./utils/storage";
 import { sessionManager } from "./utils/session";
 import { getSupabase, getSupabaseAdmin } from "./utils/supabase";
-import { secureConfig } from "./utils/secure-config";
+import { secureConfig, getEnvStatus } from "./utils/secure-config";
 import fs from "fs";
 import type { Workspace } from "../renderer/types";
 
@@ -193,6 +193,29 @@ async function getPostAuthNavigationTarget(
   return "/onboarding";
 }
 
+const ZOHO_UNAVAILABLE =
+  "Zoho integration is unavailable: ZOHO_CLIENT_ID / ZOHO_CLIENT_SECRET are not set.";
+
+// Names + set/missing only — never values.
+function logEnvStatusToWindow(win: WindowInstance | null): void {
+  if (!win || win.isDestroyed()) return;
+  const status = getEnvStatus();
+  const ok = status.missing.length === 0;
+  const optionalNote = status.missingOptional.length
+    ? ` (optional not set: ${status.missingOptional.join(", ")} — Zoho disabled)`
+    : "";
+  const script = `(() => {
+    const s = ${JSON.stringify(status)};
+    console.groupCollapsed("[SnapFlow] env " + (${ok} ? "✅ all required loaded" : "❌ missing: " + s.missing.join(", ")) + ${JSON.stringify(optionalNote)} + " (source: " + s.source + ", NODE_ENV=" + s.nodeEnv + ")");
+    console.table(s.loaded);
+    console.groupEnd();
+    ${ok ? "" : 'console.error("[SnapFlow] Missing env vars: " + s.missing.join(", "));'}
+  })();`;
+  win.webContents.executeJavaScript(script).catch(() => undefined);
+  if (ok) log.info("[Env] all variables loaded from", status.source);
+  else log.error("[Env] missing variables:", status.missing.join(", "));
+}
+
 if (isProd) {
   serve({ directory: "app" });
 } else {
@@ -262,6 +285,7 @@ async function createMainWindow() {
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMaximized()) {
       mainWindow.maximize();
     }
+    logEnvStatusToWindow(mainWindow);
   });
 
   // Set Content Security Policy to fix Electron security warning
@@ -1056,8 +1080,18 @@ function handleCaptureSessionToggle() {
  * and call sessionManager.setUser() which handles all the business logic.
  * We just need to ensure navigation happens after the user is set.
  */
+const notifyOAuthFailure = (message: string) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("user-oauth-error", message);
+  }
+};
+
 const handleOAuthCallback = async (url: string) => {
+  log.info("[OAuth] Deep link received:", url.split(/[?#]/)[0]);
   try {
+    // Bring the app forward — the browser still has focus after the redirect.
+    await showMainWindow();
+
     // Supabase v2 uses PKCE by default: callback has ?code=... in query params.
     // Older implicit flow puts tokens in the hash (#access_token=...).
     // Try PKCE first, fall back to implicit.
@@ -1069,9 +1103,11 @@ const handleOAuthCallback = async (url: string) => {
       const session = await authService.exchangeCodeForSession(url);
       if (!session) {
         log.error("[OAuth] Failed to exchange code for session");
+        notifyOAuthFailure("Sign-in failed. Please try again.");
         return;
       }
-      // PKCE flow is handled by Supabase and will trigger auth listener
+      // Don't depend on the auth listener firing before we read the user below.
+      await sessionManager.setUser(authService.mapSessionUser(session.user));
     } else {
       // Implicit flow — extract tokens from hash fragment
       const hashFragment = url.substring(url.indexOf("#") + 1);
@@ -1080,7 +1116,8 @@ const handleOAuthCallback = async (url: string) => {
       const refreshToken = params.get("refresh_token");
 
       if (!accessToken || !refreshToken) {
-        log.warn("[OAuth] No code or tokens found in callback URL:", url);
+        log.warn("[OAuth] No code or tokens found in callback URL");
+        notifyOAuthFailure("Sign-in failed: no credentials in callback.");
         return;
       }
 
@@ -1125,6 +1162,14 @@ const handleOAuthCallback = async (url: string) => {
 
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
       try {
+        // A window created by showMainWindow() may still be loading; the
+        // renderer's navigate listener isn't attached until then.
+        if (mainWindow.webContents.isLoading()) {
+          await new Promise<void>((resolve) =>
+            mainWindow!.webContents.once("did-finish-load", () => resolve())
+          );
+        }
+        log.info("[OAuth] Navigating renderer to", navigateTo);
         mainWindow.webContents.send("navigate", navigateTo);
       } catch (sendError) {
         log.error("[OAuth] Error sending navigate event:", sendError);
@@ -1134,6 +1179,9 @@ const handleOAuthCallback = async (url: string) => {
     }
   } catch (error) {
     log.error("[OAuth] Unexpected error handling OAuth callback:", error);
+    notifyOAuthFailure(
+      error instanceof Error ? error.message : "Sign-in failed."
+    );
   }
 };
 
@@ -3084,6 +3132,9 @@ function setupIPCHandlers() {
     "connector:add",
     async (_event, { workspaceId, ...connector }) => {
       try {
+        if (connector.type === "zoho" && !zohoService.isConfigured) {
+          throw new Error(ZOHO_UNAVAILABLE);
+        }
         const user = sessionManager.getUser();
         if (!user) {
           throw new Error("User not authenticated");
@@ -3237,6 +3288,7 @@ function setupIPCHandlers() {
     "sync:issue-zoho",
     async (_event, { issueId, connectorId }) => {
       try {
+        if (!zohoService.isConfigured) throw new Error(ZOHO_UNAVAILABLE);
         const user = sessionManager.getUser();
         if (!user) {
           throw new Error("User not authenticated");
@@ -3436,9 +3488,14 @@ function setupIPCHandlers() {
     }
   );
 
+  ipcMain.handle("app:feature-flags", () => ({
+    zoho: zohoService.isConfigured,
+  }));
+
   // Zoho OAuth Sign In
   ipcMain.handle("connector:zoho-signin", async () => {
     try {
+      if (!zohoService.isConfigured) throw new Error(ZOHO_UNAVAILABLE);
       const url = zohoService.getAuthUrl();
       await shell.openExternal(url);
       return { success: true };

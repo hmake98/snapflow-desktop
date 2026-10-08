@@ -8,6 +8,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { GitHubIcon, ZohoIcon } from "../components/ui/BrandIcons";
+import { useFeatureFlags } from "../hooks/useFeatureFlags";
+import { ZohoUnavailable } from "../components/ui/ZohoUnavailable";
 import { Badge } from "../components/ui/Badge";
 import { ChipsInput } from "../components/ui/ChipsInput";
 import { SearchInput } from "../components/ui/SearchInput";
@@ -81,6 +83,7 @@ const syncedWorkspaces = new Set<string>();
 // ─── Home Page ─────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
+  const { zoho: zohoAvailable } = useFeatureFlags();
   const router = useRouter();
   const {
     user,
@@ -967,6 +970,16 @@ export default function HomePage() {
       setIsOpen(false);
     };
 
+    if (!zohoAvailable) {
+      return (
+        <ZohoUnavailable>
+          <Button variant="ghost" size="sm" disabled className={className}>
+            <ZohoIcon className="w-4 h-4 text-orange-500" />
+          </Button>
+        </ZohoUnavailable>
+      );
+    }
+
     if (connectors.length === 0) {
       return (
         <Button
@@ -1236,6 +1249,9 @@ export default function HomePage() {
                 { id: "github", label: "GitHub" },
                 { id: "zoho", label: "Zoho" },
               ];
+              const visibleStatusOptions = STATUS_OPTIONS.filter(
+                (o) => o.id !== "zoho" || zohoAvailable
+              );
               const showStatusRow =
                 statusCounts.github > 0 || statusCounts.zoho > 0;
               return (
@@ -1423,7 +1439,7 @@ export default function HomePage() {
                           <span className="text-2xs font-semibold uppercase tracking-wide text-gray-500">
                             Sync
                           </span>
-                          {STATUS_OPTIONS.map((opt) => {
+                          {visibleStatusOptions.map((opt) => {
                             const active = statusFilter === opt.id;
                             const count = statusCounts[opt.id];
                             return (

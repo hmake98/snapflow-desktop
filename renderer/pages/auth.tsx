@@ -33,6 +33,17 @@ export default function AuthPage() {
   const githubSigninTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   React.useEffect(() => {
+    return window.api.onUserOAuthError((message: string) => {
+      if (githubSigninTimeoutRef.current) {
+        clearTimeout(githubSigninTimeoutRef.current);
+        githubSigninTimeoutRef.current = null;
+      }
+      setLoading(false);
+      setError(message);
+    });
+  }, []);
+
+  React.useEffect(() => {
     return () => {
       if (githubSigninTimeoutRef.current) {
         clearTimeout(githubSigninTimeoutRef.current);

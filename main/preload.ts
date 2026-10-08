@@ -203,6 +203,7 @@ const api = {
     ipcRenderer.invoke("connector:delete", { id }),
   validateZohoConnector: (accessToken: string, portalId: string) =>
     ipcRenderer.invoke("connector:validate-zoho", { accessToken, portalId }),
+  getFeatureFlags: () => ipcRenderer.invoke("app:feature-flags"),
   zohoSignIn: () => ipcRenderer.invoke("connector:zoho-signin"),
   getZohoPortals: () => ipcRenderer.invoke("connector:get-zoho-portals"),
   getZohoProjects: (portalId: string) =>
@@ -395,6 +396,12 @@ const api = {
     const subscription = () => callback();
     ipcRenderer.on("zoho-oauth-success", subscription);
     return () => ipcRenderer.removeListener("zoho-oauth-success", subscription);
+  },
+  onUserOAuthError: (callback: (error: string) => void): (() => void) => {
+    const subscription = (_event: IpcRendererEvent, error: string) =>
+      callback(error);
+    ipcRenderer.on("user-oauth-error", subscription);
+    return () => ipcRenderer.removeListener("user-oauth-error", subscription);
   },
   onZohoOAuthError: (callback: (error: string) => void): (() => void) => {
     const subscription = (_event: IpcRendererEvent, error: string) =>

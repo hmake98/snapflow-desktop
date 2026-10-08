@@ -70,6 +70,10 @@ export class ZohoService {
     this.apiBaseUrl = `https://projectsapi.${domain}/api/v3`;
   }
 
+  get isConfigured(): boolean {
+    return !!process.env.ZOHO_CLIENT_ID && !!process.env.ZOHO_CLIENT_SECRET;
+  }
+
   private get clientId(): string {
     const id = process.env.ZOHO_CLIENT_ID;
     if (!id) throw new Error("ZOHO_CLIENT_ID environment variable not set");

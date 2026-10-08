@@ -398,15 +398,17 @@ export function AiSection() {
             {configuredCount} of 4 configured
           </span>
         </div>
-        <p className="text-sm text-gray-500 leading-relaxed">
-          Add an API key for any provider, then mark{" "}
-          <span className="text-gray-300">one</span> as active. The active
-          provider powers the{" "}
-          <span className="text-gray-300">Improve with AI</span> action on
-          screenshot annotations and the auto-generated bug reports for
-          recording sessions. API keys are stored locally on this device and
-          never sent to SnapFlow servers.
+        <p className="text-sm text-gray-400">
+          Add a key, then set one provider as{" "}
+          <span className="text-gray-200">Active</span>.
         </p>
+        <ul className="mt-2 space-y-1 text-sm text-gray-500 list-disc pl-5">
+          <li>
+            The active provider powers &ldquo;Improve with AI&rdquo; and
+            auto-written bug reports.
+          </li>
+          <li>Keys stay on this device and are never sent to SnapFlow.</li>
+        </ul>
       </div>
 
       {PROVIDER_ORDER.map((p) => (
