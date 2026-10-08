@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "nextron",
     "seed-secrets": "electron . --seed-secrets",
-    "build": "node scripts/make-bootstrap.js && nextron build --no-pack",
+    "build": "nextron build --no-pack",
     "build:pack": "node scripts/make-bootstrap.js && nextron build",
     "postinstall": "electron-builder install-app-deps",
     "version:patch": "npm version patch --no-git-tag-version",
